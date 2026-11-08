@@ -3944,7 +3944,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v562-marginstmt';
+const APP_BUILD='hyeonjang-v563-briefweather';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10955,6 +10955,7 @@ function viewDashboard(){
 /* ═══════════ ☀️ 오늘의 브리핑 — 운영 루프 첫 심장박동(감지→결정). 순수 읽기 계산, 오프라인·서버 불필요.
    직렬화 스키마 불변(serializeData/applyData 미변경). 펼침 상태만 메모리 변수(__briefOpen)로 보관. ═══════════ */
 let __briefOpen=true; // 카드 펼침 상태 — 직렬화·idb 저장 안 함(원본 데이터 불변)
+let __briefMore={};   // v563 브리핑 칸별 '더 보기'(체크·진행 현장·연락) — 메모리 전용
 let __boardOpen=false;   // 🏥 현장 보드 펼침 상태 — 메모리 전용(직렬화·idb 저장 안 함)
 let __boardFilter=false; // 🏥 현장 보드 '긴급만' 필터 — 메모리 전용(직렬화·idb 저장 안 함)
 let __adDoneOnly=false;  // ✍️ 홍보 원고 '완공만 보기' 필터 — 메모리 전용(직렬화·idb 저장 안 함, 원본 데이터 불변)
@@ -11045,12 +11046,12 @@ function hjDailyBrief(){
   //   견적 파일에는 고객 연락처가 없어 자동으로 채울 수 없다 — 빈 곳을 알려 주고 직접 넣게 한다.
   try{
     const noRecv=pay.filter(x=>x.est>0&&!x.recv&&!(state.payLog||[]).some(r=>r&&r.project===x.name)).map(x=>x.name);
-    if(noRecv.length)checks.push({ic:'💰',t:'견적은 있는데 수금 기록이 없는 현장 '+noRecv.length+'곳: '+noRecv.slice(0,3).join(', ')+(noRecv.length>3?' 외':'')+' — 받은 돈을 입력해야 미수·독촉이 작동해요 (통장 거래내역 파일이 있으면 💰 수금 이력 → 🏦 통장에서 가져오기)',acts:noRecv.slice(0,4).map(n=>({k:'recv',p:n}))});
+    if(noRecv.length)checks.push({ic:'💰',t:'견적은 있는데 수금 기록이 없는 현장 '+noRecv.length+'곳: '+noRecv.slice(0,3).join(', ')+(noRecv.length>3?' 외':'')+' — 받은 돈을 입력해 두면 장부·세무 자료가 맞아요 (통장 거래내역 파일이 있으면 💰 수금 이력 → 🏦 통장에서 가져오기)',acts:noRecv.slice(0,4).map(n=>({k:'recv',p:n}))});
     const noPhone=acts.filter(p=>projStats(p.name).est>0&&String((p.customer&&p.customer.phone)||'').replace(/[^\d]/g,'').length<8).map(p=>p.name);
     if(noPhone.length)checks.push({ic:'📇',t:'고객 연락처 없는 견적 현장 '+noPhone.length+'곳: '+noPhone.slice(0,3).join(', ')+(noPhone.length>3?' 외':''),acts:noPhone.slice(0,4).map(n=>({k:'cust',p:n}))});
     // v343 다른 업체 이름 견적(용진인테리어 등)이 매출로 잡혀 있으면 외주(매입)인지 확인하게
     const vend=(state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&!f.exSum&&!(f.est&&f.est.purchase)&&(Number(f.est&&f.est.amount)||0)>0&&!hjEstAmtSuspect(f)&&hjEstVendorName(f));
-    if(vend.length)checks.push({ic:'🏢',t:'다른 업체 이름 견적 '+vend.length+'건이 매출에 잡혀 있어요 — 외주(매입)이면 견적 탭 [상세 입력 → 🏢 외주(매입)], 비교 견적(들러리)이면 [Σ 집계 제외]'});
+    if(vend.length&&hjSalesBasis()!=='stmt')checks.push({ic:'🏢',t:'다른 업체 이름 견적 '+vend.length+'건이 매출에 잡혀 있어요 — 외주(매입)이면 견적 탭 [상세 입력 → 🏢 외주(매입)], 비교 견적(들러리)이면 [Σ 집계 제외]'});
     // v345 준공 점검표에 '보수 필요'가 남은 현장 · 오늘 사진이 올라온 진행 현장(고객 진행 보고 제안 — Houzz·Buildertrend 의 일일 고객 업데이트)
     const punchOpen=acts.filter(p=>hjPunchOpen(p)>0).map(p=>p.name);
     if(punchOpen.length)checks.push({ic:'🧾',t:'준공 점검표에 보수 필요가 남은 현장 '+punchOpen.length+'곳: '+punchOpen.slice(0,3).join(', ')+(punchOpen.length>3?' 외':''),acts:punchOpen.slice(0,4).map(n=>({k:'punch',p:n}))});
@@ -11075,7 +11076,8 @@ function hjDailyBrief(){
   if(adNoPerf>0)checks.push({ic:'📣',t:'광고 성과 미기록 '+adNoPerf+'건'});
   // ⏰ 견적 팔로업: 현장 미연결(미수주) 3~30일 경과 견적 — 매일 카드에 표면화(수주 전환 골든타임). 순수 읽기 파생.
   let quoteFollow=[];try{if(typeof quoteFollowupData==='function')quoteFollow=quoteFollowupData().slice(0,5);}catch(e){}
-  return {today,tomorrow,todaySch,tmrSch,doing,leadNotes,followups,quoteFollow,pay,totRecv,totEst,looseEst,looseN,checks,unassignedPhotos};
+  let wx={state:'none',today:null,tomorrow:null,risks:[]};try{wx=hjBriefWeatherNow();}catch(e){}   // v563 날씨(캐시만 읽음)
+  return {today,tomorrow,todaySch,tmrSch,doing,leadNotes,followups,quoteFollow,pay,totRecv,totEst,looseEst,looseN,checks,unassignedPhotos,wx};
 }
 /* ═══════════ 🏥 현장 보드 — 모든 활성 현장 종합 위험도 랭킹(순수·읽기전용 파생) ═══════════
    Phase 4 "여러 현장 동시 운영". 새 탭·새 모달·새 project 필드·새 직렬화 키 없음.
@@ -11214,6 +11216,8 @@ function hjHealthBoardHTML(sec){
   return h;
 }
 // 결정→표시: 대시보드 최상단 카드(요약 + 펼치기). 빈 상태는 친절 문구.
+/* v563 칸별 [더 보기] — 보이는 것보다 많을 때만. 누르면 그 칸만 다 보이고 [접기]. */
+function hjBriefMoreBtn(key,total,shown){if(!(total>shown))return '';const open=!!__briefMore[key];return '<button type="button" class="ghost tiny" data-briefmore="'+key+'" style="min-height:44px;padding:6px 12px;font-size:12px;margin-top:4px">'+(open?'접기 ▲':'외 '+(total-shown)+'건 더 보기 ▼')+'</button>';}
 function hjDailyBriefHTML(){
   let b; try{b=hjDailyBrief();}catch(e){return '<div style="border:1.5px solid var(--line-soft);border-radius:14px;padding:12px;margin:0 0 14px;background:var(--paper)"><b>☀️ 오늘의 브리핑</b><div class="hint" style="margin:6px 0 0">브리핑을 계산할 수 없습니다.</div></div>';}
   const nTodo=b.todaySch.length, nDoing=b.doing.length, nLead=b.leadNotes.length+b.followups.length, nCheck=b.checks.length, nQF=(b.quoteFollow||[]).length;
@@ -11225,64 +11229,77 @@ function hjDailyBriefHTML(){
      '<b style="font-size:15px">☀️ 오늘의 브리핑 <span style="font-size:11.5px;color:var(--muted);font-weight:500">· '+b.today+'</span></b>'+
      '<button class="ghost tiny" data-brieftoggle style="font-size:11px;padding:4px 9px">'+(__briefOpen?'접기 ▲':'펼치기 ▼')+'</button>'+
      '</div>';
+  // v563 날씨(항상 표시) — 캐시가 없거나 오래됐으면 그린 뒤에 받아 온다
+  h+=hjBriefWeatherHTML(b.wx);
+  if(b.wx.state==='none')setTimeout(()=>{try{hjBriefWeatherRefresh(false);}catch(e){}},0);
   // 요약 칩(항상 표시)
   h+='<div style="margin-top:8px">'+chip('📅 오늘 일정 '+nTodo)+chip('🔥 진행 현장 '+nDoing)+chip('📞 챙길 연락 '+nLead)+(nQF?chip('⏰ 견적 팔로업 '+nQF):'')+(nCheck?chip('✅ 체크 '+nCheck):'')+'</div>';
-  // 🏥 현장 보드 — 요약 칩 아래 읽기전용 파생 섹션(자체 접힘 __boardOpen, __briefOpen과 독립)
-  try{h+=hjHealthBoardHTML(sec);}catch(e){}
+  // 🏥 현장 보드 — 읽기전용 파생 섹션(자체 접힘 __boardOpen, __briefOpen과 독립). v563 펼쳤을 때는 일정·체크 다음(아침 순서), 접었을 때는 칩 아래.
+  if(!__briefOpen){try{h+=hjHealthBoardHTML(sec);}catch(e){}}
   if(__briefOpen){
-    // 1) 오늘·내일 일정
+    // 1) 오늘·내일 일정 — v563 비·습도에 민감한 공정이면 일정 옆에 ☔/💧 표시(hjBriefWxBadge)
     h+=sec('📅 오늘·내일 일정');
+    const wxB=sch=>{const t=hjBriefWxBadge(sch,b.wx);return t?' <span data-brief-wx style="color:#c2410c;font-weight:700;font-size:12px;white-space:nowrap">'+escapeHtml(t)+'</span>':'';};
     if(b.todaySch.length){
       h+='<div style="font-size:13px;margin-bottom:2px">오늘 <b>'+b.todaySch.length+'건</b></div>';
-      h+=b.todaySch.map(s=>'<div style="font-size:13px;padding:2px 0"> · <b style="color:var(--blueprint)">'+(s.time?escapeHtml(s.time)+' ':'')+escapeHtml(s.title||'작업')+'</b>'+
+      h+=b.todaySch.map(s=>'<div data-brief-sch="'+escapeAttr(String(s.id||''))+'" style="font-size:13px;padding:2px 0"> · <b style="color:var(--blueprint)">'+(s.time?escapeHtml(s.time)+' ':'')+escapeHtml(s.title||'작업')+'</b>'+
         (s.project?' <span style="color:var(--muted)">📍'+escapeHtml(s.project)+'</span>':'')+
-        (s.workers?' <span style="color:var(--muted)">👷'+escapeHtml(String(s.workers))+'명</span>':'')+'</div>').join('');
+        (s.workers?' <span style="color:var(--muted)">👷'+escapeHtml(String(s.workers))+'명</span>':'')+wxB(s)+'</div>').join('');
     } else { h+='<div class="hint" style="margin:0">오늘 예정 일정 없음.</div>'; }
-    if(b.tmrSch.length){ h+='<div style="font-size:12px;color:var(--muted);margin-top:4px">내일 '+b.tmrSch.length+'건: '+b.tmrSch.map(s=>escapeHtml((s.time?s.time+' ':'')+(s.title||'작업'))).join(', ')+'</div>'; }
-    // 2) 진행 중 현장
+    if(b.tmrSch.length){
+      h+='<div style="font-size:12px;color:var(--muted);margin-top:6px">내일 '+b.tmrSch.length+'건</div>';
+      h+=b.tmrSch.slice(0,6).map(s=>'<div data-brief-sch="'+escapeAttr(String(s.id||''))+'" style="font-size:12.5px;color:var(--muted);padding:1px 0"> · '+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업'))+(s.project?' 📍'+escapeHtml(s.project):'')+wxB(s)+'</div>').join('')+(b.tmrSch.length>6?'<div style="font-size:12px;color:var(--muted)"> · 외 '+(b.tmrSch.length-6)+'건</div>':'');
+    }
+    // 2) 오늘의 체크(근거 있을 때만) — v563 일정 바로 아래로 올림 · 5개 넘으면 [더 보기]
+    if(b.checks.length){
+      h+=sec('✅ 오늘의 체크');
+      // v344 알림에서 바로 입력 — 현장 이름 버튼이 입금 기록(recvQuickView)·고객 정보(hjCustQuickView) 창을 연다
+      const ckAll=!!__briefMore.check,ckList=ckAll?b.checks:b.checks.slice(0,5);
+      h+=ckList.map(c=>'<div style="font-size:13px;padding:2px 0"> '+c.ic+' '+escapeHtml(c.t)+
+        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+({recv:'data-recvquick',cust:'data-custquick',punch:'data-punchquick',progress:'data-progressquick',extra:'data-extraquick',delay:'data-delayquick',proof:'data-proofquick'}[a.k]||'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+({recv:'입금 기록',cust:'고객 연락처 입력',punch:'준공 하자점검표',progress:'고객 진행 보고',extra:'추가공사 확인',delay:'공정 지연 점검',proof:'입금 증빙 기록'}[a.k]||'')+'">'+({recv:'💰 ',cust:'📇 ',punch:'🧾 ',progress:'📨 ',extra:'🖊 ',delay:'🕒 ',proof:'🧾 '}[a.k]||'')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
+        '</div>').join('');
+      h+=hjBriefMoreBtn('check',b.checks.length,5);
+    }
+    try{h+=hjHealthBoardHTML(sec);}catch(e){}   // v563 🏥 현장 보드 — 일정·체크 다음
+    // 3) 진행 중 현장 — v563 5곳 넘으면 [더 보기](시공 → 실측 → 상담 순)
     h+=sec('🔥 진행 중 현장');
     if(b.doing.length){
       // 각 진행 현장 → [📋 작업지시] 원탭(기존 openWorkOrder({proj}) 재사용, 현장 프리필)
-      h+=b.doing.map(p=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(p.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(p.stageName)+'</span>'+
+      h+=(__briefMore.doing?b.doing:b.doing.slice(0,5)).map(p=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(p.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(p.stageName)+'</span>'+
         (p.prog?' <span style="color:var(--muted)">공정 '+escapeHtml(p.prog)+'</span>':'')+
         (p.next?' <span style="color:var(--muted)">다음 공정: '+escapeHtml(p.next)+'</span>':(p.phaseN?'':' <span style="color:var(--muted)">공정 미설정</span>'))+'</span>'+
         '<button class="ghost tiny" data-workorderp="'+escapeAttr(p.name)+'" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="작업지시 문자 만들기">📋 작업지시</button></div>').join('');
+      h+=hjBriefMoreBtn('doing',b.doing.length,5);
     } else { h+='<div class="hint" style="margin:0">진행 중인 현장 없음.</div>'; }
-    // 3) 챙길 연락
+    // 4) 챙길 연락 — v563 리드 3·후속 5 넘으면 [더 보기]
     h+=sec('📞 챙길 연락');
     if(b.leadNotes.length||b.followups.length){
       // 홈 리드: 노트에 파싱 가능한 전화(현장 고객 or 노트 텍스트)가 있을 때만 [📞][💬] — 원문은 딥링크에만, 화면은 마스킹 스니펫
-      if(b.leadNotes.length)h+=b.leadNotes.map(n=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <span style="background:#fef3c7;color:#92400e;font-size:10.5px;padding:1px 6px;border-radius:8px">홈 리드</span> '+
+      const ctAll=!!__briefMore.contact;
+      if(b.leadNotes.length)h+=(ctAll?b.leadNotes:b.leadNotes.slice(0,3)).map(n=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <span style="background:#fef3c7;color:#92400e;font-size:10.5px;padding:1px 6px;border-radius:8px">홈 리드</span> '+
         (n.date?'<span style="color:var(--muted);font-size:11px">'+escapeHtml(String(n.date).slice(5))+'</span> ':'')+escapeHtml(n.snippet||'')+(n.project?' <span style="color:var(--muted)">📍'+escapeHtml(n.project)+'</span>':'')+'</span>'+
         (n.canContact?'<button class="ghost tiny" data-briefleadcall="'+escapeAttr(n.id)+'" style="padding:3px 8px;font-size:11px">📞</button><button class="ghost tiny" data-briefleadsms="'+escapeAttr(n.id)+'" style="padding:3px 8px;font-size:11px">💬</button>':'')+'</div>').join('');
       // 후속 유도 현장: [📞] 전화 + [💬] 문자(기존 data-callcust/data-smscust 재사용, 프로젝트 고객 연락처 조회)
-      if(b.followups.length)h+=b.followups.map(f=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(f.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(f.stageName)+'</span>'+
+      if(b.followups.length)h+=(ctAll?b.followups:b.followups.slice(0,5)).map(f=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(f.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(f.stageName)+'</span>'+
         (f.cust?' <span style="color:var(--muted)">'+escapeHtml(f.cust)+'</span>':'')+(f.phoneMasked?' <span style="color:var(--muted);font-size:11px">'+f.phoneMasked+'</span>':'')+'</span>'+
         '<button class="ghost tiny" data-callcust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">📞</button>'+
         '<button class="ghost tiny" data-smscust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">💬</button></div>').join('');
+      if(b.leadNotes.length>3||b.followups.length>5)h+=hjBriefMoreBtn('contact',b.leadNotes.length+b.followups.length,Math.min(3,b.leadNotes.length)+Math.min(5,b.followups.length));
     } else { h+='<div class="hint" style="margin:0">지금 챙길 연락 없음.</div>'; }
-    // 3.5) 견적 팔로업(미수주·무응답 견적) — 전화 원문 미노출(반환 스키마에 전화 없음), 발송은 quoteFollowup() 모달 경유
+    // 5) 견적 팔로업(미수주·무응답 견적) — 전화 원문 미노출(반환 스키마에 전화 없음), 발송은 quoteFollowup() 모달 경유
     if(b.quoteFollow&&b.quoteFollow.length){
       h+=sec('⏰ 견적 팔로업');
       h+=b.quoteFollow.map(q=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(q.title)+'</b> <span style="color:var(--muted);font-size:11px">'+q.days+'일 경과</span>'+
         (q.total?' <b style="color:var(--blueprint)">'+won(q.total)+'</b>':'')+(q.place?' <span style="color:var(--muted)">📍'+escapeHtml(q.place)+'</span>':'')+'</span>'+
         '<button class="clay tiny" data-qfollow="1" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="견적 팔로업 문자 초안">⏰ 팔로업</button></div>').join('');
     }
-    // 4) 대금 현황(힌트)
+    // 6) 대금 현황(힌트)
     h+=sec('💰 대금 현황(힌트)');h+=hjLeakReceiptPendingHtml();
     if(b.totEst>0){
       h+='<div style="font-size:13px">수금 <b style="color:var(--ok)">'+won(b.totRecv)+'</b> <span class="hint" style="display:inline">· 진행 현장 견적 '+won(b.totEst)+(b.looseN?' · 현장 미지정 견적 '+b.looseN+'건 '+won(b.looseEst)+' 별도':'')+'</span></div>';
     } else if(b.totRecv>0){
       h+='<div style="font-size:13px">수금 <b style="color:var(--ok)">'+won(b.totRecv)+'</b> <span class="hint" style="display:inline">· 견적서를 연결하면 매출도 함께 잡힙니다</span></div>';
     } else { h+='<div class="hint" style="margin:0">수금·견적 기록이 아직 없습니다.</div>'; }
-    // 5) 오늘의 체크(근거 있을 때만)
-    if(b.checks.length){
-      h+=sec('✅ 오늘의 체크');
-      // v344 알림에서 바로 입력 — 현장 이름 버튼이 입금 기록(recvQuickView)·고객 정보(hjCustQuickView) 창을 연다
-      h+=b.checks.map(c=>'<div style="font-size:13px;padding:2px 0"> '+c.ic+' '+escapeHtml(c.t)+
-        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+({recv:'data-recvquick',cust:'data-custquick',punch:'data-punchquick',progress:'data-progressquick',extra:'data-extraquick',delay:'data-delayquick',proof:'data-proofquick'}[a.k]||'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+({recv:'입금 기록',cust:'고객 연락처 입력',punch:'준공 하자점검표',progress:'고객 진행 보고',extra:'추가공사 확인',delay:'공정 지연 점검',proof:'입금 증빙 기록'}[a.k]||'')+'">'+({recv:'💰 ',cust:'📇 ',punch:'🧾 ',progress:'📨 ',extra:'🖊 ',delay:'🕒 ',proof:'🧾 '}[a.k]||'')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
-        '</div>').join('');
-    }
   }
   // AI 브리지: 복사 버튼(전화번호 원문 미포함)
   h+='<div style="display:flex;gap:8px;margin-top:12px"><button class="clay tiny" data-briefcopy style="padding:8px 12px">📋 브리핑 복사</button>'+
@@ -11295,13 +11312,20 @@ function hjDailyBriefText(){
   const b=hjDailyBrief();
   const L=[];
   L.push('☀️ 오늘의 브리핑 ('+b.today+')');
+  const wxLine=hjBriefWeatherLine(b.wx);if(wxLine)L.push(wxLine);   // v563 날씨
   L.push('');
   L.push('📅 오늘·내일 일정');
+  const wxT=s=>{const t=hjBriefWxBadge(s,b.wx);return t?' ['+t+']':'';};
   if(b.todaySch.length){
     L.push('오늘 '+b.todaySch.length+'건');
-    b.todaySch.forEach(s=>L.push(' · '+(s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' @'+s.project:'')+(s.workers?' ('+s.workers+'명)':'')));
+    b.todaySch.forEach(s=>L.push(' · '+(s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' @'+s.project:'')+(s.workers?' ('+s.workers+'명)':'')+wxT(s)));
   } else L.push(' · 오늘 예정 일정 없음');
-  if(b.tmrSch.length)L.push('내일 '+b.tmrSch.length+'건: '+b.tmrSch.map(s=>(s.time?s.time+' ':'')+(s.title||'작업')).join(', '));
+  if(b.tmrSch.length)L.push('내일 '+b.tmrSch.length+'건: '+b.tmrSch.map(s=>(s.time?s.time+' ':'')+(s.title||'작업')+wxT(s)).join(', '));
+  if(b.checks.length){   // v563 체크를 일정 바로 아래로(화면과 같은 순서)
+    L.push('');
+    L.push('✅ 오늘의 체크');
+    b.checks.forEach(c=>L.push(' · '+c.t));
+  }
   L.push('');
   L.push('🔥 진행 중 현장 '+b.doing.length+'곳');
   if(b.doing.length)b.doing.forEach(p=>L.push(' · '+p.name+' ['+p.stageName+']'+(p.next?' 다음공정: '+p.next:'')));
@@ -11322,11 +11346,6 @@ function hjDailyBriefText(){
     L.push(' · 수금 '+won(b.totRecv)+' / 진행 현장 견적 '+won(b.totEst)+(b.looseN?' (현장 미지정 견적 '+b.looseN+'건 '+won(b.looseEst)+' 별도)':''));
   } else if(b.totRecv>0){ L.push(' · 수금 '+won(b.totRecv)+' (견적서 연결 전)'); }
   else L.push(' · 수금·견적 기록 없음');
-  if(b.checks.length){
-    L.push('');
-    L.push('✅ 오늘의 체크');
-    b.checks.forEach(c=>L.push(' · '+c.t));
-  }
   return L.join('\n');
 }
 async function hjDailyBriefCopy(){
@@ -13475,16 +13494,18 @@ function aiBriefData(){
   const today=localDate();
   const acts=state.projects.filter(p=>!p.archived);
   const ts=(state.schedule||[]).filter(s=>s.date===today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
-  const tmr=nextDayYmd?nextDayYmd(today):'';
-  const tms=(state.schedule||[]).filter(s=>tmr&&s.date===tmr);
+  const tmr=hjBriefTomorrow(today);   // v563 예전 nextDayYmd 는 'YYYYMMDD'(구글 캘린더용)라 일정 날짜와 안 맞아 내일 일정이 늘 비었다
+  const tms=(state.schedule||[]).filter(s=>s&&s.date===tmr).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   const un=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
   const doing=acts.filter(p=>(p.stage||0)===2).map(p=>p.name);
+  let wx=null;try{wx=hjBriefWeatherNow();}catch(e){}
   return {오늘:today,오늘일정:ts.map(s=>({시간:s.time||'',제목:s.title,현장:s.project||''})),
     내일일정:tms.map(s=>({시간:s.time||'',제목:s.title,현장:s.project||''})),
-    시공중현장:doing,미배정사진:un};
+    시공중현장:doing,미배정사진:un,날씨:wx&&wx.state==='ok'?hjBriefWeatherLine(wx):''};
 }
 function aiBriefRuleText(d){
   const L=[];
+  if(d.날씨)L.push(d.날씨,'');   // v563 날씨를 맨 위에
   L.push('📅 오늘 ('+d.오늘+')');
   L.push(d.오늘일정.length?d.오늘일정.map(s=>' · '+(s.시간?s.시간+' ':'')+s.제목+(s.현장?' @'+s.현장:'')).join('\n'):' · 등록된 일정 없음');
   if(d.내일일정.length)L.push('내일: '+d.내일일정.map(s=>(s.시간?s.시간+' ':'')+s.제목).join(', '));
@@ -13496,6 +13517,7 @@ function aiBriefRuleText(d){
   return L.join('\n');
 }
 async function aiBriefing(){
+  if(hjBriefWeatherNow().state==='none')try{await Promise.race([hjBriefWeatherLoad(false),new Promise(r=>setTimeout(r,2500))]);}catch(e){}   // v563 날씨를 2.5초까지 기다린다(못 받으면 날씨 없이)
   const d=aiBriefData();
   const base=aiBriefRuleText(d);
   const body='<div id="briefBox" style="white-space:pre-wrap;font-size:14px;line-height:1.65;background:var(--paper-2);border-radius:10px;padding:12px;min-height:60px">'+escapeHtml(base)+'</div>'+
@@ -24806,6 +24828,84 @@ function weatherRisksForDate(dateStr,precip,humidity){
     });
   });
   return risks;
+}
+/* ═══════════ v563 ☀️ 오늘의 브리핑 날씨 ═══════════
+   대표 지시(11/8) "오늘의 브리핑을 정돈해줘 날씨도 추가해주고". 🌤 날씨 공정과 같은 공개 예보(Open-Meteo, 키 없음 — weatherFetch)를
+   대전(HJ_WEATHER_CITY) 기준으로 받아 브리핑 맨 위에 오늘·내일 한 줄. 비 50%↑·습도 80%↑ 인 날 예정된 날씨 민감 공정(WEATHER_SENSITIVE)은
+   그 일정 옆에 ☔/💧 표시를 붙이고 날씨 줄 아래에 모아 보인다. 받은 예보는 이 기기 localStorage(hj_brief_weather)에 3시간 둔다 —
+   저장본(serializeData)에 실리지 않는다. 못 받으면 '날씨를 못 불러왔어요 [다시]'만, 브리핑 나머지는 그대로. 읽기 함수는 저장소를 바꾸지 않는다. */
+const HJ_BRIEF_WEATHER_KEY='hj_brief_weather',HJ_BRIEF_WEATHER_TTL=3*3600*1000,HJ_BRIEF_WEATHER_RETRY=10*60*1000;
+let __hjBriefWx=null,__hjBriefWxErrAt=0;   // 진행 중인 불러오기 · 마지막 실패 시각(10분 안에는 저절로 다시 안 부른다)
+function hjBriefWeatherCached(){
+  try{const o=JSON.parse(localStorage.getItem(HJ_BRIEF_WEATHER_KEY)||'null');if(o&&o.data&&o.data.daily&&Array.isArray(o.data.daily.time)&&Date.now()-num(o.at)<HJ_BRIEF_WEATHER_TTL)return o;}catch(e){}
+  return null;
+}
+function hjBriefTomorrow(today){const [y,m,d]=String(today||localDate()).split('-').map(Number);return localDate(new Date(y,m-1,d+1));}
+/* 오늘·내일 예보 한 벌 — {state:'ok'|'none'|'error', today, tomorrow, risks:[{when,date,title,label,reason,rainy,humid}]}. 캐시만 읽는다. */
+function hjBriefWeatherNow(){
+  const o=hjBriefWeatherCached();
+  if(!o)return {state:__hjBriefWxErrAt&&Date.now()-__hjBriefWxErrAt<HJ_BRIEF_WEATHER_RETRY?'error':'none',today:null,tomorrow:null,risks:[]};
+  const d=o.data.daily,today=localDate(),tmr=hjBriefTomorrow(today);
+  const day=date=>{const i=d.time.indexOf(date);if(i<0)return null;const wc=weatherCodeText(num((d.weather_code||[])[i]));
+    const rain=Math.round(num((d.precipitation_probability_max||[])[i])),humid=Math.round(num((d.relative_humidity_2m_max||[])[i]));
+    return {date,ic:wc.ic,t:wc.t,max:Math.round(num((d.temperature_2m_max||[])[i])),min:Math.round(num((d.temperature_2m_min||[])[i])),rain,humid,wet:rain>=50,humidHigh:humid>=80};};
+  const t=day(today),m=day(tmr);
+  if(!t&&!m)return {state:'none',today:null,tomorrow:null,risks:[]};   // 어제 받은 예보 — 다시 받는다
+  const risks=[],seen={};
+  [['오늘',t],['내일',m]].forEach(([when,x])=>{if(x)weatherRisksForDate(x.date,x.rain,x.humid).forEach(r=>{const k=x.date+'|'+(r.title||'');   // 한 일정은 한 번만(낱말이 여럿 맞으면 이름을 잇는다)
+    if(seen[k]){if(!seen[k].label.split('·').includes(r.label))seen[k].label+='·'+r.label;return;}
+    risks.push(seen[k]=Object.assign({when,date:x.date},r));});});
+  return {state:'ok',today:t,tomorrow:m,risks,at:num(o.at)};
+}
+/* 일정 한 줄 옆 날씨 표시 — 그날 비(50%↑)나 습도(80%↑)이고 제목·현장에 민감 공정 낱말이 있으면 '☔ 비 70% · 방수 주의'. */
+function hjBriefWxBadge(s,wx){
+  if(!s||!wx||wx.state!=='ok')return '';
+  const x=wx.today&&wx.today.date===s.date?wx.today:(wx.tomorrow&&wx.tomorrow.date===s.date?wx.tomorrow:null);
+  if(!x||!(x.wet||x.humidHigh))return '';
+  const hay=(s.title||'')+' '+(s.project||''),w=WEATHER_SENSITIVE.find(v=>v.kw.some(k=>hay.includes(k)));
+  if(!w)return '';
+  return (x.wet?'☔ 비 '+x.rain+'%':'💧 습도 '+x.humid+'%')+' · '+w.label+' 주의';
+}
+function hjBriefWeatherHTML(wx){
+  wx=wx||hjBriefWeatherNow();
+  const box='<div data-brief-weather="'+wx.state+'" style="margin-top:8px;font-size:13px;line-height:1.6;background:var(--paper-2);border-radius:10px;padding:8px 10px;overflow-wrap:anywhere">';
+  const city=escapeHtml(HJ_WEATHER_CITY.name);
+  if(wx.state==='none')return box+'🌤 <b>'+city+'</b> <span style="color:var(--muted)">날씨 불러오는 중…</span></div>';
+  if(wx.state==='error')return box+'<span style="color:var(--muted)">🌤 '+city+' 날씨를 못 불러왔어요</span> <button type="button" class="ghost tiny" data-briefweather="retry" style="min-height:44px;padding:4px 12px;font-size:12px">다시</button></div>';
+  const line=(lab,x)=>x?'<span style="white-space:nowrap"><b>'+lab+'</b> '+x.ic+' '+escapeHtml(x.t)+' '+x.min+'~'+x.max+'℃ · 비 '+x.rain+'%</span>':'';
+  let h=box+'🌤 <b>'+city+'</b> '+[line('오늘',wx.today),line('내일',wx.tomorrow)].filter(Boolean).join(' <span style="color:var(--muted)">·</span> ');
+  if(wx.risks.length)h+='<div data-brief-weather-risk style="margin-top:4px;color:#c2410c;font-weight:700">⚠️ '+wx.risks.slice(0,3).map(r=>escapeHtml(r.when+' '+(r.rainy?'비':'습도 높음')+' — '+r.label+' 「'+hjCut(r.title||'',16)+'」')).join(' · ')+(wx.risks.length>3?' 외 '+(wx.risks.length-3)+'건':'')+'</div>';
+  else if((wx.today&&wx.today.wet)||(wx.tomorrow&&wx.tomorrow.wet))h+='<div style="margin-top:4px;color:var(--muted);font-size:12px">☔ 비 소식 — 바깥 일정이 있으면 미리 챙기세요</div>';
+  return h+'</div>';
+}
+function hjBriefWeatherLine(wx){   // 복사·🌅 브리핑용 한 줄(글)
+  wx=wx||hjBriefWeatherNow();
+  if(wx.state!=='ok')return '';
+  const t=(lab,x)=>x?lab+' '+x.ic+' '+x.t+' '+x.min+'~'+x.max+'℃ 비 '+x.rain+'%':'';
+  return '🌤 '+HJ_WEATHER_CITY.name+' '+[t('오늘',wx.today),t('내일',wx.tomorrow)].filter(Boolean).join(' · ')+(wx.risks.length?'\n⚠️ '+wx.risks.map(r=>r.when+' '+(r.rainy?'비':'습도 높음')+' — '+r.label+' 「'+(r.title||'')+'」').join(' · '):'');
+}
+/* 예보를 받아 캐시에 둔다(한 번에 하나). 실패하면 10분 동안 저절로 다시 안 부른다 — [다시]는 force. */
+function hjBriefWeatherLoad(force){
+  if(!force){const c=hjBriefWeatherCached();if(c&&hjBriefWeatherNow().state==='ok')return Promise.resolve(c);if(__hjBriefWxErrAt&&Date.now()-__hjBriefWxErrAt<HJ_BRIEF_WEATHER_RETRY)return Promise.resolve(null);}
+  if(__hjBriefWx)return __hjBriefWx;
+  const p=(async()=>{
+    try{const data=await weatherFetch(HJ_WEATHER_CITY.lat,HJ_WEATHER_CITY.lon);
+      if(!data||!data.daily||!Array.isArray(data.daily.time))throw new Error('예보 형식이 아닙니다');
+      const o={at:Date.now(),data:{daily:data.daily}};__hjBriefWxErrAt=0;
+      try{localStorage.setItem(HJ_BRIEF_WEATHER_KEY,JSON.stringify(o));}catch(e){}
+      return o;
+    }catch(e){__hjBriefWxErrAt=Date.now();return null;}
+  })();
+  __hjBriefWx=p;p.then(()=>{if(__hjBriefWx===p)__hjBriefWx=null;});
+  return p;
+}
+/* 브리핑이 화면에 있으면 그 카드만 바꾼다(대시보드 전체를 다시 그리지 않는다 — 입력·누르던 것이 끊기지 않게).
+   받았으면 카드를 새로 그려 일정 옆 표시까지, 못 받았으면 날씨 칸만 '못 불러왔어요 [다시]'로. */
+async function hjBriefWeatherRefresh(force){
+  const o=await hjBriefWeatherLoad(force);
+  const card=document.querySelector('.brief-card');if(!card)return;
+  if(o&&o.data){try{const tmp=document.createElement('div');tmp.innerHTML=hjDailyBriefHTML();const fresh=tmp.firstElementChild;if(fresh&&fresh.classList.contains('brief-card')){card.replaceWith(fresh);return;}}catch(e){}}
+  const el=card.querySelector('[data-brief-weather]');if(el)el.outerHTML=hjBriefWeatherHTML();
 }
 async function weatherSmart(){
   openModal('🌤 날씨 연동 공정','<div style="text-align:center;padding:30px;color:var(--muted)">날씨를 불러오는 중…</div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -40583,7 +40683,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefmore],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -40594,6 +40694,8 @@ function setupDelegation(){
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
     if(d.briefcopy!==undefined){e.stopPropagation();return hjDailyBriefCopy();}
+    if(d.briefmore!==undefined){e.stopPropagation();__briefMore[d.briefmore]=!__briefMore[d.briefmore];return render();}   // v563 칸별 더 보기·접기
+    if(d.briefweather!==undefined){e.stopPropagation();const el=document.querySelector('.brief-card [data-brief-weather]');if(el)el.outerHTML=hjBriefWeatherHTML({state:'none',today:null,tomorrow:null,risks:[]});return hjBriefWeatherRefresh(true);}
     if(d.qfollow!==undefined){e.stopPropagation();return quoteFollowup();}   // ⏰ 견적 팔로업 모달(전화 원문은 발송 시점만)
     if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
