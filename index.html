@@ -423,6 +423,9 @@ body:not(.mobile-mode) .wrap{min-height:calc(100vh - 76px)}
 body.hj-staff:not(.mobile-mode) header{top:44px}
 .hj-build-badge{font-size:11px;font-weight:800;letter-spacing:.02em;color:var(--blueprint);background:rgba(11,78,162,.08);border:1px solid rgba(11,78,162,.25);border-radius:999px;padding:2px 8px;align-self:center;font-variant-numeric:tabular-nums}
 .hj-build-badge:empty{display:none}
+/* v567 ☁ 서버 자료 받은 시각 — 폰 머리에서만(PC 는 사이드바 relayStat 가 저장 시각을 보여 준다). 경고 상태(오프라인·실패·충돌·인증·대기열·오래된 창)면 숨긴다. */
+.hj-sync-at{display:none;font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;align-self:center;min-width:0;overflow:hidden;text-overflow:ellipsis}
+body.mobile-mode .hj-sync-at:not([hidden]){display:inline-block}
 .hj-head-health{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;flex-wrap:wrap;justify-content:flex-end}
 .hj-head-health[hidden]{display:none}
 .hj-cap{display:inline-flex;align-items:center;gap:0;border-radius:999px;padding:2px 4px 2px 12px;font-size:12px;border:1px solid var(--line-soft);background:var(--paper);white-space:nowrap}
@@ -1254,6 +1257,7 @@ body.mobile-mode .apo-tools select.apoStat{font-size:16px!important;min-height:4
   <div class="brand">
     <div class="logo" id="hjLogoHome" role="button" tabindex="0" aria-label="현장. — 첫 화면(대시보드)으로" title="첫 화면(대시보드)으로">현장<span class="dot">.</span></div>
     <span id="hjBuildBadge" class="hj-build-badge" title="지금 쓰는 앱 판"></span>
+    <small id="hjSyncAt" class="hj-sync-at" role="status" title="마지막으로 서버 자료를 받은(맞춘) 시각" hidden></small>
     <div class="tagline">인테리어 · 1인 운영 파일 정리<span id="modeBadge" class="mode-badge pc">💻 PC · 편집</span></div>
   </div>
   <div id="hjHeadHealth" class="hj-head-health" role="group" aria-label="자료 건강" hidden></div>
@@ -3020,6 +3024,21 @@ async function relayDownloadOriginal(fileId){
   if(!bytes)return null;
   return {name:String(r.name||''),mime:String(r.mimeType||'application/octet-stream'),bytes:bytes};
 }
+/* v567 ☁ 폰 머리 '서버 자료 HH:MM 받음' — v530 '안 한 것'. 값은 __relay.syncAt(relayLoadApply·저장 성공 때 갱신)만 읽는다(새 저장 키 없음).
+   오늘이 아니면 'M/D HH:MM'. 경고 상태(오프라인·연결 실패·충돌·인증·대기열·오래된 창 v534)면 비워 그쪽 표시가 이긴다 — 안심시키는 줄이 실패를 가리면 안 된다. */
+function relaySyncAtText(){
+  const raw=(typeof __relay!=='undefined'&&__relay&&__relay.syncAt)||'';
+  const at=raw?new Date(raw):null;
+  if(!at||!Number.isFinite(at.getTime()))return '';
+  const hm=pad(at.getHours())+':'+pad(at.getMinutes());
+  return '☁ 서버 자료 '+(localDate(at)===localDate()?hm:((at.getMonth()+1)+'/'+at.getDate()+' '+hm))+' 받음';
+}
+function relaySyncAtRender(warn){
+  const el=document.getElementById('hjSyncAt');if(!el)return;
+  const stale=(typeof __tabStale!=='undefined'&&__tabStale);
+  const txt=(!warn&&!stale&&relayReady())?relaySyncAtText():'';   // 경고·오래된 창·중계 없음 → 숨김
+  el.textContent=txt;el.hidden=!txt;
+}
 /* ── 저장 상태 표시(사이드바 btnSave 아래 + 설정 모달 gdDot) — 실패를 조용히 삼키지 않음 ── */
 function relayStatText(code){
   const at=__relay.syncAt?(' '+new Date(__relay.syncAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})):'';
@@ -3043,6 +3062,7 @@ function relaySetStatus(code){
   if(el){el.textContent=txt;el.style.color=warn?'var(--warn)':'var(--muted)';}
   const dot=document.getElementById('gdDot');if(dot&&relayReady())dot.textContent=txt;   // 설정 모달 안 상태 점도 relay 반영
   const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;
+  if(typeof relaySyncAtRender==='function')relaySyncAtRender(warn);   // v567 폰 머리 '☁ 서버 자료 HH:MM 받음' — 경고 상태면 숨김(함수만 떼어 도는 단위 검사는 typeof)
 }
 function relayAuthFail(res){relaySetStatus('auth');if(!__relayAuthToasted){__relayAuthToasted=true;toast('🔑 서버 인증키 오류 — ☁️ 설정에서 서버 주소·인증키를 확인하세요'+((res&&res.message)?(' ('+res.message+')'):''));}}
 /* ── 오프라인 동기화 대기열(idb relay_queue) — save는 최신 1건 병합, upload는 개별 누적 ── */
@@ -3690,12 +3710,18 @@ async function pcupSave(run,final){
 async function pcupRun(onTick){
   if(__pcup&&__pcup.running)return __pcup;
   const skip=(__pcup&&__pcup.skip)||new Set();
-  const run=__pcup={running:true,stop:false,startedAt:Date.now(),total:0,done:0,ok:0,failed:0,queued:0,batches:0,saves:0,relinked:0,skip,failedNames:[],reason:''};
+  const run=__pcup={running:true,stop:false,startedAt:Date.now(),total:0,done:0,ok:0,failed:0,queued:0,batches:0,saves:0,relinked:0,twins:0,skip,failedNames:[],reason:''};
   run.total=pcupTargets().length;
   // 올린 사진의 서버 사본 표시(fileKey → id). 업로드 사이에 사진 기록이 새 객체로 바뀌어도(사진 정리·다시 읽기·자료 적용)
   // 표시를 잃지 않게 지금 기록에 다시 붙인다 — 10/31 업로드 뒤 폴더 저장본에 새 사본 표시가 하나도 없던 일의 방어선.
   const uploaded=(__pcup&&__pcup.uploaded)||new Map();run.uploaded=uploaded;
   const pcupRelink=()=>{let n=0;(state.files||[]).forEach(r=>{if(r&&!r._driveId){const u=uploaded.get(fileKey(r));if(u){r._driveId=u.id;r._driveMimeType=u.mime;r._driveSize=u.size;n++;}}});if(n){run.relinked+=n;markDirty();}return n;};
+  // v567 같은 원본 파일을 가리키는 기록 둘(같은 경로·크기·수정 시각, 또는 같은 handle 객체)은 한 번만 올리고 올라간 Drive ID 를 둘 다에 잇는다(v531 '안 한 것').
+  //   폴더 안 같은 경로에는 파일이 하나뿐이고 pcupFile 이 크기까지 맞춰 보므로 확신이 선다. 경로·수정 시각이 다르면(바이트가 다를 수 있음) 종전대로 둘 다 올린다.
+  //   앞 묶음·이어하기에서 올린 원본(srcDone)도 기억해 다음 묶음의 같은 원본은 올리지 않고 잇는다.
+  const srcDone=(__pcup&&__pcup.srcDone)||new Map(),handleDone=(__pcup&&__pcup.handleDone)||new Map();run.srcDone=srcDone;run.handleDone=handleDone;
+  const pcupSrcKey=(f,file)=>String(f.prefix||'')+'/'+String(f.name||'')+'|'+(Number(file.size)||0)+'|'+(Number(file.lastModified)||0);
+  const linkTwin=(f,u)=>{f._driveId=u.id;f._driveMimeType=u.mime;f._driveSize=u.size;uploaded.set(fileKey(f),u);run.twins++;};
   let wake=null;try{if(navigator.wakeLock&&document.visibilityState==='visible')wake=await navigator.wakeLock.request('screen');}catch(e){}   // 긴 업로드 중 PC 화면 꺼짐 방지
   let bad=0;pcupMark(run);
   try{
@@ -3705,17 +3731,28 @@ async function pcupRun(onTick){
       if(typeof __relayState!=='undefined'&&__relayState==='auth'){run.reason='auth';break;}
       const batch=pcupTargets().slice(0,PCUP_BATCH);
       if(!batch.length){run.reason='done';break;}
-      const files=[],targets=[];
+      const files=[],targets=[],keys=[],twins=[];   // twins: 이 묶음 대표(lead)와 같은 원본의 다른 기록 — 올리지 않고 대표의 Drive ID 를 잇는다
+      const seen=new Map(),seenH=new Map();let linkedNow=0;
       for(const f of batch){
-        try{files.push(await pcupFile(f));targets.push(f);}
-        catch(e){run.failed++;run.done++;skip.add(fileKey(f));if(run.failedNames.length<30)run.failedNames.push((f.name||'사진')+' — '+((e&&e.message)||e));}
+        let file=null;
+        try{file=await pcupFile(f);}
+        catch(e){run.failed++;run.done++;skip.add(fileKey(f));if(run.failedNames.length<30)run.failedNames.push((f.name||'사진')+' — '+((e&&e.message)||e));continue;}
+        const key=pcupSrcKey(f,file),h=f.handle||null;
+        const prior=srcDone.get(key)||(h&&handleDone.get(h))||null;   // 앞 묶음·지난 실행에서 이미 올린 같은 원본 → 올리지 않고 잇는다
+        if(prior){linkTwin(f,prior);linkedNow++;skip.add(fileKey(f));run.done++;continue;}
+        const lead=seen.get(key)||(h&&seenH.get(h))||null;
+        if(lead){twins.push({f,lead});skip.add(fileKey(f));continue;}
+        seen.set(key,f);if(h)seenH.set(h,f);
+        files.push(file);targets.push(f);keys.push(key);
       }
       const rep={};
       if(files.length)await relayUploadFiles(files,'photo',targets,rep);
       run.batches++;
       const ok=Number(rep.ok)||0,q=Number(rep.queued)||0;
       run.ok+=ok;run.queued+=q;run.failed+=Math.max(0,files.length-ok-q);run.done+=files.length;
-      targets.forEach(f=>{if(f._driveId)uploaded.set(fileKey(f),{id:f._driveId,mime:f._driveMimeType||'',size:f._driveSize||0});skip.add(fileKey(f));});   // 이번 실행에서 다시 고르지 않는다(못 올린 대기열은 연결되면 앱이 따로 보낸다)
+      targets.forEach((f,i)=>{if(f._driveId){const u={id:f._driveId,mime:f._driveMimeType||'',size:f._driveSize||0};uploaded.set(fileKey(f),u);srcDone.set(keys[i],u);if(f.handle)handleDone.set(f.handle,u);}skip.add(fileKey(f));});   // 이번 실행에서 다시 고르지 않는다(못 올린 대기열은 연결되면 앱이 따로 보낸다)
+      twins.forEach(({f,lead})=>{run.done++;if(lead._driveId){linkTwin(f,{id:lead._driveId,mime:lead._driveMimeType||'',size:lead._driveSize||0});linkedNow++;}});   // 대표가 못 올라갔으면 잇지 않는다(다음 실행에서 다시)
+      if(linkedNow)markDirty();
       pcupRelink();
       (rep.failedFiles||[]).forEach(n=>{if(run.failedNames.length<30)run.failedNames.push(n+' — 업로드 실패');});
       if(ok){bad=0;await pcupSave(run);}else if(files.length)bad++;   // 원본을 못 읽은 묶음은 건너뛴 것뿐 — 연결 문제로 세지 않는다
@@ -3741,7 +3778,7 @@ function pcupProgressHTML(run){
   const left=Math.max(0,run.total-run.done),sec=run.done&&run.running?(Date.now()-run.startedAt)/run.done:0;
   const eta=sec&&left?' · 남은 시간 약 '+Math.max(1,Math.round(sec*left/60))+'분':'';
   return '<div style="height:10px;border-radius:6px;background:var(--line-soft);overflow:hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><div style="height:100%;width:'+pct+'%;background:var(--clay)"></div></div>'+
-    '<p data-pcup-count style="margin:8px 0 0;font-weight:700">'+run.done+' / '+run.total+'장 · 올림 '+run.ok+(run.failed?' · 건너뜀 '+run.failed:'')+(run.queued?' · 대기열 '+run.queued:'')+eta+'</p>'+
+    '<p data-pcup-count style="margin:8px 0 0;font-weight:700">'+run.done+' / '+run.total+'장 · 올림 '+run.ok+(run.twins?' · 같은 원본 연결 '+run.twins:'')+(run.failed?' · 건너뜀 '+run.failed:'')+(run.queued?' · 대기열 '+run.queued:'')+eta+'</p>'+
     (run.running?'':'<p data-pcup-result style="margin:6px 0 0">'+escapeHtml(PCUP_REASON[run.reason]||'멈췄습니다')+'</p>')+
     (!run.running&&run.failedNames.length?'<details style="margin-top:8px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer">건너뛴 사진 '+run.failedNames.length+'장 보기</summary><div style="font-size:12px;color:var(--muted-2);line-height:1.6;max-height:180px;overflow:auto">'+run.failedNames.map(escapeHtml).join('<br>')+'</div></details>':'');
 }
@@ -5166,6 +5203,11 @@ async function hydrateThumbs(){
   return changed;
 }
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
+/* v567 OAuth 직접 들이기(__gdIngestOne)도 정리 표시(photoTombs, v556)의 Drive ID 를 지킨다 — v560 은 중계 길(relayLoadDriveFiles)만 고쳤고 이 길은 백로그였다.
+   정리로 뺀 Drive 사진은 '새 기록'으로 다시 들이지 않는다. 이미 있는 기록에 잇는 길(같은 Drive ID 의 가상 기록·이름 연결 ph)은 그대로 —
+   다시 스캔으로 Drive ID 를 잃은 남긴 기록이 같은 Drive 파일에 다시 이어져야 한다. 되살린 표시(r>t)는 빠진다. 한 번의 불러오기(수천 장)마다 다시 세지 않게 목록 신원으로 기억. */
+let __gdTombMemo=null;
+function __gdTombDrive(){const l=state.photoTombs||[];if(__gdTombMemo&&__gdTombMemo.list===l&&__gdTombMemo.n===l.length)return __gdTombMemo.set;const set=hjTombDriveIds(l);__gdTombMemo={list:l,n:l.length,set};return set;}
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
 async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize,photoHolds){
   if((typeof hjScanBusy==='function'&&hjScanBusy()))return 0;   // v557
@@ -5180,6 +5222,7 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize,photo
   }
   // _driveId가 같은 가상분, 또는 (레거시: _driveId 없이 저장된) 같은 이름의 가상분을 교체 대상으로
   const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId&&!hjPhotoLeakTag(x)&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project))&&(!photoHolds||!photoHolds.pendingTokens.has(x._shareInboxId)));
+  if(!ph&&__gdTombDrive().has(String(id))){window.__gdTombSkipped=(window.__gdTombSkipped||0)+1;return 0;}   // v567 정리로 뺀 Drive 사진을 새 기록으로 다시 들이지 않는다(받기 전에 거른다)
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
   if(!dr.ok)return 0;
   const blob=await dr.blob();
