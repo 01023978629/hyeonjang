@@ -3,6 +3,53 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-11 v570~v574 한 묶음 — 📑 계약·확인 양식 9종 · 사진 뒷정리 3건 · 외부 스크립트 무결성·설치 QR 확인 · 리뷰 링크 기본값 · 캘린더 맞추기 덧붙임
+
+대표 지시(11/9 "문서 양식도 넣어주고 위내용 개발 진행" — 11/8 운영 분석 보고의 권장 순서, 11/10 "최종본을 확인하여 개발 진행"). 클라우드 세션이 갈래 다섯을
+v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤) 위로 옮겼다. **핀은 묶음 끝 번호 하나** `hyeonjang-v574-fieldpack`, 갈래 번호는 검사 파일 이름에 남는다.
+이 세션이 같은 날 먼저 만든 'v565 캘린더 가져오기 보강'(importICS 쪽)은 main 의 v567·v569 와 겹쳐 접었다(옛 PR #162 내용 v328~v333 은 `archive/pr162-v333` 브랜치).
+
+**v570 📑 계약·확인 양식 9종** (`tests/forms-v570.e2e.js` 5/5 · 변이 9종)
+- 📎 서류 만들기 '보관' 앞 묶음 「📑 계약·확인 양식(9종)」(`data-act="form9:<key>"`) → `hjForm9View` 입력 → 기존 `hjDocDeliverView`(PDF·워드·HTML). 01 공사도급계약서 CT · 02 마감재 선택 확인서 FS ·
+  03 추가·변경 합의서 CO · 04 사진 활용 동의서 PC · 05 외주 발주·확인서 SW · 06 일용근로계약서 DL · 07 노임 지급 확인서 WP · 08 AS 처리 확인서 AF · 09 해제 합의서 CX.
+- 문구의 정본은 `docs/문서양식/`(대표가 준 docx·pdf — Pages 허용목록 밖). 앱 템플릿(`HJ_FORM9_HTML`)의 조항·안내문을 고치려면 원본과 같이 — 검사 ① PHRASES 가 글자를 고정한다.
+- `hjForm9Model`·`hjForm9View` 는 읽기 전용. 발행 기록은 실제로 가져갈 때만 `hjDoc433IssueQuiet`(p.docs, 접두는 `HJ_FORM9` 한 곳 + `HJ_DOC433_NO_RE`).
+- **06·07 주민등록번호·입금 계좌·소득세·지방소득세·실지급액, 09 받을 계좌는 모델에 칸 자체가 없다 — 입력칸을 만들지 마라.** 모르는 값은 빈칸, □ 는 근거가 있을 때만 ☑(자료 없는 현장은 ☑ 0개).
+- 인쇄 쪽수는 원본과 같다(계약서 2쪽·나머지 1쪽) — 조항 묶음을 통째로 keep 하면 3쪽이 된다.
+- 대표 확인 대기: 서명일 기본값이 오늘(비우면 손글씨) · 01 계약금액 출처(전자계약 서명 기록 → 청구 공사대금) · 02 견적 품목 미리 적기 기본 켜짐 · 워드에서 □·표가 실제로 어떻게 보이는지(Chromium 만 확인).
+
+**v571 사진 뒷정리 3건** (`tests/photosync-v571.e2e.js` 4/4 · 변이 5종)
+- 폰 머리 `#hjSyncAt` '☁ 서버 자료 HH:MM 받음'(오늘이 아니면 M/D HH:MM) — `__relay.syncAt` 을 **읽기만**. 경고 상태(offline·netfail·conflict·auth·qfail·stale)·`__tabStale`·중계 미설정이면 숨긴다
+  (안심시키는 줄이 실패를 가리면 안 된다). PC 머리에는 안 그린다. `relaySetStatus` 에서 `typeof relaySyncAtRender==='function'` 로 부른다(함수만 떼어 도는 단위 검사).
+- **Drive 에서 새 사진 기록을 만드는 길은 모두 정리 표시의 Drive ID 를 대조한다** — 중계 `relayLoadDriveFiles`(v560)·OAuth `__gdIngestOne`(v571). 이미 있는 기록에 잇는 길·되살린 표시(r>t)는 막지 않는다.
+  `__gdTombDrive()` 는 `state.photoTombs` 배열 신원+길이로 기억한다 — **photoTombs 를 제자리에서 push/splice 하지 말고 새 배열로 대입**하라.
+- 📤 PC 사진 올리기: 같은 원본('같은 경로+크기+수정 시각' 또는 같은 handle 객체)의 두 기록은 한 번만 올리고 Drive ID 를 둘 다에. 이름·크기·바이트가 같아 보여도 경로가 다르면 둘 다 올린다. 진행 글 '· 같은 원본 연결 n'.
+
+**v572 외부 스크립트 무결성 · pdf.js eval 끔 · 설치 QR 확인** (`tests/sri.check.js` 정적 · `sri-loader-v572` · `contract-qr-link-v572` · 변이 30종)
+- 외부 라이브러리 주소·sha384 는 `_CDN` 표 **한 곳**. jsDelivr `/npm/<패키지>@<x.y.z>/<경로>` 꼴 13항목, 줄마다 `// 패키지@버전 경로, N바이트`. cdnjs·버전 없는 주소 금지(exifr 는 7.1.3 고정).
+  로더는 `loadExtLib(_CDN.키, check)`·`_cdnScriptEl(_CDN.키)`. 실패는 재시도 없이 `CDN_SRI_FAIL_MSG` 토스트. head 의 exif-js·leaflet css 도 같은 주소·integrity + `crossorigin="anonymous"`.
+- **해시는 `npm pack` tarball 의 파일에서 계산했다. jsDelivr 가 그 바이트를 그대로 주는지는 개발 컨테이너에서 확인할 수 없다(바깥 주소 차단)** — PR 검사(`verify-release.yml`)의
+  `node tests/tools/sri-live.mjs --strict` 단계가 병합 전 확인이다. 해시가 다르면 그 라이브러리(엑셀·PDF·지도·OCR·HEIC·EXIF)는 폰에서 아예 실행되지 않는다. 버전을 올리면 해시·바이트를 다시 계산하고 그 단계를 통과시켜라.
+- 네트워크가 필요한 검사는 `tests/` 바로 아래 `*.check.js` 로 두지 마라(run-all 이 전부 돌린다) — `tests/tools/`.
+- CDN 주소를 가로채는 검사는 가짜 바이트가 막힌다 — 진짜 바이트를 주거나 `_CDN[k].sri` 를 그 바이트 해시로 바꾸고 응답에 `access-control-allow-origin: *`. `tests/fixtures/vendor/exif-js-2.3.0.js` 는 npm 바이트 그대로(주석도 붙이지 마라).
+- `pdfjsLib.getDocument` 는 전부 `isEvalSupported:false`, worker 주소는 `_CDN.pdfworker.src`(Worker 는 integrity 를 못 받는다 — 해시는 sri-live 가 대조).
+- `#hjcontract=` 설치 QR 링크: 다른 계약 서버가 이미 저장돼 있으면 거부(설정에서 직접), 아니면 배포 ID 뒤 4자리를 입력해야 저장. 바뀐 때는 IDB `contract_changed {at,via}`(직렬화 밖) → 설정 › 전자계약 '연결값 마지막 변경'.
+- integrity 를 못 단 것: Google api.js·GIS·카카오 지도 SDK(버전 없는 사업자 로더), tesseract 가 스스로 받는 worker·언어 자료, **`team-projects.js` 의 heic2any**(버전만 고정 — 위 v333 절의 '둘 다 integrity' 는 main 에 없는 커밋 이야기다).
+
+**v573 리뷰 링크 기본값 = 홈페이지 후기 페이지** (`tests/reviewlink-v573.e2e.js` 7/7 · 변이 5종 — PR #190 v426 을 다시 얹음)
+- 규칙은 `hjReviewLink()` 한 곳: 설정 링크(`hjReviewLinkCustom()`, https:// 로 시작하는 것만) → 없으면 `REVIEW_FALLBACK_URL`. **빈 문자열을 돌려주지 않는다** — `if(link)` 분기를 되살리지 마라, `__reviewUrl` 을 직접 읽지 마라.
+- 문자 세 입구(`hjReviewSms`·`reviewRequestSms`·`msgTemplate('review')`)는 링크 정확히 한 줄(자동 발송 없음). QR 카드·끝 QR 토글도 기본 주소로 나온다(칸이 사라지는 경우는 설정 링크가 213바이트를 넘을 때뿐).
+- 설정 저장은 https:// 값만, 빈 값 저장 = 기본으로 돌아감(키 입력칸의 '빈 값 = 안 바꿈' 과 다르다). 준공 카드 힌트는 `data-review-link-missing` 그대로(글자만 'ⓘ 홈페이지 후기 링크 — 설정').
+- **기본 주소는 manmool `review.html` 에 의존한다 — manmool PR #223 이 병합·배포되기 전에는 손님에게 404 다.** 이 묶음을 #223 보다 먼저 병합하면 안 된다(먼저 나가야 하면 `REVIEW_FALLBACK_URL` 을 홈페이지 첫 화면으로).
+  그쪽 경로를 바꾸면 상수와 검사 3개(reviewlink-v573·warranty-review·publicweb-v446)의 주소를 같이.
+
+**v574 🔄 구글 캘린더 맞추기 덧붙임** (`tests/calextras-v574.e2e.js` 5/5 · 변이 2종 — v567 '안 한 것' 두 가지)
+- 종일 여러 날: `hjCalSyncParseIcs` 가 DTEND(끝난 다음 날)에서 하루 뺀 날을 `to` 로(60일 넘으면 하루짜리), `hjCalSyncApply` 가 메모 머리를 공정표 꼴 `시작~끝 (N일)` 로 — `hjSchSpan`·`hjSchContOn`(v354)이 그대로 읽는다.
+  화면 글 붙여 넣기(`hjCalSyncParseText`)의 여러 날 줄과 '날짜 옮김' 줄의 기간은 아직 안 다룬다.
+- 🤖 제미나이 칩(`[data-schgemini]`, 일정표 제목 옆): `hjSchGemini(s)` = 레코드 `icsBy:'gemini'`(v574 부터 '@' 일정에) 또는 v567~v573 이 메모에 남긴 '(@ 제미나이 입력)' 글. 읽기만 — 메모에서 그 글을 지우면 옛 일정의 칩도 사라진다.
+
+검사: 묶음 새 검사 6개 + 주변 통과, 정적 `*.check.js` 전부. 전체 run-all·CI 결과는 PR #162 본문.
+
 ## 2026-11-11 v569 🔄 클로드 명령 '구글 캘린더 일정 → 현장웹 맞추기' · 📥 캘린더 파일 가져오기의 …Z(UTC) 시각 고침
 
 - 대표 지시(11/11): "더 개발 진행 — 제미나이는 제미나이에 현장 캘린더 수정을 요청할 거야 · 다른 부분도". 일정은 제미나이가 구글 캘린더에 넣고 고친다 → 그 일정을 현장웹으로 옮기는 길(v567 맞추기 창)을 클로드에게 한 번에 시킬 수 있게.
