@@ -3944,7 +3944,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v564-briefslim';
+const APP_BUILD='hyeonjang-v565-stmttab';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9650,7 +9650,8 @@ function render(){
   $('#bDash').textContent=__actP.length;
   syncProjectChip();
   const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
-  $('#bEst').textContent=c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
+  const __stmtTab=hjStmtTabApply();   // v565 📑 내역서 탭
+  $('#bEst').textContent=__stmtTab?hjStmtLedger().length:c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
   {const _bl=$('#bLedger');if(_bl)_bl.textContent=state.files.filter(f=>f.kind==='ledger').length;}
   tabs.forEach(t=>{
     const active=t.dataset.tab===state.tab;
@@ -9661,13 +9662,13 @@ function render(){
   $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미배정 ${c.inbox} · 배정완료 ${c.assigned}`:'';
   $('#btnUndo').disabled=!state.lastMove;
   const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함'],ledger:['홈택스 ','회계'],aptmgmt:['아파트 ','관리'],ads:['광고 ','관리']};
-  const _tt=titles[state.tab]||['',''];
+  const _tt=(state.tab==='estimates'&&__stmtTab)?['작업 ','내역서']:(titles[state.tab]||['','']);
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
   if(typeof syncMobileNav==='function')syncMobileNav();
   try{hjHeadApply();}catch(e){}   // v546 상단 머리 캡슐
   if(!state.files.length&&!['dashboard','docs','quotemaker','schedule','contacts','estimates','ads','project','aptmgmt'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();hjShareCaptureMount();return;}
-  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,aptmgmt:viewAptMgmt,ads:viewAds};
+  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:()=>__stmtTab?viewStatements():viewEstimates(),quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,aptmgmt:viewAptMgmt,ads:viewAds};
   v.innerHTML=map[state.tab]();
   if(state.tab==='dashboard')hjKpiFit(v);   // v547 숫자 칸 한 줄 맞춤
   try{wrapWideTables(v);startWrapObserver();}catch(e){}   // [v215/218] 가로 넘침 방지(뒤늦게 그려지는 표 포함)
@@ -37105,6 +37106,76 @@ function renderEstimateFieldEdit(root){
     if(field){const next=[...document.querySelectorAll('.estimates-view input[data-ef]')].find(el=>el.dataset.id===field.id&&el.dataset.ef===field.key);if(next){next.focus({preventScroll:true});next.setSelectionRange(field.start,field.end);}}
   });
 }
+/* v565 📑 내역서 탭 — 대표 지시(2026-11-10): "견적, 정산은 내역서로 대체할 거야".
+   협력사 일감은 견적서 없이 작업내역서로 청구·정산한다(v526~v564). 그런데 '견적·정산' 탭(폰 하단 [정산])은 여전히 견적서 파일 목록이었다.
+   매출 기준이 작업내역서(v561)이거나 📑 반영한 내역서가 하나라도 있으면 그 탭이 '📑 내역서'가 된다(hjStmtTabOn):
+   · 맨 위 숫자: 이번 달 매출(내역서) · 지난달 · 받을 돈(남은 돈) · 이번 달 받은 돈 · 올해 누계 — 모두 있던 계산(매출 한 벌·장부·수금 이력)을 읽기만.
+   · 📑 장부(v527 hjStmtLedgerHTML — 💰 입금·🏦 통장 맞추기·📋 미수 안내·📂 폴더 내역서 반영)를 그대로.
+   · 월별 매출(내역서) 줄을 누르면 그 달 현장별 줄(작업일·현장·작업·금액).
+   · 예전 견적서 파일 화면은 맨 아래 접어 둔다(펼칠 때만 그림 — 자료·기능은 그대로).
+   내역서가 없고 매출 기준도 견적이면 예전 '견적·정산' 탭 그대로(한 글자도 같음). 새 저장 키 없음 — 달·펼침은 화면만. */
+let __hjStmtYm=null,__hjStmtOldOpen=false;
+function hjStmtTabOn(){try{return hjSalesBasis()==='stmt'||(state.quotes||[]).some(q=>q&&q.stmt&&q.stmt.key);}catch(e){return false;}}
+function hjStmtTabApply(){   // render 마다 — 탭·폰 하단 이름만 바꾼다(같으면 DOM 을 안 건드린다)
+  const on=hjStmtTabOn();
+  const tab=document.querySelector('#tabs .tab[data-tab="estimates"]');
+  if(tab&&tab.firstChild&&tab.firstChild.nodeType===3){const t=on?'📑 내역서 ':'견적·정산 ';if(tab.firstChild.textContent!==t)tab.firstChild.textContent=t;}
+  const nb=document.querySelector('#mobileNav [data-mnav="estimates"]');
+  if(nb){const lab=on?'내역서, 작업내역서 장부':'정산, 견적·정산';
+    if(nb.getAttribute('aria-label')!==lab){nb.setAttribute('aria-label',lab);const sp=nb.querySelectorAll('span');if(sp[0])sp[0].textContent=on?'📑':'💰';if(sp[1])sp[1].textContent=on?'내역서':'정산';}}
+  return on;
+}
+function hjStmtEntries(){   // 매출 한 벌에서 작업내역서 줄만(v564 hjStmtMonthSales 와 같은 거르기 — 사본·집계 제외 규칙 그대로)
+  const out=[];
+  try{hjSalesEntries().forEach(r=>{if(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key)))out.push(r);});}catch(e){}
+  return out;
+}
+function hjStmtTabData(ym){
+  const ent=hjStmtEntries(),by=new Map();
+  ent.forEach(r=>{const k=r.ym||'';if(!by.has(k))by.set(k,{ym:k,total:0,n:0,pj:new Set()});const m=by.get(k);m.total+=num(r.amount);m.n++;if(r.project)m.pj.add(r.project);});
+  const months=[...by.values()].filter(m=>m.ym).sort((a,b)=>b.ym.localeCompare(a.ym));
+  const nowYm=localDate().slice(0,7),sel=ym&&by.has(ym)?ym:(by.has(nowYm)?nowYm:(months[0]?months[0].ym:nowYm));
+  const rows=ent.filter(r=>r.ym===sel).map(r=>{
+    const q=r.quote,s=(q&&q.stmt)||{},lines=Array.isArray(s.lines)?s.lines.filter(Boolean):[];
+    const days=[...new Set(lines.map(l=>String(l.d||'')).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+    const works=[...new Set(lines.map(l=>String(l.work||'').replace(/\s+/g,' ').trim()).filter(Boolean))];
+    return {project:r.project||'',amount:num(r.amount),to:String(s.to||''),date:String(s.date||(q&&q.date)||''),days,works};
+  }).sort((a,b)=>String(a.days[0]||a.date).localeCompare(String(b.days[0]||b.date))||a.project.localeCompare(b.project,'ko'));
+  let led=[];try{led=hjStmtLedger();}catch(e){}
+  const paidYm={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt){const k=String(x.d||'').slice(0,7);paidYm[k]=(paidYm[k]||0)+Math.round(num(x.amt));}});
+  const zero={total:0,n:0},year=nowYm.slice(0,4);
+  return {nowYm,sel,months,rows,led,left:led.reduce((a,s)=>a+s.left,0),leftN:led.filter(s=>s.left>0).length,cur:by.get(nowYm)||zero,prev:by.get(hjYmShift(nowYm,-1))||zero,
+    yearTotal:months.filter(m=>m.ym.slice(0,4)===year).reduce((a,m)=>a+m.total,0),paidNow:paidYm[nowYm]||0,paidYm};
+}
+function hjStmtOldToggle(el){const o=!!(el&&el.open);if(o===__hjStmtOldOpen)return;__hjStmtOldOpen=o;render();}
+function viewStatements(){
+  const D=hjStmtTabData(__hjStmtYm),mm=ym=>(+String(ym).slice(5,7))+'월',yy=ym=>String(ym).slice(0,4)+'년 '+mm(ym);
+  const kpi=(k,label,val,sub)=>'<div data-stmt-kpi="'+k+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px;background:var(--paper);min-width:0"><div style="font-size:11.5px;color:var(--muted)">'+label+'</div><b style="display:block;font-size:17px;white-space:nowrap">'+val+'</b>'+(sub?'<div style="font-size:11.5px;color:var(--muted)">'+sub+'</div>':'')+'</div>';
+  let h='<section class="stmt-view" data-stmt-view>';
+  h+='<div class="panel-head" style="margin-bottom:10px;justify-content:flex-start;gap:6px;flex-wrap:wrap"><button class="clay tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서 엑셀을 읽어 현장마다 매출 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="ghost tiny" data-stmt-go="quotemaker" style="min-height:44px">✍ 견적 작성</button></div>';
+  if(hjSalesBasis()!=='stmt')h+='<div data-stmt-basis-hint class="hint" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;margin:0 0 10px"><span style="flex:1 1 220px;min-width:0">대시보드·월말 결산의 매출은 아직 견적서까지 함께 세고 있어요.</span><button class="mini-btn" data-stmt-basis="1" style="min-height:44px">📑 매출은 작업내역서만 세기</button></div>';
+  h+='<div data-stmt-kpis style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px;margin:0 0 12px">'+
+    kpi('cur','💰 '+mm(D.nowYm)+' 매출(내역서)',won(D.cur.total),'내역서 '+D.cur.n+'건')+
+    kpi('prev','지난달('+mm(hjYmShift(D.nowYm,-1))+')',won(D.prev.total),'내역서 '+D.prev.n+'건')+
+    kpi('left','받을 돈(남은 돈)',won(D.left),D.leftN?'내역서 '+D.leftN+'장':'모두 받음')+
+    kpi('paid',mm(D.nowYm)+' 받은 돈',won(D.paidNow),'내역서 입금 기준')+
+    kpi('year',D.nowYm.slice(0,4)+'년 누계',won(D.yearTotal),'')+'</div>';
+  const led=hjStmtLedgerHTML();
+  h+=led||'<div class="empty" data-stmt-empty><b>반영한 작업내역서가 없습니다</b>위 [📑 작업내역서 반영]으로 협력사에 보낸 작업내역서 엑셀을 넣으세요.</div>';
+  if(D.months.length){
+    h+='<div data-stmt-months style="margin:14px 0 0"><div style="font-size:12px;letter-spacing:.08em;color:#0b4ea2;margin-bottom:6px">📅 월별 매출(내역서)</div>';
+    D.months.forEach(m=>{const on=m.ym===D.sel,p=D.paidYm[m.ym]||0;
+      h+='<button type="button" data-stmt-ym="'+m.ym+'" aria-pressed="'+on+'" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:2px 10px;width:100%;min-height:44px;text-align:left;padding:8px 12px;margin:0 0 6px;border-radius:10px;border:1px solid '+(on?'var(--blueprint)':'var(--line-soft)')+';background:'+(on?'var(--paper-2)':'var(--paper)')+';color:var(--ink);font-size:13px"><span><b>'+yy(m.ym)+'</b> · 내역서 '+m.n+'건 · 현장 '+m.pj.size+'곳'+(p?' · 받은 돈 '+won(p):'')+'</span><b style="white-space:nowrap">'+won(m.total)+'</b></button>';});
+    h+='</div>';
+    h+='<div data-stmt-month-list="'+D.sel+'" style="margin:8px 0 0"><div style="font-size:12.5px;font-weight:800;margin-bottom:4px">'+yy(D.sel)+' 현장별 '+D.rows.length+'건 · '+won(D.rows.reduce((a,r)=>a+r.amount,0))+'</div>';
+    D.rows.forEach(r=>{const day=r.days.length?hjStmtMd(r.days[0])+(r.days.length>1?'~'+hjStmtMd(r.days[r.days.length-1]):''):hjStmtMd(r.date);
+      h+='<div data-stmt-item style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(day)+'</span> '+(r.project?'<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">'+escapeHtml(r.project)+'</button>':'<b>현장 미지정</b>')+' <span>'+escapeHtml(r.works.slice(0,2).join(' · ')+(r.works.length>2?' 외 '+(r.works.length-2)+'건':''))+'</span>'+(r.to?' <span style="color:var(--muted)">· '+escapeHtml(r.to)+'</span>':'')+'</div><b style="white-space:nowrap;font-size:13px">'+won(r.amount)+'</b></div>';});
+    h+='</div>';
+  }
+  const estN=state.files.filter(f=>f&&f.kind==='estimate'&&!f._stmt).length;
+  h+='<details data-stmt-old'+(__hjStmtOldOpen?' open':'')+' ontoggle="hjStmtOldToggle(this)" style="margin:18px 0 0"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)">📄 견적서 파일 · 예전 견적·정산 화면'+(estN?' ('+estN+'건)':'')+'</summary>'+(__hjStmtOldOpen?viewEstimates():'')+'</details>';
+  return h+'</section>';
+}
 function viewEstimates(){
   // 다시 그리기 전에 '지금 화면에서 열려 있는 상세' 를 먼저 적어 둔다.
   // 열림 기록(__estimateOpenDetails)은 원래 toggle 이벤트로만 쌓였는데, 그 이벤트는 비동기라
@@ -40618,10 +40689,13 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
+    if(d.stmtYm!==undefined){__hjStmtYm=d.stmtYm;return render();}   // v565 📑 내역서 탭 — 달 고르기
+    if(d.stmtBasis!==undefined){hjSalesBasisSet(true);return toast('📑 이제 매출은 작업내역서만 셉니다 — 📊 매출 목표 화면에서 끌 수 있어요');}
+    if(d.stmtGo!==undefined)return hjGoTab(d.stmtGo);
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
     if(d.leakintake!==undefined)return hjLeakIntakeView(d.leakintake);
     if(d.leakdispatch!==undefined)return hjLeakDispatchView(d.leakdispatch);
