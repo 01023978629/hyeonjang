@@ -39692,7 +39692,7 @@ function viewSchedule(){
       html+=`<div class="sch-item${hjScheduleUrgentAttrs(s)}">
         <div class="sch-time">${s.time||'종일'}</div>
         <div class="sch-body">
-          <div class="sch-title">${hjScheduleUrgentIcon(s)}${escapeHtml(s.title||'(제목 없음)')}${s.project?` <span class="sch-proj">🏗️ ${escapeHtml(s.project)}</span>`:''}</div>
+          <div class="sch-title">${hjScheduleUrgentIcon(s)}${escapeHtml(s.title||'(제목 없음)')}${s.project?` <span class="sch-proj">🏗️ ${escapeHtml(s.project)}</span>`:''}${hjSchGemini(s)?` <span class="sch-proj" data-schgemini title="제미나이가 구글 캘린더에 넣은 일정 — 내용을 한 번 확인하세요">🤖 제미나이</span>`:''}</div>
           ${s.workers?`<div class="sch-meta">👷 예정 인원 ${escapeHtml(String(s.workers))}명${s.memo?' · '+escapeHtml(s.memo):''}</div>`:(s.memo?`<div class="sch-meta">${escapeHtml(s.memo)}</div>`:'')}
           ${s.crew?`<div class="sch-meta" data-schcrew>👤 담당 ${escapeHtml(hjCrewText(s.crew))}</div>`:''}
           ${cont?`<div class="sch-meta" data-schcont style="color:var(--clay);font-weight:600">${escapeHtml(hjSchContLabel(cont))}</div>`:''}
@@ -40343,7 +40343,9 @@ function hjCalSyncParseIcs(text){
       const p2=n=>String(n).padStart(2,'0');return {date:k.getUTCFullYear()+'-'+p2(k.getUTCMonth()+1)+'-'+p2(k.getUTCDate()),time:p2(k.getUTCHours())+':'+p2(k.getUTCMinutes())};};
     const s=when(get('DTSTART'));if(!s)return;
     const e=when(get('DTEND')),st=get('STATUS');
-    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
+    // v574 종일 여러 날: DTEND 는 '끝난 다음 날'이라 하루 뺀 날이 마지막 날. 60일 넘으면(잘못 적힌 끝 날짜) 하루짜리로 둔다.
+    const last=!s.time&&e&&!e.time&&e.date>s.date?hjAddDays(e.date,-1):'',to=last>s.date&&hjDaysBetween(s.date,last)<=60?last:'';
+    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,to:to,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
       location:icsUnescape((get('LOCATION')||{}).val||''),memo:icsUnescape((get('DESCRIPTION')||{}).val||''),cancelled:!!(st&&/CANCELLED/i.test(st.val))});
   });
   return out;
@@ -40393,7 +40395,7 @@ function hjCalSyncPlan(events,opts){
     const rep=g.list.slice().sort((a,b)=>(b.time?1:0)-(a.time?1:0)||(b.location?1:0)-(a.location?1:0))[0];
     if(g.list.length>1)stats.gdup+=g.list.length-1;
     const tag=(g.list.find(x=>x.tag)||{}).tag||'',marks=[...new Set(g.list.map(x=>x.mark).filter(Boolean))];
-    const base={date:g.date,time:rep.time,hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
+    const base={date:g.date,time:rep.time,to:(g.list.find(x=>x.to)||{}).to||'',hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
     const same=apps.find(a=>!a.used&&a.s.date===g.date&&a.key===g.key);
     if(same){same.used=true;
       if(rep.time&&String(same.s.time||'')!==rep.time)rows.push(Object.assign(base,{status:'time',check:true,app:{id:same.s.id,date:same.s.date,time:same.s.time||''}}));
@@ -40431,8 +40433,12 @@ async function hjCalSyncApply(plan,picks){
   const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0};
   sel.forEach(({r,project})=>{
     if(r.status==='new'){
-      state.schedule.push(Object.assign(newSchedule(),{date:r.date,time:r.time,title:r.title,project:names.has(project)?project:'',hours:r.hours||(r.time?1:8),
-        memo:[r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||('gcal:'+r.date+'|'+r.key)}));
+      // v574 여러 날 일정은 메모 머리를 공정표 꼴 '시작~끝 (N일)' 로 — hjSchSpan 이 읽어 이어지는 날(v354)·달력 막대가 생긴다. '@' 는 레코드에 icsBy 로도 남긴다(🤖 칩).
+      const span=r.to&&r.to>r.date?r.date+'~'+r.to+' ('+(hjWorkDaysBetween(r.date,r.to)+1)+'일)':'';
+      const rec=Object.assign(newSchedule(),{date:r.date,time:r.time,title:r.title,project:names.has(project)?project:'',hours:r.hours||(r.time?1:8),
+        memo:[span,r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||('gcal:'+r.date+'|'+r.key)});
+      if(r.marks.includes('@'))rec.icsBy='gemini';
+      state.schedule.push(rec);
       out.added++;return;}
     const s=state.schedule.find(x=>x&&x.id===r.app.id);if(!s)return;
     if(r.status==='time'){s.time=r.time;out.changed++;}
@@ -40447,8 +40453,12 @@ function hjCalSyncRowText(r){
   if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time;
   if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date);
   if(r.status==='apponly')return when+' '+r.title+' — 구글 캘린더에 없음(체크하면 앱에서 지움)';
-  return when+' '+r.title+(r.location?' · '+r.location:'');
+  return when+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'')+' '+r.title+(r.location?' · '+r.location:'');
 }
+/* v574 🤖 제미나이 칩 — 대표(2026-11-10) "@표시는 제미나이가 한 거야". 맞추기 창은 '@' 를 떼고 넣으므로 일정표에서는 누가 넣은 일정인지 안 보였다.
+   레코드의 icsBy:'gemini'(v574 부터) 또는 v567~v573 이 메모에 남긴 '(@ 제미나이 입력)' 글로 알아본다. 읽기만 — 메모를 지우면 옛 일정의 칩도 사라진다. */
+const HJ_GEMINI_MEMO_RE=/\(@ 제미나이 입력\)/;
+function hjSchGemini(s){return !!s&&(s.icsBy==='gemini'||HJ_GEMINI_MEMO_RE.test(String(s.memo||'')));}
 function hjCalSyncRender(plan){
   const box=document.getElementById('csBody');if(!box)return;
   window.__hjCalSyncPlan=plan;
