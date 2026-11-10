@@ -13,6 +13,8 @@
   `importICS` 는 같은 UID 면 갱신하므로, 예전에 Z 파일을 넣어 어긋난 일정은 같은 파일을 다시 넣으면 바로잡힌다.
 - 바뀐 옛 검사(의도된 변경): claudecmds-v529 — 기본 명령 16 · 합친 목록 17 · 현장웹 분류 4줄 · NEW_IDS 에 cw_calsync.
 - 핀3곳 hyeonjang-v569-calcmd. 신규 tests/calcmd-v569.e2e.js 4/4(① parseICS 5꼴 ② importICS 09:00·다시 넣으면 갱신만 ③ 명령·분류·준비물·스킬 줄·지킬 것 ④ 핀). 기준선 v568(3b335cd)과 변이 no-z 는 ① 에서 실패 확인. claudecmds-v529 7/7.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 24분, v568·v569 포함): 461개 중 456 통과. 실패 5 = main 에서도 떨어지는 내려받기 파일 이름 환경 문제(apartment-projects · bathroom-quality-v410 · document-select · document-upload · team-workboard).
+  instanotel-v415 는 병렬에서 한 번 떨어지고 단독 재시도 통과(이 판과 무관한 화면). tests/*.check.js 19/19.
 
 ## 2026-11-11 v568 📷 내역서 줄 ↔ 현장 사진 · 📑 현장 화면의 작업내역서 칸 · 🩺 '내역서에 없는 작업'
 
