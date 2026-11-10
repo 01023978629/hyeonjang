@@ -3944,7 +3944,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v564-briefslim';
+const APP_BUILD='hyeonjang-v569-calcmd';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9650,7 +9650,8 @@ function render(){
   $('#bDash').textContent=__actP.length;
   syncProjectChip();
   const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
-  $('#bEst').textContent=c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
+  const __stmtTab=hjStmtTabApply();   // v565 📑 내역서 탭
+  $('#bEst').textContent=__stmtTab?hjStmtLedger().length:c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
   {const _bl=$('#bLedger');if(_bl)_bl.textContent=state.files.filter(f=>f.kind==='ledger').length;}
   tabs.forEach(t=>{
     const active=t.dataset.tab===state.tab;
@@ -9661,13 +9662,13 @@ function render(){
   $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미배정 ${c.inbox} · 배정완료 ${c.assigned}`:'';
   $('#btnUndo').disabled=!state.lastMove;
   const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함'],ledger:['홈택스 ','회계'],aptmgmt:['아파트 ','관리'],ads:['광고 ','관리']};
-  const _tt=titles[state.tab]||['',''];
+  const _tt=(state.tab==='estimates'&&__stmtTab)?['작업 ','내역서']:(titles[state.tab]||['','']);
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
   if(typeof syncMobileNav==='function')syncMobileNav();
   try{hjHeadApply();}catch(e){}   // v546 상단 머리 캡슐
   if(!state.files.length&&!['dashboard','docs','quotemaker','schedule','contacts','estimates','ads','project','aptmgmt'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();hjShareCaptureMount();return;}
-  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,aptmgmt:viewAptMgmt,ads:viewAds};
+  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:()=>__stmtTab?viewStatements():viewEstimates(),quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,aptmgmt:viewAptMgmt,ads:viewAds};
   v.innerHTML=map[state.tab]();
   if(state.tab==='dashboard')hjKpiFit(v);   // v547 숫자 칸 한 줄 맞춤
   try{wrapWideTables(v);startWrapObserver();}catch(e){}   // [v215/218] 가로 넘침 방지(뒤늦게 그려지는 표 포함)
@@ -14372,6 +14373,7 @@ function hjHealthData(){
   try{d.dup=hjDupSuspectCount();}catch(e){}
   try{d.days=backupDaysSince();}catch(e){}
   d.pcup=0;try{if(typeof pcupAvailable==='function'&&pcupAvailable())d.pcup=pcupTargets().length;}catch(e){}   // v531 폴더+서버가 연결된 PC 에서만
+  d.unbilled=hjUnbilledCount();   // v568 🧾 내역서에 없는 작업(내역서 탭이 켜져 있을 때만)
   d.pconly=0;try{if(!d.pcup)d.pconly=hjPcOnlyCount();}catch(e){}   // v536 폴더 없는 기기(폰) — 그 PC 에서 올려야 보이는 사진
   return d;
 }
@@ -14385,10 +14387,11 @@ function hjHealthLineHTML(){
     if(d.dup)parts.push(seg('dup','🧹','중복 후보',d.dup,'크기·촬영 시각이 같은 사진 — 원본을 읽어 확인한 뒤 정리합니다'));
     if(d.pcup)parts.push(seg('pcup','📤','폰에 안 보이는 사진',d.pcup,'이 PC 에만 있는 사진 — 서버에 올리면 휴대폰·다른 기기에서도 보입니다(이어서 올리기 가능)'));   // v531
     if(d.pconly)parts.push(seg('pconly','📵','이 기기에 안 보이는 사진',d.pconly,'원본이 PC(또는 다른 기기)에만 있고 서버에 안 올라간 사진 — 그 PC 에서 📤 로 올리면 여기서도 보입니다'));   // v536
+    if(d.unbilled)parts.push(seg('unbilled','🧾','내역서에 없는 작업',d.unbilled,'최근 90일 사진·일정이 있는데 작업내역서 줄이 없는 작업 — 내역서 탭에서 확인합니다'));   // v568
     const bk=d.days>=999?'백업 기록 없음':(d.days===0?'오늘 백업함':'백업 '+d.days+'일 전');
     const bkWarn=d.days>=7;
     parts.push('<button type="button" class="ghost tiny" data-health="backup" title="지금 백업(파일 + 연결돼 있으면 드라이브)" style="min-height:44px;padding:6px 10px;font-size:12.5px;'+(bkWarn?'border-color:var(--warn);color:var(--warn)':'color:var(--muted)')+'">💾 '+bk+'</button>');
-    const clean=!d.est&&!d.photo&&!d.dup&&!d.pcup&&!d.pconly;
+    const clean=!d.est&&!d.photo&&!d.dup&&!d.pcup&&!d.pconly&&!d.unbilled;
     return '<div data-health-line="'+(clean?'clean':'todo')+'" role="group" aria-label="자료 건강" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:12.5px">'+
       '<span style="font-weight:800;color:var(--muted)">🩺 자료'+(clean?' <span style="color:var(--ok,#166534)">깨끗</span>':'')+'</span>'+parts.join('')+'</div>';
   }catch(e){return '';}
@@ -14453,6 +14456,7 @@ function hjHealthOpen(k){
   if(k==='dup')return trimDuplicates();
   if(k==='pcup')return pcupOpen();   // v531
   if(k==='pconly')return hjPcOnlyView();   // v536
+  if(k==='unbilled')return hjUnbilledOpen();   // v568
   if(k==='backup')return backupNow();
 }
 function dailyCheckCardHTML(){
@@ -32017,6 +32021,21 @@ ${CW_SAFE}`},
 
 [주의]
 - 금액은 추측하지 않는다(빈칸). 현장웹 자료는 바꾸지 않는다.`},
+    {id:'cw_calsync',icon:'🔄',title:'구글 캘린더 일정 → 현장웹 맞추기',builtin:true,prompt:
+`너는 ${N}의 일정 비서다(만물 현장앱 운영 규칙을 따른다).
+구글 캘린더의 일정(제미나이가 넣은 '@' 일정 포함)을 현장웹 일정표에 맞춰줘.
+
+[할 일]
+1. PC 크롬에서 구글 캘린더 월 보기를 열어 이번 달(필요하면 다음 달) 일정 글을 읽는다.
+2. 현장웹 📅 일정표 → [🔄 구글 캘린더 맞추기]에 그 글을 붙여 넣고 [읽기]로 미리보기를 연다.
+3. 새 일정·시간 다름·날짜 옮김 줄과 추천 현장을 표로 보여 주고, 내가 좋다고 한 줄만 체크해 [반영]한다.
+4. '앱에만 있음' 줄과 구글에 두 번 들어 있는 일정('@제목'과 '[현장명] 제목')은 고치지 말고 목록으로만 알려 준다.
+
+[주의]
+- 구글 캘린더는 읽기만 한다. 구글 쪽 일정을 고치거나 지우는 일은 내가 정한 뒤에 한다.
+- 현장웹 일정표를 직접 고쳐 쓰지 않는다 — 맞추기 창만 쓴다(반영 전에 안전판이 찍힌다).
+- 현장웹이 두 창에 열려 있거나 '오래된 창' 띠가 보이면 먼저 알린다.
+- 현장이 애매한 일정은 '현장 없이'로 두고 묻는다.`},
     {id:'cw_save',icon:'💾',title:'현장웹 저장·백업 확인',builtin:true,prompt:
 `너는 ${N}의 현장웹 관리 비서다.
 브라우저에 열린 현장웹(https://01023978629.github.io/hyeonjang/)이 빠짐없이 저장됐는지 확인해줘.
@@ -32060,6 +32079,7 @@ const CW_META={
   cw_card:{cat:'tax',o:1,prep:'카드사에서 받은 이용내역 파일을 폴더에'},
   cw_tax:{cat:'tax',o:2,prep:'홈택스 매출·매입 세금계산서와 통장 내역 파일을 폴더에'},
   cw_month:{cat:'tax',o:3,prep:'이번 달 카드·세금계산서·통장 파일을 폴더에'},
+  cw_calsync:{cat:'app',o:0,prep:'PC 크롬에 구글 캘린더와 현장웹 탭 열어 두기'},   // v569
   cw_save:{cat:'app',o:1,prep:'현장웹 탭을 모두 열어 둔 채로'},
   cw_dev:{cat:'app',o:2,prep:'명령의 [고칠 것] 칸 적기 · 화면 캡처가 있으면 함께'},
   cw_bugtest:{cat:'app',o:3,prep:'현장웹 주소만 있으면 됨'}
@@ -34726,6 +34746,7 @@ const CW_SKILL_MAP={
   cw_salescheck:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 견적 정리·매출 점검'},
   cw_pay:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 협력사 입금(📑 장부 💰 입금 규칙)'},
   cw_unbilled:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 청구 누락 점검'},
+  cw_calsync:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 구글 캘린더 맞추기(🔄 미리보기·안전판, 구글은 읽기만)'},
   cw_save:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 데이터 파일 안전수칙(백업 먼저)'},
   cw_dev:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 웹앱 개발(PR·핀 3곳·테스트)'}
 };
@@ -37105,6 +37126,214 @@ function renderEstimateFieldEdit(root){
     if(field){const next=[...document.querySelectorAll('.estimates-view input[data-ef]')].find(el=>el.dataset.id===field.id&&el.dataset.ef===field.key);if(next){next.focus({preventScroll:true});next.setSelectionRange(field.start,field.end);}}
   });
 }
+/* v565 📑 내역서 탭 — 대표 지시(2026-11-10): "견적, 정산은 내역서로 대체할 거야".
+   협력사 일감은 견적서 없이 작업내역서로 청구·정산한다(v526~v564). 그런데 '견적·정산' 탭(폰 하단 [정산])은 여전히 견적서 파일 목록이었다.
+   매출 기준이 작업내역서(v561)이거나 📑 반영한 내역서가 하나라도 있으면 그 탭이 '📑 내역서'가 된다(hjStmtTabOn):
+   · 맨 위 숫자: 이번 달 매출(내역서) · 지난달 · 받을 돈(남은 돈) · 이번 달 받은 돈 · 올해 누계 — 모두 있던 계산(매출 한 벌·장부·수금 이력)을 읽기만.
+   · 📑 장부(v527 hjStmtLedgerHTML — 💰 입금·🏦 통장 맞추기·📋 미수 안내·📂 폴더 내역서 반영)를 그대로.
+   · 월별 매출(내역서) 줄을 누르면 그 달 현장별 줄(작업일·현장·작업·금액).
+   · 예전 견적서 파일 화면은 맨 아래 접어 둔다(펼칠 때만 그림 — 자료·기능은 그대로).
+   내역서가 없고 매출 기준도 견적이면 예전 '견적·정산' 탭 그대로(한 글자도 같음). 새 저장 키 없음 — 달·펼침은 화면만. */
+let __hjStmtYm=null,__hjStmtOldOpen=false;
+function hjStmtTabOn(){try{return hjSalesBasis()==='stmt'||(state.quotes||[]).some(q=>q&&q.stmt&&q.stmt.key);}catch(e){return false;}}
+function hjStmtTabApply(){   // render 마다 — 탭·폰 하단 이름만 바꾼다(같으면 DOM 을 안 건드린다)
+  const on=hjStmtTabOn();
+  const tab=document.querySelector('#tabs .tab[data-tab="estimates"]');
+  if(tab&&tab.firstChild&&tab.firstChild.nodeType===3){const t=on?'📑 내역서 ':'견적·정산 ';if(tab.firstChild.textContent!==t)tab.firstChild.textContent=t;}
+  const nb=document.querySelector('#mobileNav [data-mnav="estimates"]');
+  if(nb){const lab=on?'내역서, 작업내역서 장부':'정산, 견적·정산';
+    if(nb.getAttribute('aria-label')!==lab){nb.setAttribute('aria-label',lab);const sp=nb.querySelectorAll('span');if(sp[0])sp[0].textContent=on?'📑':'💰';if(sp[1])sp[1].textContent=on?'내역서':'정산';}}
+  return on;
+}
+function hjStmtEntries(){   // 매출 한 벌에서 작업내역서 줄만(v564 hjStmtMonthSales 와 같은 거르기 — 사본·집계 제외 규칙 그대로)
+  const out=[];
+  try{hjSalesEntries().forEach(r=>{if(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key)))out.push(r);});}catch(e){}
+  return out;
+}
+function hjStmtTabData(ym){
+  const ent=hjStmtEntries(),by=new Map();
+  ent.forEach(r=>{const k=r.ym||'';if(!by.has(k))by.set(k,{ym:k,total:0,n:0,pj:new Set()});const m=by.get(k);m.total+=num(r.amount);m.n++;if(r.project)m.pj.add(r.project);});
+  const months=[...by.values()].filter(m=>m.ym).sort((a,b)=>b.ym.localeCompare(a.ym));
+  const nowYm=localDate().slice(0,7),sel=ym&&by.has(ym)?ym:(by.has(nowYm)?nowYm:(months[0]?months[0].ym:nowYm));
+  const pidx=hjStmtPhotoIndex();
+  const rows=ent.filter(r=>r.ym===sel).map(r=>{
+    const q=r.quote,s=(q&&q.stmt)||{},lines=Array.isArray(s.lines)?s.lines.filter(Boolean):[];
+    const days=[...new Set(lines.map(l=>String(l.d||'')).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+    const works=[...new Set(lines.map(l=>String(l.work||'').replace(/\s+/g,' ').trim()).filter(Boolean))];
+    return {project:r.project||'',amount:num(r.amount),to:String(s.to||''),date:String(s.date||(q&&q.date)||''),days,works,photos:r.project?hjStmtPhotoCount(pidx,r.project,days.length?days:[String(s.date||(q&&q.date)||'')]):null};   // v568 📷
+  }).sort((a,b)=>String(a.days[0]||a.date).localeCompare(String(b.days[0]||b.date))||a.project.localeCompare(b.project,'ko'));
+  let led=[];try{led=hjStmtLedger();}catch(e){}
+  const paidYm={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt){const k=String(x.d||'').slice(0,7);paidYm[k]=(paidYm[k]||0)+Math.round(num(x.amt));}});
+  const zero={total:0,n:0},year=nowYm.slice(0,4);
+  return {nowYm,sel,months,rows,led,left:led.reduce((a,s)=>a+s.left,0),leftN:led.filter(s=>s.left>0).length,cur:by.get(nowYm)||zero,prev:by.get(hjYmShift(nowYm,-1))||zero,
+    yearTotal:months.filter(m=>m.ym.slice(0,4)===year).reduce((a,m)=>a+m.total,0),paidNow:paidYm[nowYm]||0,paidYm};
+}
+function hjStmtOldToggle(el){const o=!!(el&&el.open);if(o===__hjStmtOldOpen)return;__hjStmtOldOpen=o;render();}
+function viewStatements(){
+  const D=hjStmtTabData(__hjStmtYm),mm=ym=>(+String(ym).slice(5,7))+'월',yy=ym=>String(ym).slice(0,4)+'년 '+mm(ym);
+  const kpi=(k,label,val,sub)=>'<div data-stmt-kpi="'+k+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px;background:var(--paper);min-width:0"><div style="font-size:11.5px;color:var(--muted)">'+label+'</div><b style="display:block;font-size:17px;white-space:nowrap">'+val+'</b>'+(sub?'<div style="font-size:11.5px;color:var(--muted)">'+sub+'</div>':'')+'</div>';
+  let h='<section class="stmt-view" data-stmt-view>';
+  h+='<div class="panel-head" style="margin-bottom:10px;justify-content:flex-start;gap:6px;flex-wrap:wrap"><button class="clay tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서 엑셀을 읽어 현장마다 매출 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="ghost tiny" data-stmt-go="quotemaker" style="min-height:44px">✍ 견적 작성</button></div>';
+  if(hjSalesBasis()!=='stmt')h+='<div data-stmt-basis-hint class="hint" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;margin:0 0 10px"><span style="flex:1 1 220px;min-width:0">대시보드·월말 결산의 매출은 아직 견적서까지 함께 세고 있어요.</span><button class="mini-btn" data-stmt-basis="1" style="min-height:44px">📑 매출은 작업내역서만 세기</button></div>';
+  h+='<div data-stmt-kpis style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px;margin:0 0 12px">'+
+    kpi('cur','💰 '+mm(D.nowYm)+' 매출(내역서)',won(D.cur.total),'내역서 '+D.cur.n+'건')+
+    kpi('prev','지난달('+mm(hjYmShift(D.nowYm,-1))+')',won(D.prev.total),'내역서 '+D.prev.n+'건')+
+    kpi('left','받을 돈(남은 돈)',won(D.left),D.leftN?'내역서 '+D.leftN+'장':'모두 받음')+
+    kpi('paid',mm(D.nowYm)+' 받은 돈',won(D.paidNow),'내역서 입금 기준')+
+    kpi('year',D.nowYm.slice(0,4)+'년 누계',won(D.yearTotal),'')+'</div>';
+  const led=hjStmtLedgerHTML();
+  h+=led||'<div class="empty" data-stmt-empty><b>반영한 작업내역서가 없습니다</b>위 [📑 작업내역서 반영]으로 협력사에 보낸 작업내역서 엑셀을 넣으세요.</div>';
+  h+=hjUnbilledHTML();   // v566 🧾 내역서에 아직 없는 작업(사진·일정 대조)
+  if(D.months.length){
+    h+='<div data-stmt-months style="margin:14px 0 0"><div style="font-size:12px;letter-spacing:.08em;color:#0b4ea2;margin-bottom:6px">📅 월별 매출(내역서)</div>';
+    D.months.forEach(m=>{const on=m.ym===D.sel,p=D.paidYm[m.ym]||0;
+      h+='<button type="button" data-stmt-ym="'+m.ym+'" aria-pressed="'+on+'" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:2px 10px;width:100%;min-height:44px;text-align:left;padding:8px 12px;margin:0 0 6px;border-radius:10px;border:1px solid '+(on?'var(--blueprint)':'var(--line-soft)')+';background:'+(on?'var(--paper-2)':'var(--paper)')+';color:var(--ink);font-size:13px"><span><b>'+yy(m.ym)+'</b> · 내역서 '+m.n+'건 · 현장 '+m.pj.size+'곳'+(p?' · 받은 돈 '+won(p):'')+'</span><b style="white-space:nowrap">'+won(m.total)+'</b></button>';});
+    h+='</div>';
+    h+='<div data-stmt-month-list="'+D.sel+'" style="margin:8px 0 0"><div style="font-size:12.5px;font-weight:800;margin-bottom:4px">'+yy(D.sel)+' 현장별 '+D.rows.length+'건 · '+won(D.rows.reduce((a,r)=>a+r.amount,0))+(D.rows.some(r=>r.photos===0)?' <span data-stmt-nophoto style="font-weight:400;color:var(--hj-warn-fg,#b45309)">· 📷 사진 없는 줄 '+D.rows.filter(r=>r.photos===0).length+'건</span>':'')+'</div>';
+    D.rows.forEach(r=>{const day=r.days.length?hjStmtMd(r.days[0])+(r.days.length>1?'~'+hjStmtMd(r.days[r.days.length-1]):''):hjStmtMd(r.date);
+      h+='<div data-stmt-item style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(day)+'</span> '+(r.project?'<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">'+escapeHtml(r.project)+'</button>':'<b>현장 미지정</b>')+' <span>'+escapeHtml(r.works.slice(0,2).join(' · ')+(r.works.length>2?' 외 '+(r.works.length-2)+'건':''))+'</span>'+(r.to?' <span style="color:var(--muted)">· '+escapeHtml(r.to)+'</span>':'')+(r.photos==null?'':' '+hjStmtPhotoBadge(r.photos))+'</div><b style="white-space:nowrap;font-size:13px">'+won(r.amount)+'</b></div>';});
+    h+='</div>';
+  }
+  const estN=state.files.filter(f=>f&&f.kind==='estimate'&&!f._stmt).length;
+  h+='<details data-stmt-old'+(__hjStmtOldOpen?' open':'')+' ontoggle="hjStmtOldToggle(this)" style="margin:18px 0 0"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)">📄 견적서 파일 · 예전 견적·정산 화면'+(estN?' ('+estN+'건)':'')+'</summary>'+(__hjStmtOldOpen?viewEstimates():'')+'</details>';
+  return h+'</section>';
+}
+/* v566 🧾 내역서에 아직 없는 작업 — 사진·일정 ↔ 작업내역서 대조 (대표 지시 11/10 "사진 및 현장 관리에 개발 가능 부분 개발 진행").
+   내역서로 청구하려면 한 일이 내역서 줄에 들어가야 한다. 10/31 에는 클로드가 사진 날짜와 내역서를 손으로 맞춰 '청구 안 된 작업'을 찾았다(🧰 명령어 cw_unbilled).
+   · 근거(읽기만): 최근 90일, 보관 안 한 현장의 '사진 찍은 날'(한국 날짜)과 '일정 날'(💰·세금 자동·개인 일정 제외, 오늘까지). 하루 이내로 이어지는 날은 한 작업으로 묶는다.
+   · 내역서 줄(q.stmt.lines 의 작업 날짜, 없으면 작성일)이 그 작업 앞뒤 하루 안에 있으면 '들어간 작업'. 집계 제외한 내역서 줄도 청구한 것으로 본다.
+   · 견적서로 청구하는 현장(견적 파일·앱 견적은 있고 내역서는 없는 현장)과 사진 없이 '방문·견적·상담·실측·점검' 일정만 있는 날은 '참고'로 따로.
+   · [청구 안 함]은 그 현장 안 p.stmtSkip[{from,to,at}] 에만 적는다(새 최상위 저장 키 없음). [📋 글로 복사]는 다음 내역서를 쓸 때 붙여 넣을 글 — 금액·고객 정보 없음. */
+const HJ_UNBILLED_DAYS=90,HJ_UNBILLED_VISIT_RE=/방문|견적|상담|실측|미팅|점검/;
+function hjUnbilledSkipped(p,run){return (Array.isArray(p&&p.stmtSkip)?p.stmtSkip:[]).some(x=>x&&String(x.from)<=run.from&&String(x.to)>=run.to);}
+function hjUnbilledPlan(opts){
+  const today=localDate(),since=hjAddDays(today,-(Number(opts&&opts.days)||HJ_UNBILLED_DAYS)),ISO=/^\d{4}-\d{2}-\d{2}$/;
+  const pj=new Map();(state.projects||[]).forEach(p=>{if(p&&p.name&&!p.archived)pj.set(p.name,p);});
+  const ev=new Map();
+  const at=(name,day)=>{if(!pj.has(name)||!ISO.test(day)||day<since||day>today)return null;let m=ev.get(name);if(!m){m=new Map();ev.set(name,m);}let d=m.get(day);if(!d){d={photos:0,labels:new Map(),titles:[]};m.set(day,d);}return d;};
+  (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||!f.project)return;const d=at(f.project,hjKDayFast(f));if(!d)return;d.photos++;const lb=hjWorkLabelClean(f._worklabel);if(lb)d.labels.set(lb,(d.labels.get(lb)||0)+1);});
+  (state.schedule||[]).forEach(s=>{if(!s||!s.project||!hjPrepOtherOk(s)||s.sourceUid)return;const d=at(s.project,String(s.date||''));if(!d)return;const t=String(s.title||'').replace(/\s*\(\d+일차 시작\)\s*$/,'').replace(/\s+/g,' ').trim();if(t&&!d.titles.includes(t))d.titles.push(t);});
+  const billed=new Map(),hasStmt=new Set(),hasEst=new Set();
+  (state.quotes||[]).forEach(q=>{if(!q||!q.project)return;if(!q.stmt){hasEst.add(q.project);return;}
+    hasStmt.add(q.project);if(!billed.has(q.project))billed.set(q.project,[]);
+    const ds=(Array.isArray(q.stmt.lines)?q.stmt.lines:[]).map(l=>String(l&&l.d||'')).filter(d=>ISO.test(d));
+    (ds.length?ds:[String(q.stmt.date||q.date||'')].filter(d=>ISO.test(d))).forEach(d=>billed.get(q.project).push(d));});
+  (state.files||[]).forEach(f=>{if(f&&f.kind==='estimate'&&f.project&&!f._stmt&&!f._fromQuote)hasEst.add(f.project);});
+  const rows=[],refs=[];let skipped=0;
+  ev.forEach((m,name)=>{
+    let run=null;
+    const flush=()=>{if(!run)return;const r=run;run=null;
+      const lo=hjAddDays(r.from,-1),hi=hjAddDays(r.to,1);
+      if((billed.get(name)||[]).some(d=>d>=lo&&d<=hi))return;                         // 내역서에 들어간 작업
+      if(hjUnbilledSkipped(pj.get(name),r)){skipped++;return;}
+      r.works=[...r.labels].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ko')).map(x=>x[0]).slice(0,2);delete r.labels;
+      r.visit=!r.photos&&r.titles.length>0&&r.titles.every(t=>HJ_UNBILLED_VISIT_RE.test(t));
+      r.byEst=hasEst.has(name)&&!hasStmt.has(name);
+      (r.visit||r.byEst?refs:rows).push(r);};
+    [...m.keys()].sort().forEach(day=>{const d=m.get(day);
+      if(!run||hjDaysBetween(run.to,day)>1){flush();run={project:name,from:day,to:day,photos:0,labels:new Map(),titles:[]};}
+      run.to=day;run.photos+=d.photos;d.labels.forEach((n,k)=>run.labels.set(k,(run.labels.get(k)||0)+n));d.titles.forEach(t=>{if(!run.titles.includes(t))run.titles.push(t);});});
+    flush();
+  });
+  const order=(a,b)=>b.from.localeCompare(a.from)||a.project.localeCompare(b.project,'ko');
+  return {since,today,rows:rows.sort(order),refs:refs.sort(order),skipped};
+}
+function hjUnbilledLine(r){
+  const what=(r.titles.length?r.titles:r.works).slice(0,2).join(' · ')||'작업 내용 없음';
+  return hjMdDow(r.from)+(r.to>r.from?'~'+hjMdDow(r.to):'')+' '+r.project+' — '+what+(r.photos?' · 사진 '+r.photos+'장':' · 사진 없음');
+}
+function hjUnbilledText(P){
+  P=P||hjUnbilledPlan();
+  return ['내역서에 아직 없는 작업 '+P.rows.length+'건 ('+hjStmtMd(P.since)+'~'+hjStmtMd(P.today)+' 사진·일정 기준)'].concat(P.rows.map(r=>'- '+hjUnbilledLine(r))).join('\n');
+}
+async function hjUnbilledCopy(){
+  const P=hjUnbilledPlan();if(!P.rows.length){toast('내역서에 없는 작업이 없어요');return false;}
+  const text=hjUnbilledText(P);
+  try{await navigator.clipboard.writeText(text);}catch(e){try{coworkCopyFallback(text);}catch(_){toast('복사 실패 — 다시 시도해 주세요');return false;}}
+  toast('📋 내역서에 없는 작업 '+P.rows.length+'건을 글로 복사했어요 — 다음 내역서를 쓸 때 붙여 넣으세요');return true;
+}
+function hjUnbilledSkip(name,from,to){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<from)return false;
+  if(window.__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return false;}
+  p.stmtSkip=(Array.isArray(p.stmtSkip)?p.stmtSkip:[]).filter(x=>x&&!(String(x.from)>=from&&String(x.to)<=to)).concat([{from,to,at:localDate()}]).slice(-60);
+  __hjUnbilledMemo=null;markDirty();render();toast('청구 안 함으로 넘겼어요 — 목록 아래 [넘긴 작업 다시 보기]로 되돌릴 수 있어요');return true;
+}
+function hjUnbilledUnskip(){
+  if(window.__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const since=hjAddDays(localDate(),-HJ_UNBILLED_DAYS);let n=0;
+  (state.projects||[]).forEach(p=>{if(!p||!Array.isArray(p.stmtSkip))return;const keep=p.stmtSkip.filter(x=>x&&String(x.to)<since);n+=p.stmtSkip.length-keep.length;if(keep.length)p.stmtSkip=keep;else delete p.stmtSkip;});
+  if(n){__hjUnbilledMemo=null;markDirty();render();toast('넘긴 작업 '+n+'건을 다시 보이게 했어요');}
+  return n;
+}
+function hjUnbilledHTML(){
+  let P;try{P=hjUnbilledPlan();}catch(e){return '';}
+  if(!P.rows.length&&!P.refs.length&&!P.skipped)return '';
+  const row=(r,ref)=>'<div data-unbilled-row="'+escapeAttr(r.project)+'"'+(ref?' data-unbilled-ref="'+(r.visit?'visit':'est')+'"':'')+' style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere">'+escapeHtml(hjUnbilledLine(r))+(ref?' <span style="color:var(--muted)">('+(r.visit?'방문·상담 일정만':'견적서로 청구하는 현장')+')</span>':'')+'</div>'+
+    '<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">현장</button><button type="button" class="mini-btn" data-unbilled-skip="'+escapeAttr(r.project)+'" data-from="'+r.from+'" data-to="'+r.to+'" style="min-height:44px" title="서비스·AS처럼 청구하지 않는 작업이면 목록에서 넘깁니다">청구 안 함</button></div>';
+  const SHOW=20;
+  return '<section data-unbilled class="card" style="cursor:default;padding:12px 14px;margin:0 0 14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">🧾 내역서에 아직 없는 작업 <span data-unbilled-n>'+P.rows.length+'</span>건</b>'+(P.rows.length?'<button type="button" class="mini-btn" data-unbilled-copy style="min-height:44px">📋 글로 복사</button>':'')+'</div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px">최근 '+HJ_UNBILLED_DAYS+'일 사진·일정이 있는 날인데 앞뒤 하루 안에 작업내역서 줄이 없는 작업이에요. 다음 내역서에 넣거나, 청구하지 않는 작업이면 [청구 안 함].</div>'+
+    (P.rows.length?P.rows.slice(0,SHOW).map(r=>row(r,false)).join('')+(P.rows.length>SHOW?'<div data-unbilled-more style="font-size:11.5px;color:var(--muted);padding-top:4px">…외 '+(P.rows.length-SHOW)+'건 — [📋 글로 복사]에는 모두 들어가요</div>':''):'<div data-unbilled-ok style="font-size:12.5px;color:var(--ok);padding:4px 0">✓ 최근 작업이 모두 내역서에 들어 있어요</div>')+
+    (P.refs.length?'<details data-unbilled-refs style="margin-top:8px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:12.5px;color:var(--muted)">참고 '+P.refs.length+'건 — 견적서로 청구하는 현장 · 방문 일정만 있는 날</summary>'+P.refs.slice(0,SHOW).map(r=>row(r,true)).join('')+'</details>':'')+
+    (P.skipped?'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:6px;font-size:11.5px;color:var(--muted)"><span style="flex:1 1 160px">청구 안 함으로 넘긴 작업 '+P.skipped+'건</span><button type="button" class="mini-btn" data-unbilled-unskip style="min-height:44px">넘긴 작업 다시 보기</button></div>':'')+
+    '</section>';
+}
+/* v568 📷 내역서 줄 ↔ 현장 사진 · 📑 현장 화면의 작업내역서 칸 · 🩺 '내역서에 없는 작업' (대표 지시 11/11 "더 개발 진행 — 다른 부분도").
+   v565 로 정산이 내역서 탭으로 왔지만 ① 내역서 줄에 사진(증빙)이 있는지 ② 현장 화면에서 그 현장이 내역서로 얼마 청구됐고 얼마 받았는지 ③ 첫 화면에서
+   내역서에 빠진 작업이 있는지 알 수 없었다. 모두 읽기만(새 저장 키·새 계산 기준 없음).
+   · hjStmtPhotoIndex(): 현장 → 한국 날짜 → 사진 수. hjStmtPhotoCount(idx,현장,[작업일…]) = 작업일 첫날 하루 전 ~ 끝날 하루 뒤의 그 현장 사진 수(v566 과 같은 여유).
+   · 📑 내역서 탭 월별 현장 줄에 '📷 n장' / '📷 사진 없음'(경고색), 머리에 '사진 없는 줄 n건'.
+   · 현장 화면(현장 하나를 열었을 때) '📑 이 현장 작업내역서' 칸 hjProjStmtCard(p): 합계·받은 돈·남은 돈(내역서 입금 기록 기준) + 줄(작업일·작업·거래처·금액·📷) + [📑 내역서 탭]. 내역서 견적이 없는 현장엔 칸이 없다.
+   · 🩺 자료 건강 줄에 '🧾 내역서에 없는 작업 n'(내역서 탭이 켜져 있고 1건 이상일 때만) → 내역서 탭의 그 칸으로. */
+function hjStmtPhotoIndex(only){
+  const idx=new Map();
+  (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||!f.project||(only&&f.project!==only))return;const day=hjKDayFast(f);if(!day)return;let m=idx.get(f.project);if(!m){m=new Map();idx.set(f.project,m);}m.set(day,(m.get(day)||0)+1);});
+  return idx;
+}
+function hjStmtPhotoCount(idx,project,days){
+  const m=idx&&idx.get(project),ds=(Array.isArray(days)?days:[]).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(String(d))).sort();
+  if(!m||!ds.length)return 0;
+  const lo=hjAddDays(ds[0],-1),hi=hjAddDays(ds[ds.length-1],1);let n=0;
+  m.forEach((c,day)=>{if(day>=lo&&day<=hi)n+=c;});
+  return n;
+}
+function hjStmtPhotoBadge(n){return n?'<span data-stmt-photo="'+n+'" style="white-space:nowrap;color:var(--muted)">📷 '+n+'장</span>':'<span data-stmt-photo="0" style="white-space:nowrap;color:var(--hj-warn-fg,#b45309);font-weight:700">📷 사진 없음</span>';}
+function hjProjStmtData(p){
+  const name=p&&p.name;if(!name)return null;
+  const qs=(state.quotes||[]).filter(q=>q&&q.stmt&&q.project===name);if(!qs.length)return null;
+  const idx=hjStmtPhotoIndex(name),lines=[];let total=0;
+  qs.forEach(q=>{const s=q.stmt,ex=!!q.exSum;if(!ex)total+=quoteCalc(q).total;
+    const ls=(Array.isArray(s.lines)?s.lines:[]).filter(Boolean);
+    (ls.length?ls:[{d:s.date||q.date||'',work:q.title||'작업내역서',amt:quoteCalc(q).total}]).forEach(l=>{const d=String(l.d||s.date||'');
+      lines.push({d,work:String(l.work||'').replace(/\s+/g,' ').trim()||'작업',amt:Math.round(num(l.amt)),to:String(s.to||''),ex,photos:hjStmtPhotoCount(idx,name,[d])});});});
+  lines.sort((a,b)=>String(b.d).localeCompare(String(a.d))||a.work.localeCompare(b.work,'ko'));
+  let paid=0;(state.payLog||[]).forEach(x=>{if(x&&x.stmt&&x.project===name)paid+=Math.round(num(x.amt));});
+  return {name,lines,total,paid,left:Math.max(0,total-paid),n:qs.length};
+}
+function hjProjStmtCard(p){
+  let D=null;try{D=hjProjStmtData(p);}catch(e){}
+  if(!D)return '';
+  const SHOW=8,rows=D.lines.slice(0,SHOW).map(l=>'<div data-pjstmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:6px 0;border-top:1px dashed var(--line-soft);font-size:12.5px"><div style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.work)+(l.to?' <span style="color:var(--muted)">· '+escapeHtml(l.to)+'</span>':'')+(l.ex?' <span style="color:var(--muted)">· 집계 제외</span>':'')+' '+hjStmtPhotoBadge(l.photos)+'</div><b style="white-space:nowrap">'+won(l.amt)+'</b></div>').join('');
+  return '<div class="cust-card" data-pjstmt style="margin-top:10px"><div class="cust-h">📑 이 현장 작업내역서 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">협력사 청구 '+D.lines.length+'줄</span></div>'+
+    '<div data-pjstmt-sum style="font-size:12.5px;margin:2px 0 4px">합계 <b>'+won(D.total)+'</b> · 받은 돈 <b style="color:var(--ok)">'+won(D.paid)+'</b> · '+(D.left?'남은 돈 <b>'+won(D.left)+'</b>':'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+
+    rows+(D.lines.length>SHOW?'<div style="font-size:11.5px;color:var(--muted);padding-top:4px">…외 '+(D.lines.length-SHOW)+'줄</div>':'')+
+    '<div style="margin-top:6px"><button type="button" class="mini-btn" data-stmt-go="estimates" style="min-height:44px">📑 내역서 탭에서 입금·장부 보기</button></div></div>';
+}
+// 건강 줄은 모든 화면 그리기마다 불린다 — 사진 수천 장을 매번 훑지 않게 30초 동안(자료 수·날짜가 같으면) 기억한다. 넘기기·다시 보기는 바로 비운다.
+let __hjUnbilledMemo=null,__hjKDayFmt=null;
+function hjKDayFast(f){const d=new Date(f&&f.when);if(!f||!f.when||isNaN(d.getTime()))return '';if(!__hjKDayFmt)__hjKDayFmt=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'});return __hjKDayFmt.format(d);}   // hjPhotoKoreanDay 와 같은 값(포맷터 재사용)
+function hjUnbilledCount(){
+  try{if(!hjStmtTabOn())return 0;
+    const sig=[(state.files||[]).length,(state.quotes||[]).length,(state.schedule||[]).length,localDate()].join('|'),now=Date.now();
+    if(__hjUnbilledMemo&&__hjUnbilledMemo.sig===sig&&now-__hjUnbilledMemo.at<30000)return __hjUnbilledMemo.n;
+    const n=hjUnbilledPlan().rows.length;__hjUnbilledMemo={sig,at:now,n};return n;
+  }catch(e){return 0;}
+}
+function hjUnbilledOpen(){
+  state.activeProject=null;state.tab='estimates';render();
+  setTimeout(()=>{try{const el=document.querySelector('#view [data-unbilled]');if(el)el.scrollIntoView({block:'start'});}catch(e){}},60);
+}
 function viewEstimates(){
   // 다시 그리기 전에 '지금 화면에서 열려 있는 상세' 를 먼저 적어 둔다.
   // 열림 기록(__estimateOpenDetails)은 원래 toggle 이벤트로만 쌓였는데, 그 이벤트는 비동기라
@@ -39375,7 +39604,7 @@ function viewSchedule(){
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
   const sch=(state.schedule||[]).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   if(sch.length){
-    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
+    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button> <button class="ghost tiny" id="schCalSync" style="min-height:44px" title="구글 캘린더 일정을 읽어 앱 일정표와 견주고, 미리보기에서 고른 것만 넣습니다 — 구글 캘린더는 바꾸지 않아요">🔄 구글 캘린더 맞추기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
@@ -39984,10 +40213,12 @@ function parseICS(text){
     const raw=ds.val.replace(/\s/g,'');
     const dm=raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/);
     if(!dm)return;
-    const date=dm[1]+'-'+dm[2]+'-'+dm[3];
-    // 종일(VALUE=DATE)이면 시간 없음. 시간이 붙어 있으면 그대로 쓴다(Z 는 UTC 표기라 그대로 두면 오차가 생겨 무시).
+    let date=dm[1]+'-'+dm[2]+'-'+dm[3];
+    // 종일(VALUE=DATE)이면 시간 없음. 시간이 붙어 있으면 그대로 쓴다.
     const allDay=/VALUE=DATE(?!-TIME)/i.test(ds.params)||!dm[4];
-    const time=allDay?'':(dm[4]+':'+dm[5]);
+    let time=allDay?'':(dm[4]+':'+dm[5]);
+    // v569 끝이 Z 면 UTC — 구글 캘린더 내보내기가 이 꼴이다. 한국 시각(+9, 서머타임 없음)으로 바꾼다. 예전에는 Z 를 버려 오전 9시 일정이 0시로 들어왔다.
+    if(!allDay&&/^\d{8}T\d{4,6}Z$/i.test(raw)){const k=new Date(Date.UTC(+dm[1],+dm[2]-1,+dm[3],+dm[4]+9,+dm[5])),p2=n=>String(n).padStart(2,'0');date=k.getUTCFullYear()+'-'+p2(k.getUTCMonth()+1)+'-'+p2(k.getUTCDate());time=p2(k.getUTCHours())+':'+p2(k.getUTCMinutes());}
     const st=get('STATUS');
     out.push({
       uid:(get('UID')||{}).val||'',
@@ -40029,6 +40260,186 @@ async function importICS(text){
   const msg='📅 일정 '+(added?added+'건 추가':'')+(updated?(added?' · ':'')+updated+'건 갱신':'')+(removed?((added||updated)?' · ':'')+removed+'건 취소반영':'');
   toast(added||updated||removed?msg:'바뀐 일정이 없습니다');
   return {추가:added,갱신:updated,취소:removed};
+}
+/* v567 🔄 구글 캘린더 맞추기 — 대표 지시(2026-11-10) "최근 운영 방법에 개발 가능 부분".
+   그날 대표는 "구글 캘린더를 보고 현장 웹에 반영해줘, @ 표시는 제미나이가 한 거야"라고 했고, 클로드가 캘린더 화면 글을 읽어 일정 5건을 손으로 넣고
+   구글 쪽 중복('@제목'과 앱이 올린 '[현장명] 제목')을 손으로 지웠다. 📥 캘린더 파일 가져오기(importICS)는 미리보기·현장 연결·중복 가리기가 없고
+   구글 내보내기의 UTC 시각(…Z)을 한국 시각으로 바꾸지 않는다. 이 창은 읽은 일정을 앱 일정표와 대조해 **미리보기에서 고른 것만** 넣는다.
+   · 읽는 것: 구글 캘린더 내보내기 .ics(…Z 는 한국 시각으로) 또는 캘린더 화면에서 복사한 글('오전 9시~오후 5시, 제목, 캘린더, 위치: …, 2026년 11월 6일' 줄).
+   · 제목 맨 앞 '@'(제미나이 표시)·'[현장명]'(앱이 올린 표시)은 떼고 비교한다 — 같은 날 같은 제목은 한 줄('구글에 n번').
+   · 새 일정 / 시간 다름 / 날짜 옮김(앞뒤 21일 안 같은 제목) / 앱에만 있음(지우기는 체크해야만, 작업 보고가 있는 일정은 대상 아님).
+   · [파수꾼]·💰·생일·취소된 일정과 7일보다 오래된 일정은 건너뛴다. 현장은 '[현장명]' → 이름 맞추기(hjStmtMatch 0.6↑) 제안, 사람이 바꿀 수 있다.
+   · 반영 전 🛡 안전판 1회(못 만들면 무변경), 미리보기 뒤 일정표가 바뀌었으면 거부. 구글 캘린더는 건드리지 않는다(읽기만). 새 저장 키 없음. */
+const HJ_CALSYNC_BACK=7,HJ_CALSYNC_MOVE=21;
+function hjCalSyncTitle(raw){
+  let t=String(raw||'').replace(/\s+/g,' ').trim(),mark='',tag='';
+  if(t.charAt(0)==='@'){mark='@';t=t.slice(1).trim();}
+  const m=t.match(/^\[([^\]]{1,40})\]\s*(.+)$/);if(m){tag=m[1].trim();t=m[2].trim();if(!mark)mark='app';}
+  return {title:t,mark,tag};
+}
+function hjCalSyncKey(t){return String(t||'').toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
+function hjCalSyncSkip(raw){const t=String(raw||'').trim();return /^\[파수꾼\]/.test(t)||/^💰/.test(t)||/happy birthday|^생일/i.test(t);}
+function hjCalSyncHours(a,b){   // 'HH:MM' 둘 → 시간(0.5 단위), 모르면 1
+  const f=x=>{const m=String(x||'').match(/^(\d{2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;},s=f(a),e=f(b);
+  return s==null||e==null||e<=s?1:Math.max(0.5,Math.round((e-s)/30)/2);
+}
+function hjCalSyncParseIcs(text){
+  const out=[];
+  icsUnfold(text).split(/BEGIN:VEVENT/i).slice(1).forEach(b=>{
+    const body=b.split(/END:VEVENT/i)[0];
+    const get=name=>{const m=body.match(new RegExp('^'+name+'([^:\\n]*):(.*)$','im'));return m?{params:m[1]||'',val:m[2].trim()}:null;};
+    const when=p=>{if(!p)return null;const m=p.val.replace(/\s/g,'').match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/);if(!m)return null;
+      if(/VALUE=DATE(?!-TIME)/i.test(p.params)||!m[4])return {date:m[1]+'-'+m[2]+'-'+m[3],time:''};
+      if(!m[7])return {date:m[1]+'-'+m[2]+'-'+m[3],time:m[4]+':'+m[5]};
+      const k=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]+9,+m[5]));   // …Z(UTC) → 한국 시각(+9, 서머타임 없음)
+      const p2=n=>String(n).padStart(2,'0');return {date:k.getUTCFullYear()+'-'+p2(k.getUTCMonth()+1)+'-'+p2(k.getUTCDate()),time:p2(k.getUTCHours())+':'+p2(k.getUTCMinutes())};};
+    const s=when(get('DTSTART'));if(!s)return;
+    const e=when(get('DTEND')),st=get('STATUS');
+    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
+      location:icsUnescape((get('LOCATION')||{}).val||''),memo:icsUnescape((get('DESCRIPTION')||{}).val||''),cancelled:!!(st&&/CANCELLED/i.test(st.val))});
+  });
+  return out;
+}
+// 구글 캘린더 화면 글 한 줄: '오전 9시~오후 5시, 제목, 캘린더(주인), 위치: …|위치 없음, 2026년 11월 6일' · '종일, …' · '2026년 11월 2일 오후 7:20~…, 제목, …, 위치: …,'
+function hjCalSyncParseText(text){
+  const out=[],seen=new Set(),DATE=/(\d{4})년 (\d{1,2})월 (\d{1,2})일/g,p2=n=>String(n).padStart(2,'0');
+  const clock=s=>{const m=String(s||'').match(/(오전|오후) (\d{1,2})(?::(\d{2}))?시?/);if(!m)return '';let h=(+m[2])%12;if(m[1]==='오후')h+=12;return p2(h)+':'+(m[3]||'00');};
+  String(text||'').split(/\r?\n/).forEach(line=>{
+    line=line.trim();
+    if(!/^(?:\d{4}년 \d{1,2}월 \d{1,2}일 )?(?:종일|오전|오후)/.test(line))return;
+    const li=Math.max(line.lastIndexOf(', 위치: '),line.lastIndexOf(', 위치 없음'));if(li<0)return;
+    const c1=line.indexOf(', ');if(c1<0||c1>=li)return;
+    const head=line.slice(0,c1),mid=line.slice(c1+2,li),tail=line.slice(li+2);
+    const ds=[...line.matchAll(DATE)];if(!ds.length)return;
+    const d=/^\d{4}년/.test(line)?ds[0]:ds[ds.length-1],date=d[1]+'-'+p2(d[2])+'-'+p2(d[3]);
+    const oc=mid.lastIndexOf(', '),raw=(oc>0?mid.slice(0,oc):mid).trim();if(!raw)return;
+    const allDay=/^종일/.test(head),times=head.replace(DATE,'').split('~'),time=allDay?'':clock(times[0]);
+    const lm=tail.match(/^위치: (.*?)(?:, \d{4}년 \d{1,2}월 \d{1,2}일.*|,)?$/);
+    const k=date+'|'+time+'|'+raw;if(seen.has(k))return;seen.add(k);
+    out.push({uid:'',date,time,hours:allDay?8:(/^\d{4}년/.test(line)?1:hjCalSyncHours(time,clock(times[1]))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
+  });
+  return out;
+}
+function hjCalSyncParse(text){return /BEGIN:VEVENT/i.test(String(text||''))?hjCalSyncParseIcs(text):hjCalSyncParseText(text);}
+function hjCalSyncStamp(){return (state.schedule||[]).map(s=>s?[s.id,s.date,s.time||'',s.title||''].join('\u0001'):'').join('\u0002');}
+function hjCalSyncPlan(events,opts){
+  const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
+  const stats={read:0,same:0,skipped:0,old:0,gdup:0};
+  const groups=new Map();
+  (Array.isArray(events)?events:[]).forEach(e=>{
+    if(!e||!ISO.test(String(e.date||'')))return;stats.read++;
+    if(e.cancelled||hjCalSyncSkip(e.raw)){stats.skipped++;return;}
+    if(e.date<from){stats.old++;return;}
+    const t=hjCalSyncTitle(e.raw),key=hjCalSyncKey(t.title);if(!key){stats.skipped++;return;}
+    const gk=e.date+'|'+key;let g=groups.get(gk);
+    if(!g){g={date:e.date,key,list:[]};groups.set(gk,g);}
+    g.list.push(Object.assign({},e,t));
+  });
+  const apps=(state.schedule||[]).filter(s=>s&&ISO.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid).map(s=>({s,key:hjCalSyncKey(hjCalSyncTitle(s.title).title),used:false}));
+  const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name);
+  const rows=[];let lo='',hi='';
+  const gs=[...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key));
+  gs.forEach(g=>{
+    if(!lo||g.date<lo)lo=g.date;if(!hi||g.date>hi)hi=g.date;
+    // 대표 한 건: 시각이 있는 것 → 위치가 있는 것 → 먼저 읽은 것. 같은 날 같은 제목이 여러 번이면 '구글에 n번'
+    const rep=g.list.slice().sort((a,b)=>(b.time?1:0)-(a.time?1:0)||(b.location?1:0)-(a.location?1:0))[0];
+    if(g.list.length>1)stats.gdup+=g.list.length-1;
+    const tag=(g.list.find(x=>x.tag)||{}).tag||'',marks=[...new Set(g.list.map(x=>x.mark).filter(Boolean))];
+    const base={date:g.date,time:rep.time,hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
+    const same=apps.find(a=>!a.used&&a.s.date===g.date&&a.key===g.key);
+    if(same){same.used=true;
+      if(rep.time&&String(same.s.time||'')!==rep.time)rows.push(Object.assign(base,{status:'time',check:true,app:{id:same.s.id,date:same.s.date,time:same.s.time||''}}));
+      else stats.same++;
+      return;}
+    g._base=base;
+  });
+  gs.forEach(g=>{
+    const base=g._base;if(!base)return;
+    const moved=apps.filter(a=>!a.used&&a.key===g.key&&Math.abs(hjDaysBetween(a.s.date,g.date))<=HJ_CALSYNC_MOVE&&!hjSchReported(a.s)).sort((a,b)=>Math.abs(hjDaysBetween(a.s.date,g.date))-Math.abs(hjDaysBetween(b.s.date,g.date)))[0];
+    if(moved){moved.used=true;rows.push(Object.assign(base,{status:'move',check:true,app:{id:moved.s.id,date:moved.s.date,time:moved.s.time||''}}));return;}
+    let project='',cands=[];
+    const tag=(g.list.find(x=>x.tag)||{}).tag||'';
+    if(tag&&live.includes(tag))project=tag;
+    try{cands=hjStmtMatch(base.title+(base.location?' '+base.location:'')).filter(c=>c.score>=0.5).slice(0,3);}catch(e){}
+    if(!project&&cands[0]&&cands[0].score>=0.6)project=cands[0].name;
+    rows.push(Object.assign(base,{status:'new',check:true,project,cands:cands.map(c=>c.name)}));
+  });
+  if(lo){const a0=lo>from?lo:from;
+    apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
+      rows.push({status:'apponly',check:false,date:a.s.date,time:a.s.time||'',title:String(a.s.title||''),key:a.key,dupN:0,marks:[],location:'',memo:'',app:{id:a.s.id,date:a.s.date,time:a.s.time||''},project:a.s.project||''});});}
+  const rank={new:0,time:1,move:2,apponly:3};
+  rows.sort((a,b)=>rank[a.status]-rank[b.status]||a.date.localeCompare(b.date)||String(a.time).localeCompare(String(b.time))||a.key.localeCompare(b.key));
+  return {rows,stats,from,lo,hi,stamp:hjCalSyncStamp()};
+}
+// picks=[{i,project}] — 미리보기에서 체크한 줄만. {added,changed,removed}
+async function hjCalSyncApply(plan,picks){
+  if(window.__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
+  if(!plan||plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
+  const sel=(Array.isArray(picks)?picks:[]).map(p=>({r:plan.rows[p.i],project:String(p.project||'')})).filter(x=>x.r);
+  if(!sel.length)throw new Error('반영할 줄을 체크하세요');
+  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}
+  if(!snapped)throw new Error('안전판을 만들지 못해 반영하지 않았습니다. 잠시 후 다시 시도하세요.');
+  if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0};
+  sel.forEach(({r,project})=>{
+    if(r.status==='new'){
+      state.schedule.push(Object.assign(newSchedule(),{date:r.date,time:r.time,title:r.title,project:names.has(project)?project:'',hours:r.hours||(r.time?1:8),
+        memo:[r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||('gcal:'+r.date+'|'+r.key)}));
+      out.added++;return;}
+    const s=state.schedule.find(x=>x&&x.id===r.app.id);if(!s)return;
+    if(r.status==='time'){s.time=r.time;out.changed++;}
+    else if(r.status==='move'){s.date=r.date;if(r.time)s.time=r.time;out.changed++;}
+    else if(r.status==='apponly'){state.schedule.splice(state.schedule.indexOf(s),1);out.removed++;}
+  });
+  markDirty();render();
+  return out;
+}
+function hjCalSyncRowText(r){
+  const when=hjMdDow(r.date)+' '+(r.time||'종일');
+  if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time;
+  if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date);
+  if(r.status==='apponly')return when+' '+r.title+' — 구글 캘린더에 없음(체크하면 앱에서 지움)';
+  return when+' '+r.title+(r.location?' · '+r.location:'');
+}
+function hjCalSyncRender(plan){
+  const box=document.getElementById('csBody');if(!box)return;
+  window.__hjCalSyncPlan=plan;
+  const L={new:'🆕 새 일정',time:'⏰ 시간 다름',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
+  const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
+  const sel=(r,i)=>'<select class="csSel" data-i="'+i+'" aria-label="'+escapeAttr(r.title)+' 현장" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 없이</option>'+
+    [...new Set((r.project?[r.project]:[]).concat(r.cands||[],live))].map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===r.project?' selected':'')+'>'+escapeHtml(nm)+((r.cands||[]).includes(nm)||nm===r.project?' (추천)':'')+'</option>').join('')+'</select>';
+  box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+' · 앱에만 '+n('apponly')+
+      (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(파수꾼·💰·생일·'+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+'</p>'+
+    (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
+      :'<div data-cs-clean class="empty" style="margin-top:8px"><b>✓ 앱 일정표가 구글 캘린더와 같아요</b>넣거나 바꿀 일정이 없습니다.</div>')+
+    (st.gdup?'<p class="hint" style="margin-top:8px">구글 캘린더에 같은 날 같은 제목이 두 번 있으면(예: ‘@제목’과 ‘[현장명] 제목’) 앱에는 한 번만 넣습니다. 구글 쪽 정리는 구글 캘린더에서 하세요 — 이 창은 구글을 바꾸지 않습니다.</p>':'');
+  const go=document.getElementById('csApply');if(go){go.disabled=!plan.rows.length;go.textContent=plan.rows.length?'체크한 일정 반영':'반영할 일정 없음';}
+}
+function hjCalSyncRead(text){
+  let evs=[];try{evs=hjCalSyncParse(text);}catch(e){evs=[];}
+  if(!evs.length){toast('일정을 읽지 못했어요 — 구글 캘린더 내보내기 .ics 파일이나 캘린더 화면의 글을 넣어 주세요');return null;}
+  const plan=hjCalSyncPlan(evs);hjCalSyncRender(plan);return plan;
+}
+function hjCalSyncView(){
+  window.__hjCalSyncPlan=null;
+  openModal('🔄 구글 캘린더 맞추기','<div id="hjCalSync"><p class="hint" style="margin:0 0 8px">구글 캘린더의 일정을 읽어 앱 일정표와 견줍니다. <b>미리보기에서 체크한 것만</b> 앱에 넣고, 구글 캘린더는 바꾸지 않습니다. 제목 앞 ‘@’(제미나이)·‘[현장명]’ 표시는 떼고 비교해요.</p>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px"><button type="button" class="blue tiny" id="csFile" style="min-height:44px">📂 캘린더 파일(.ics) 고르기</button><button type="button" class="ghost tiny" id="csRead" style="min-height:44px">📋 아래 붙여 넣은 글 읽기</button></div>'+
+    '<textarea id="csText" rows="4" aria-label="구글 캘린더 글 붙여 넣기" placeholder="구글 캘린더 화면에서 복사한 글(또는 .ics 내용)을 여기에 붙여 넣으세요" style="width:100%;box-sizing:border-box;font-size:16px;border:1px solid var(--line);border-radius:10px;padding:8px"></textarea>'+
+    '<div id="csBody"></div></div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal},{label:'반영할 일정 없음',cls:'clay',fn:async()=>{
+      const plan=window.__hjCalSyncPlan,root=document.getElementById('hjCalSync');if(!plan||!root)return;
+      const picks=[...root.querySelectorAll('.csChk:checked')].map(el=>{const i=+el.dataset.i,s=root.querySelector('.csSel[data-i="'+i+'"]');return {i,project:s?s.value:''};});
+      if(!picks.length){toast('반영할 줄을 체크하세요');return;}
+      const del=picks.filter(p=>plan.rows[p.i]&&plan.rows[p.i].status==='apponly').length;
+      if(del&&!confirm('앱에만 있는 일정 '+del+'건을 앱 일정표에서 지웁니다. 계속할까요?\n(🛡 안전판에서 되돌릴 수 있어요)'))return;
+      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+' — 되돌리려면 🛡 안전판');}
+      catch(e){toast(String(e&&e.message||e));}
+    }}],true);
+  const root=document.getElementById('hjCalSync');if(!root)return;
+  const go=[...document.querySelectorAll('#modalRoot .mfoot button')].pop();if(go){go.id='csApply';go.disabled=true;}
+  root.querySelector('#csRead').onclick=()=>hjCalSyncRead(root.querySelector('#csText').value);
+  root.querySelector('#csFile').onclick=()=>{const inp=document.createElement('input');inp.type='file';inp.accept='.ics,text/calendar,.txt,text/plain';
+    inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{hjCalSyncRead(await f.text());}catch(e){toast('파일을 읽지 못했습니다: '+(e&&e.message||e));}};inp.click();};
 }
 function pickICSFile(){
   const inp=document.createElement('input');
@@ -40413,6 +40824,7 @@ function viewProject(){
     }
   }
   // 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (준공 현장만 활성, 비준공은 흐리게)
+  html+=hjProjStmtCard(p);   // v568 📑 이 현장 작업내역서
   html+=hjCompletionCard(p);
   // 📲 고객 카톡 관리 — 진행 안내·공사 스토리·서명 내역·완료보증서(발급 사본 보관)
   html+=hjKakaoCard(p);
@@ -40618,10 +41030,16 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
+    if(d.stmtYm!==undefined){__hjStmtYm=d.stmtYm;return render();}   // v565 📑 내역서 탭 — 달 고르기
+    if(d.stmtBasis!==undefined){hjSalesBasisSet(true);return toast('📑 이제 매출은 작업내역서만 셉니다 — 📊 매출 목표 화면에서 끌 수 있어요');}
+    if(d.stmtGo!==undefined)return hjGoTab(d.stmtGo);
+    if(d.unbilledSkip!==undefined)return hjUnbilledSkip(d.unbilledSkip,d.from,d.to);   // v566
+    if(d.unbilledCopy!==undefined)return hjUnbilledCopy();
+    if(d.unbilledUnskip!==undefined)return hjUnbilledUnskip();
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
     if(d.leakintake!==undefined)return hjLeakIntakeView(d.leakintake);
     if(d.leakdispatch!==undefined)return hjLeakDispatchView(d.leakdispatch);
@@ -40692,6 +41110,7 @@ function setupDelegation(){
     if(t.id==='schGcal')return toggleGcalAuto();
     if(t.id==='schExportAll')return exportAllICS();
     if(t.id==='schIcsIn')return pickICSFile();
+    if(t.id==='schCalSync')return hjCalSyncView();   // v567 🔄 구글 캘린더 맞추기
     if(t.id==='schCalSend')return hjSchCalSendView({ym:calMonth()});   // v552 작업자 캘린더로 보내기
     if(t.id==='schShowAll'){__calSelDate=null;return render();}
     if(d.calday!==undefined){if(state.tab==='dashboard'){__calSelDate=d.calday;__calYM=String(d.calday).slice(0,7);return hjGoTab('schedule');}return calSelectDay(d.calday);}   // v553 첫 화면 달력 → 캘린더 탭의 그날

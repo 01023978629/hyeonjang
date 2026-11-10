@@ -3,6 +3,84 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-11 v569 🔄 클로드 명령 '구글 캘린더 일정 → 현장웹 맞추기' · 📥 캘린더 파일 가져오기의 …Z(UTC) 시각 고침
+
+- 대표 지시(11/11): "더 개발 진행 — 제미나이는 제미나이에 현장 캘린더 수정을 요청할 거야 · 다른 부분도". 일정은 제미나이가 구글 캘린더에 넣고 고친다 → 그 일정을 현장웹으로 옮기는 길(v567 맞추기 창)을 클로드에게 한 번에 시킬 수 있게.
+- 🧰 클로드 명령어 기본 명령 15 → 16: `cw_calsync` '🔄 구글 캘린더 일정 → 현장웹 맞추기'(`cwDefaultsV529` 안, `CW_META` cat 'app'·o 0 = 현장웹 분류 맨 앞, `CW_SKILL_MAP` 스킬 줄).
+  명령 내용: PC 크롬에서 구글 캘린더 월 보기 글을 읽어 [🔄 구글 캘린더 맞추기]에 붙여 넣고, 미리보기를 표로 보여 준 뒤 대표가 좋다고 한 줄만 반영. **구글은 읽기만 · 일정표를 직접 고쳐 쓰지 않고 맞추기 창만 · 오래된 창이면 먼저 알림 · 애매한 현장은 '현장 없이'.**
+  이미 쓰던 목록에는 빠진 기본 명령만 뒤에 붙는 옛 규칙 그대로(coworkTasksEnsure).
+- `parseICS`: DTSTART 가 '…Z'(UTC)면 한국 시각(+9, 날짜 넘김 포함)으로 — 예전에는 Z 를 버려 구글 내보내기의 오전 9시 일정이 0시로 들어왔다(v567 '안 한 것'). TZID·떠 있는 시각·종일(VALUE=DATE)은 그대로.
+  `importICS` 는 같은 UID 면 갱신하므로, 예전에 Z 파일을 넣어 어긋난 일정은 같은 파일을 다시 넣으면 바로잡힌다.
+- 바뀐 옛 검사(의도된 변경): claudecmds-v529 — 기본 명령 16 · 합친 목록 17 · 현장웹 분류 4줄 · NEW_IDS 에 cw_calsync.
+- 핀3곳 hyeonjang-v569-calcmd. 신규 tests/calcmd-v569.e2e.js 4/4(① parseICS 5꼴 ② importICS 09:00·다시 넣으면 갱신만 ③ 명령·분류·준비물·스킬 줄·지킬 것 ④ 핀). 기준선 v568(3b335cd)과 변이 no-z 는 ① 에서 실패 확인. claudecmds-v529 7/7.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 24분, v568·v569 포함): 461개 중 456 통과. 실패 5 = main 에서도 떨어지는 내려받기 파일 이름 환경 문제(apartment-projects · bathroom-quality-v410 · document-select · document-upload · team-workboard).
+  instanotel-v415 는 병렬에서 한 번 떨어지고 단독 재시도 통과(이 판과 무관한 화면). tests/*.check.js 19/19.
+
+## 2026-11-11 v568 📷 내역서 줄 ↔ 현장 사진 · 📑 현장 화면의 작업내역서 칸 · 🩺 '내역서에 없는 작업'
+
+- 대표 지시(11/11): "더 개발 진행 — 다른 부분도". v565 로 정산이 내역서 탭으로 왔지만 ① 내역서 줄에 사진(증빙)이 있는지 ② 현장 화면에서 그 현장이 내역서로 얼마 청구됐고 얼마 받았는지 ③ 첫 화면에서 내역서에 빠진 작업이 있는지는 따로 찾아야 했다. 모두 읽기만(새 저장 키 없음).
+- `hjStmtPhotoIndex(only)`(현장 → 한국 날짜 → 사진 수) · `hjStmtPhotoCount(idx,현장,[작업일…])` = 첫 작업일 하루 전 ~ 끝 작업일 하루 뒤의 그 현장 사진 수(v566 과 같은 여유) · `hjStmtPhotoBadge(n)` → `[data-stmt-photo=n]` '📷 n장' / '📷 사진 없음'(경고색).
+  날짜는 `hjKDayFast(f)` — `hjPhotoKoreanDay` 와 같은 값인데 Intl 포맷터를 다시 쓴다(사진 수천 장을 훑는 곳용. v566 `hjUnbilledPlan` 도 이것으로 바꿈).
+- 📑 내역서 탭 월별 현장 줄(`[data-stmt-item]`) 끝에 배지, 머리에 `[data-stmt-nophoto]` '· 📷 사진 없는 줄 n건'. 현장 미지정 줄은 배지 없음.
+- 현장 화면(현장 하나를 열었을 때, 🚚·🔧 칸 다음·준공 카드 앞) `hjProjStmtCard(p)` → `[data-pjstmt]` '📑 이 현장 작업내역서 · 협력사 청구 n줄': `[data-pjstmt-sum]` 합계(집계 제외 견적은 빼고)·받은 돈(payLog 중 stmt 있고 그 현장)·남은 돈,
+  줄 `[data-pjstmt-row]`(최근 먼저 8줄 — 작업일·작업·거래처·'집계 제외'·📷·금액), [📑 내역서 탭에서 입금·장부 보기](`data-stmt-go="estimates"`). 내역서 견적이 없는 현장엔 칸이 없다(옛 검사 화면 불변).
+- 🩺 자료 건강 줄(v524): `hjHealthData().unbilled` = `hjUnbilledCount()` — **내역서 탭이 켜져 있을 때만**(내역서 없는 자료·옛 검사는 0) v566 rows 수. 1건 이상이면 `[data-health="unbilled"]` '🧾 내역서에 없는 작업 n' → `hjUnbilledOpen()`(내역서 탭 그 칸으로). clean 조건에 포함.
+  건강 줄은 모든 화면 그리기마다 불리므로 `__hjUnbilledMemo`(자료 수·오늘 날짜가 같으면 30초) — [청구 안 함]·[다시 보기]는 바로 비운다. 머리 캡슐(v546)에는 넣지 않았다.
+- 바뀐 옛 검사(의도된 변경): stmttab-v565 ③ 현장별 줄 글에 '📷 사진 없음'.
+- 핀3곳 hyeonjang-v568-stmtphoto. 신규 tests/stmtphoto-v568.e2e.js 5/5(① 탭 줄 사진 수(앞뒤 하루)·사진 없는 줄 ② 현장 화면 칸·합계/받은 돈/남은 돈·줄 순서·없는 현장 ③ 건강 줄·누르면 탭·넘기면 바로 줄어듦·내역서 없는 자료에선 없음 ④ 폰 390·자료 불변 ⑤ 핀).
+  기준선 v567(dad8e8a)과 변이 same-day(앞뒤 하루 여유 삭제)는 ① 에서 실패 확인. 같이 돌림: stmttab-v565 · unbilled-v566 · calsync-v567 · healthline-v524 · headerui-v546 · dash-cards · stmtunit-v537 · mobile-screen-layout · photo-first-screen · pconly-v536 · casefolder-v525 · bentodash-v547 · board-v351 통과.
+- 안 한 것: 사진 없는 줄에서 그날 '현장 없는 사진'을 그 현장으로 배정 제안(운영 자료의 미배정 사진은 11/10 기준 1장), 현장 목록(전체 보기)에 내역서 합계 표시.
+
+## 2026-11-10 v567 🔄 구글 캘린더 맞추기 — 읽은 일정을 미리보기로 견줘 고른 것만 반영
+
+- 대표 지시(11/10): "현장 웹 개발을 맡아서 진행 — 최근 운영 방법에 개발 가능 부분". 그날 대표는 "구글 캘린더를 보고 현장 웹에 반영해줘, @ 표시는 제미나이가 한 거야"라고 했고,
+  클로드가 PC 크롬에서 캘린더 화면 글을 읽어 일정 5건을 손으로 넣고(오래된 PC 탭이라 서버 최신본을 먼저 받아야 했다) 구글 쪽 중복('@제목' + 앱 일정이 올라간 '[현장명] 제목')을 손으로 지웠다.
+  기존 📥 캘린더 파일 가져오기(`importICS`)는 미리보기·현장 연결·중복 가리기가 없고, `parseICS` 가 '…Z'(UTC)를 그대로 써 구글 내보내기 시각이 9시간 어긋난다(이번에 importICS 는 손대지 않음).
+- 입구: 📅 일정표 달력 아래 `#schCalSync` [🔄 구글 캘린더 맞추기] → `hjCalSyncView()`(창 `#hjCalSync`): [📂 캘린더 파일(.ics) 고르기](`#csFile`) 또는 글 붙여 넣기(`#csText`) + [읽기](`#csRead`) → 미리보기(`#csBody`) → [체크한 일정 반영](`#csApply`).
+- 읽기 `hjCalSyncParse(text)`: 'BEGIN:VEVENT' 가 있으면 `hjCalSyncParseIcs`(…Z → 한국 시각 +9 · VALUE=DATE 종일 · TZID 는 적힌 시각 그대로 · DTEND 로 시간 수 · STATUS:CANCELLED),
+  아니면 `hjCalSyncParseText` — 구글 캘린더 화면 글 한 줄 꼴만: '오전 9시~오후 5시, 제목, 캘린더(주인), 위치: …|위치 없음, 2026년 11월 6일' · '종일, …' · '2026년 11월 2일 오후 7:20~…, 제목, …, 위치: …,'.
+  제목은 첫 ', ' 와 마지막 ', 위치' 사이에서 끝 조각(캘린더·주인)을 뗀 것 — 제목 안 쉼표는 남는다. 휴일·생일·'일정 n개' 같은 다른 줄은 안 읽는다. 똑같은 줄은 한 번.
+- 견주기 `hjCalSyncPlan(events,{from})`(읽기만): 제목 맨 앞 '@'(제미나이)·'[현장명]'(앱이 올린 표시)을 떼고(`hjCalSyncTitle`) 글자·숫자만 남긴 열쇠(`hjCalSyncKey`)로 비교. 같은 날 같은 열쇠는 한 줄(`dupN`, stats.gdup).
+  `status`: new(체크됨 — 현장 제안: '[현장명]' 이 보관 안 한 현장이면 그것, 아니면 `hjStmtMatch(제목+위치)` 0.6↑) · time(같은 날 시각 다름) · move(앞뒤 21일 안 같은 제목 → 구글 날짜로, 작업 보고한 일정 제외) ·
+  apponly(읽은 날짜 범위 안에서 구글에 없는 앱 일정 — 체크 해제, 작업 보고한 일정·💰·세금 자동·개인 일정(sourceUid) 제외). 건너뜀: '[파수꾼]'·💰·생일·취소·7일보다 오래된 일정(`HJ_CALSYNC_BACK`).
+- 반영 `hjCalSyncApply(plan,picks)`: 오래된 창 거부 → 미리보기 뒤 일정표가 바뀌었으면(`hjCalSyncStamp`) 거부 → `hjSnapshot('구글 캘린더 맞추기 전')` 1회(실패면 무변경) → new 는 `newSchedule()` + 제목(표시 뗀 것)·현장·시간 수·메모('장소: …', '구글 캘린더에서 가져옴 (@ 제미나이 입력)')·`icsUid`,
+  time·move 는 그 일정의 시각·날짜만, apponly 는 confirm 뒤 삭제. **구글 캘린더는 읽기만** — 구글 쪽 중복 정리는 사람이 구글에서(창에 안내). 새 저장 키 없음.
+- 알아둘 것: 앱 일정에 현장을 달면 운영 쪽 동기화가 구글에 '[현장명] 제목'을 올려 '@제목'과 두 번 보인다(11/10 실측 — 이 저장소 Watchdog.gs 에는 그 코드가 없다, 운영 스크립트가 다름). 다음에 읽으면 한 줄로 보고 '이미 같음'.
+  폰에서는 구글 캘린더 앱이 .ics 를 내보내지 못한다 — PC 구글 캘린더 설정 › 가져오기/내보내기, 또는 클로드가 캘린더 화면 글을 읽어 붙여 넣는다.
+- 핀3곳 hyeonjang-v567-calsync. 신규 tests/calsync-v567.e2e.js 6/6(시계 2026-11-10 고정 · 합성 이름: ① 글 읽기 ② .ics(…Z·종일·TZID·취소) ③ 계획 8줄·통계 ④ 창에서 반영·안전판·제목에 '@' 없음
+  ⑤ 앱에만 있는 일정은 체크·확인 뒤에만 지움 · 안전판 실패·일정표 바뀜·오래된 창 무변경 ⑥ 폰 390·핀). 기준선 v566(79a1e4e)은 ①, 변이 utc-raw(…Z 를 안 바꿈)는 ② 에서 실패 확인.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 24분, v565~v567 한꺼번에): 459개 중 454 통과. 실패 5 = apartment-projects · bathroom-quality-v410 · document-select · document-upload · team-workboard —
+  main 에서도 떨어지는 내려받기 파일 이름 환경 문제(v557·v564 기록과 같은 5개). warrantycare-v438 은 병렬에서 한 번 떨어지고 단독 재시도 통과(v564 기록의 그 흔들림). tests/*.check.js 19/19(office-ops-server-isolation 은 얕은 복제면 기준 커밋이 없어 떨어진다 — `git fetch --depth=4000 origin main` 뒤 통과).
+- 안 한 것: 구글 캘린더를 직접 읽기(서버 Apps Script 의 CalendarApp — apps-script/ 는 보호 대상이고 배포는 대표 손), 기존 importICS 의 …Z 고침, 여러 날 일정(끝 날짜) 반영, 🧰 클로드 명령어에 '캘린더 맞추기' 명령 추가.
+
+## 2026-11-10 v566 🧾 내역서에 아직 없는 작업 — 사진·일정 ↔ 작업내역서 대조
+
+- 대표 지시(11/10): "사진 및 현장 관리에 개발 가능 부분 개발 진행". 내역서로 청구하려면 한 일이 내역서 줄에 들어가야 하는데, 빠진 작업은 사진 날짜와 내역서를 손으로 맞춰야 찾았다(10/31 클로드가 손으로 — 🧰 '청구 안 된 작업 찾기').
+- `hjUnbilledPlan({days})`(읽기만): 최근 90일(`HJ_UNBILLED_DAYS`), 보관 안 한 현장의 사진 찍은 날(`hjPhotoKoreanDay`)과 일정 날(💰·세금 자동·개인 일정 제외, 오늘까지)을 현장별로 모아 하루 이내로 이어지는 날을 한 작업(run {project,from,to,photos,titles,works})으로.
+  그 현장 내역서 줄(`q.stmt.lines[].d`, 없으면 작성일 — 집계 제외 내역서도 청구한 것으로 봄)이 작업 **앞뒤 하루 안**에 있으면 들어간 작업. 남은 것 = rows(최근 먼저).
+  참고(refs): 견적서로 청구하는 현장(견적 파일·보통 앱 견적은 있고 내역서는 없음 — `byEst`) · 사진 없이 방문·견적·상담·실측·미팅·점검 일정만 있는 날(`visit`, `HJ_UNBILLED_VISIT_RE`).
+- 화면 `hjUnbilledHTML()` — 📑 내역서 탭(v565) 장부 바로 아래 `[data-unbilled]`: '🧾 내역서에 아직 없는 작업 n건'(`data-unbilled-n`), 줄 `[data-unbilled-row=현장]`('11/5(목)~11/6(금) 현장 — 일정 제목(없으면 사진 작업명) · 사진 n장') + [현장](`data-open`) + [청구 안 함](`data-unbilled-skip` · data-from·data-to),
+  20줄 넘으면 '외 n건', 참고는 `<details data-unbilled-refs>`(접힘), 다 들어가 있으면 `[data-unbilled-ok]`. [📋 글로 복사](`data-unbilled-copy` → `hjUnbilledText` — 다음 내역서를 쓸 때 붙일 글, 금액·고객 정보 없음).
+- [청구 안 함] `hjUnbilledSkip(name,from,to)`: 그 현장 안 `p.stmtSkip=[{from,to,at}]`(60개까지)에만 적는다 — 새 최상위 저장 키 없음(serialized-keys 42 그대로), 오래된 창이면 안 적음. [넘긴 작업 다시 보기] `hjUnbilledUnskip()` 는 최근 90일 표식을 지운다.
+- 핀3곳 hyeonjang-v566-unbilled. 신규 tests/unbilled-v566.e2e.js 6/6(날짜는 오늘 기준 합성: ① 묶음·앞뒤 하루·보관/90일 밖/💰/내일 일정/현장 없는 사진 제외·참고 2종·읽기만 ② 장부 아래·월별 위·복사 글 ③ stmtSkip·다시 보기·오래된 창 ④ 내역서 반영 뒤 ✓ ⑤ 폰 390 ⑥ 핀).
+  기준선 v565(bca637c)와 변이 no-tolerance(앞뒤 하루 여유 삭제)는 ① 에서 실패 확인.
+- 안 한 것: 첫 화면 '오늘 챙길 일'·🩺 건강 줄에 건수 넣기, 줄에서 바로 내역서 줄 만들기(금액은 사람이 정한다), 사진 미리보기.
+
+## 2026-11-10 v565 📑 내역서 탭 — '견적·정산' 탭을 작업내역서 중심으로
+
+- 대표 지시(11/10): "견적, 정산은 내역서로 대체할 거야". v561~v564 로 매출·마진·브리핑은 작업내역서 기준이 됐지만 '견적·정산' 탭(폰 하단 [정산])은 견적서 파일 목록 그대로였고, 📑 장부는 ✍ 견적 작성 탭 안에 있었다.
+- `hjStmtTabOn()` = 매출 기준이 작업내역서(`hjSalesBasis()==='stmt'`)이거나 📑 반영한 내역서 견적(`q.stmt.key`)이 하나라도 있음. 켜지면 render 가 `hjStmtTabApply()` 로 탭 글자 '📑 내역서'·배지(`#bEst` = 장부 장 수)·제목 '작업 내역서'·
+  폰 하단 칸(📑 내역서, aria-label '내역서, 작업내역서 장부')을 바꾸고 `estimates` 탭이 `viewStatements()` 를 그린다. **탭 id(`estimates`)·`data-mnav` 는 그대로**(즐겨찾기·딥링크·직원 모드 숨김 유지).
+  꺼져 있으면(내역서 0건 + 매출 기준 견적) 예전 '견적·정산' 그대로 — 데모·옛 검사는 한 글자도 안 바뀐다. 11/10 운영 자료: 매출 기준은 아직 '견적', 앱 견적 32건이 모두 내역서 견적 → 배포되면 바로 내역서 탭.
+- `viewStatements()`(`[data-stmt-view]`, 읽기만): [📑 작업내역서 반영](같은 `#qmStmt`)·[✍ 견적 작성] → 매출 기준이 견적이면 안내 줄 `[data-stmt-basis-hint]` + [📑 매출은 작업내역서만 세기](`data-stmt-basis` → `hjSalesBasisSet(true)`, 대표가 직접 누름)
+  → 숫자 칸 `[data-stmt-kpi=cur|prev|left|paid|year]`(이번 달·지난달 매출(내역서) = `hjStmtEntries()` — 매출 한 벌에서 내역서 줄만, v564 와 같은 거르기 · 받을 돈 = `hjStmtLedger` 남은 돈 합 · 이번 달 받은 돈 = payLog 중 stmt 기록 · 올해 누계)
+  → v527 장부 `hjStmtLedgerHTML()` 그대로(💰 입금·🏦 통장 맞추기·📋 미수 안내·📂 폴더 내역서·🏢 세대 등록 — #view 위임이라 이 탭에서도 눌린다) → (v566 줄) → 월별 `[data-stmt-ym=YYYY-MM]`(aria-pressed, 그 달 받은 돈 포함)
+  → 고른 달 현장별 `[data-stmt-month-list]`·`[data-stmt-item]`(작업일 · 현장 단추(`data-open`) · 작업 2개까지 · 거래처 · 금액) → 맨 아래 `<details data-stmt-old>` '📄 견적서 파일 · 예전 견적·정산 화면 (n건)' — **펼칠 때만** `viewEstimates()` 를 그린다(`__hjStmtOldOpen`, 화면만).
+  고른 달 `__hjStmtYm`·펼침은 저장하지 않는다. ✍ 견적 작성 탭의 장부는 그대로 뒀다(같은 함수).
+- 핀3곳 hyeonjang-v565-stmttab. 신규 tests/stmttab-v565.e2e.js 6/6(① 꺼짐 = 예전 그대로 ② 탭·배지·제목·숫자 칸(견적서·수주 앱 견적·집계 제외 빠짐)·장부 ③ 월 줄·현장 단추·[💰 입금] 창 ④ 예전 화면 접힘/펼침 유지·매출 기준 켜기·내역서 0건이어도 기준이 내역서면 내역서 탭 ⑤ 폰 390·자료 불변 ⑥ 핀).
+  기준선 main(909eb28, v564)과 변이 count-all(내역서 거르기 삭제)은 ② 에서 실패 확인. 같이 돌림: nav5-v550 · mobile-screen-layout · mobile-todo-nav · stmtpay-v527 · stmtimport-v526 · stmtdun-v535 · stmtunit-v537 · salesbasis-v561 · marginstmt-v562 · briefslim-v564 · claudecmds-v529 · quote-edit-safety · rehearsalfix-v450 통과.
+- 안 한 것(대표 결정 대기): 탭 줄에서 ✍ 견적 작성·💼 회계와의 자리 정리, 현장 화면의 '견적·정산' 칸 이름, 더보기·도움말 글의 '견적·정산' 낱말, 고객에게 나가는 청구 숫자(est·bill·due — v561 부터 그대로).
+
 ## 2026-11-08 v564 ☀️ 오늘의 브리핑 줄이기 — 날씨·일정·💰 이번 달 매출(작업내역서)만
 
 - 대표 지시(11/8, v563 브리핑 목록을 보고): "2,3,4,5,6은 브리핑에서 빼고 7번은 내역서로 월 매출로 표시해줘".

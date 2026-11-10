@@ -1,6 +1,6 @@
 /* v529 🧰 클로드 명령어 모음 — 10/31 대표 "이렇게 클로드가 개입할 수 있도록 명령어 모음집을 추가해줘". 합성 상태만, 바깥 쓰기 0.
    옛 🖥 Cowork 작업 지휘부(명령 5개)를 분류·준비물·찾기가 있는 명령어 모음으로. 10/31 클로드가 손으로 한 일 10가지를 기본 명령으로 더했다.
-   ① 기본 명령 15개: 새 10개 + 옛 5개 · 모두 분류·준비물 · 자료를 만지는 명령엔 지킬 것(삭제 금지·보관 폴더·백업·계좌 비움·병합 안 함) ·
+   ① 기본 명령 16개(v569 🔄 구글 캘린더 맞추기 포함): 새 10개 + 옛 5개 · 모두 분류·준비물 · 자료를 만지는 명령엔 지킬 것(삭제 금지·보관 폴더·백업·계좌 비움·병합 안 함) ·
       이미 쓰던 목록에는 빠진 것만 뒤에 붙고 고친 명령·내 명령은 그대로 (DEFAULTS)
    ② 화면: 더보기 '🧰 클로드 명령어'(찾기 '명령어') → 분류 순서 사진·견적·정산·저장·내 명령 · 분류 안 순서는 정해진 순서(옛 명령이 앞에 저장돼 있어도) ·
       준비물 줄 · 내 명령 표시 · 내가 쓴 이름·아이콘은 글자로만 (UI)
@@ -52,7 +52,7 @@ async function openPage(width) {
   await page.evaluate(() => { window.__copied = []; try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(String(t)); return Promise.resolve(); } } }); } catch (e) { window.__clipErr = String(e); } });
   return { context, page };
 }
-const NEW_IDS = ['cw_photoin', 'cw_chatphoto', 'cw_photoassign', 'cw_dupe', 'cw_stmt', 'cw_salescheck', 'cw_pay', 'cw_unbilled', 'cw_save', 'cw_dev'];
+const NEW_IDS = ['cw_photoin', 'cw_chatphoto', 'cw_photoassign', 'cw_dupe', 'cw_stmt', 'cw_salescheck', 'cw_pay', 'cw_unbilled', 'cw_calsync', 'cw_save', 'cw_dev'];
 const OLD_IDS = ['cw_card', 'cw_tax', 'cw_photo', 'cw_bugtest', 'cw_month'];
 // 이미 쓰던 목록: 옛 기본 5개(카드 명령은 대표가 고침) + 내 명령 1개(이름·아이콘에 꺾쇠)
 const SEED_OLD = () => {
@@ -69,7 +69,7 @@ const withSeed = fn => '(() => { const SEED_OLD = ' + SEED_OLD.toString() + '; r
   async function test(name, fn) { await fn(); passed++; console.log('PASS claudecmds-v529 ' + name); }
   const { context, page } = await openPage(1280);
 
-  await test('① 기본 명령 15개 · 분류·준비물 · 지킬 것 · 쓰던 목록엔 빠진 것만 (DEFAULTS)', async () => {
+  await test('① 기본 명령 16개(v569 🔄 구글 캘린더 맞추기 포함) · 분류·준비물 · 지킬 것 · 쓰던 목록엔 빠진 것만 (DEFAULTS)', async () => {
     const r = await page.evaluate(({ NEW_IDS, OLD_IDS }) => {
       const d = coworkDefaults(), ids = d.map(t => t.id);
       const by = id => d.find(t => t.id === id) || {};
@@ -83,14 +83,14 @@ const withSeed = fn => '(() => { const SEED_OLD = ' + SEED_OLD.toString() + '; r
         noCowork: d.filter(t => NEW_IDS.includes(t.id)).every(t => !/Cowork/i.test(t.prompt + t.title)),
       };
     }, { NEW_IDS, OLD_IDS });
-    assert.deepEqual(r, { n: 15, uniq: 15, has: true, builtin: true, meta: true, shape: true, safe: true, acct: true, pay: true, dev: true, kakao: true, noCowork: true }, 'DEFAULTS ' + JSON.stringify(r));
+    assert.deepEqual(r, { n: 16, uniq: 16, has: true, builtin: true, meta: true, shape: true, safe: true, acct: true, pay: true, dev: true, kakao: true, noCowork: true }, 'DEFAULTS ' + JSON.stringify(r));
     const m = await page.evaluate(withSeed(() => {
       SEED_OLD();
       const t = coworkTasksEnsure();
       return { n: t.length, head: t.slice(0, 6).map(x => x.id), tail: t.slice(6).map(x => x.id), card: t[0].prompt, mine: t[5].title };
     }));
     assert.deepEqual(m.head, ['cw_card', 'cw_tax', 'cw_photo', 'cw_bugtest', 'cw_month', 'cw_mine1'], 'MERGE keeps the saved order ' + JSON.stringify(m));
-    assert(m.n === 16 && m.tail.length === 10 && NEW_IDS.every(id => m.tail.includes(id)) && m.card === '고친 카드 명령 {오늘}' && /^통장 정리/.test(m.mine), 'MERGE appends only missing defaults ' + JSON.stringify(m));
+    assert(m.n === 17 && m.tail.length === 11 && NEW_IDS.every(id => m.tail.includes(id)) && m.card === '고친 카드 명령 {오늘}' && /^통장 정리/.test(m.mine), 'MERGE appends only missing defaults ' + JSON.stringify(m));
   });
 
   await test('② 화면 — 더보기 이름·찾기 · 분류 순서 · 분류 안 순서 · 준비물 · 내 명령 · 글자로만 (UI)', async () => {
@@ -111,10 +111,10 @@ const withSeed = fn => '(() => { const SEED_OLD = ' + SEED_OLD.toString() + '; r
     });
     assert(/🧰 클로드 명령어 모음/.test(ui.title), 'UI title ' + ui.title);
     assert.deepEqual(ui.cats, ['photo', 'money', 'tax', 'app', 'mine'], 'UI category order');
-    assert.deepEqual(ui.counts, [5, 4, 3, 3, 1], 'UI rows per category ' + JSON.stringify(ui.counts));
+    assert.deepEqual(ui.counts, [5, 4, 3, 4, 1], 'UI rows per category ' + JSON.stringify(ui.counts));
     assert.deepEqual(ui.photo, ['cw_photoin', 'cw_chatphoto', 'cw_photoassign', 'cw_dupe', 'cw_photo'], 'UI fixed order inside a category even though cw_photo is saved first');
     assert.deepEqual(ui.money, ['cw_stmt', 'cw_salescheck', 'cw_pay', 'cw_unbilled']);
-    assert(ui.prep && ui.btns === 16 && /내 명령/.test(ui.mine) && /통장 정리 <img src=x/.test(ui.mine) && ui.imgs === 0 && !ui.xss, 'UI prep lines, my command badge, text only ' + JSON.stringify(ui));
+    assert(ui.prep && ui.btns === 17 && /내 명령/.test(ui.mine) && /통장 정리 <img src=x/.test(ui.mine) && ui.imgs === 0 && !ui.xss, 'UI prep lines, my command badge, text only ' + JSON.stringify(ui));
     assert(/클로드 대화창/.test(ui.how) && /로그인은 직접/.test(ui.how) && !/Cowork/.test(ui.how), 'UI how-to ' + ui.how);
   });
 
@@ -154,7 +154,7 @@ const withSeed = fn => '(() => { const SEED_OLD = ' + SEED_OLD.toString() + '; r
     assert.deepEqual((await look('카톡  사진')).rows, ['cw_photoin', 'cw_chatphoto'], 'FILTER every word');
     assert.deepEqual(await look('저장'), { rows: ['cw_save'], cats: ['app'], none: false }, 'FILTER 저장');
     assert.deepEqual(await look('없는말zzz'), { rows: [], cats: [], none: true }, 'FILTER nothing → hint');
-    assert.equal((await look('')).rows.length, 16, 'FILTER cleared → all');
+    assert.equal((await look('')).rows.length, 17, 'FILTER cleared → all');
     await page.evaluate(() => closeModal());
   });
 
