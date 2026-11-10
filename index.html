@@ -42893,6 +42893,635 @@ function aptReportView(pjName){
    다음 지시서 번호를 적어 둔다 — 눌러도 아무 데도 가지 않는다는 것을 토스트로 말한다. 기존 8개 진입점(완료보고서·하자보증서·
    보증서 문자·간이영수증·정산 문서·ZIP·PDF 묶음·포트폴리오)은 같은 함수로 그대로 연다. */
 const HJ_DOC433_PLANNED=Object.freeze({compare:'v437',prep:'v437',wo:'v432',aftercare:'v438'});
+/* ═══ v570 📑 계약·확인 양식 9종 — 대표가 2026-11-09 전달한 「만물인테리어 문서양식 9종」(원본 docs/문서양식/)을 📎 서류 만들기에 넣는다 ═══
+   · 문구(조항·안내문·칸 이름·순서)는 docx/PDF 그대로 — 고치거나 지어내지 않는다. 양식을 바꾸려면 docs/문서양식 원본과 아래 HJ_FORM9_HTML 을 같이 바꿔라.
+   · 앱 자료로 채울 수 있는 칸만 채우고 모르는 값은 빈칸(손글씨). 숫자를 지어내지 않는다 — 계약금액은 서명 계약 기록(contractLog) → 청구 공사대금(projStats.bill),
+     부가세 □ 는 그 출처가 확실할 때만, 공사기간은 이 현장 작업 일정 범위(hjAptSchedRows), 보증 기간은 양식 글자 그대로(법정 3/2/1 — WARRANTY_ITEMS_DEFAULT 와 같은 값).
+   · 06·07 의 주민등록번호·계좌 칸과 09 의 받을 계좌는 늘 빈칸이고 입력칸도 없다 — 저장하지 않는다(v442 피해 확인서 규칙). 07 의 소득세·지방소득세·실지급액도 손글씨.
+   · 모델·미리보기는 읽기 전용. 발행 기록은 PDF·워드·HTML 을 실제로 가져간 때만 v433 엔진(hjDoc433IssueQuiet → 현장 레코드 p.docs, 최상위 직렬화 키 그대로).
+   · 입력 화면(openModal) 값은 그 화면 동안만(resume 객체) — 고객·근로자 정보를 따로 저장하지 않는다. 회사 정보는 COMPANY 상수에서. */
+const HJ_FORM9=Object.freeze({
+  contract:Object.freeze({n:'01',t:'공사도급계약서',prefix:'CT',ic:'📜',sub:'',
+    desc:'양식 01 — 13개 조항·특약·서명란까지 종이 계약서. 「📝 계약서 초안」(문자 초안·전자계약)과 다른 인쇄용 정식 양식.'}),
+  finish:Object.freeze({n:'02',t:'마감재 선택 확인서',prefix:'FS',ic:'🎨',sub:'시공에 쓸 마감재의 제품·색상을 발주 전에 함께 확인하는 문서입니다.',
+    desc:'양식 02 — 공간·품목·제품명·품번·색상 13줄 확인표. 품목은 견적에서 미리 적어 둘 수 있어요.'}),
+  change:Object.freeze({n:'03',t:'추가·변경 공사 합의서',prefix:'CO',ic:'🖊',sub:'공사 중 추가·변경되는 작업의 내용과 금액을 시공 전에 서로 확인하는 문서입니다(공사도급계약서 제6조).',
+    desc:'양식 03 — 「🖊 추가공사 확인」 기록을 골라 담는 합의서 양식(확인 글·견적 담기는 그 화면이 합니다).'}),
+  photoconsent:Object.freeze({n:'04',t:'시공 사진 활용 동의서',prefix:'PC',ic:'📸',sub:'만물인테리어가 시공 사진을 시공 사례로 소개하는 데 대한 동의서입니다.',
+    desc:'양식 04 — 사진·올리는 곳·지역 표시 범위는 고객이 ✓. 「📰 사례 내보내기」 동의의 종이 양식.'}),
+  subwork:Object.freeze({n:'05',t:'외주 작업 발주·확인서',prefix:'SW',ic:'🔧',sub:'전문팀에 맡기는 작업의 범위·금액·조건을 작업 전에 정하고, 끝난 뒤 함께 확인하는 문서입니다.',
+    desc:'양식 05 — 📇 거래처(외주)에서 팀을 고르면 수급자 칸이 채워져요. 「🔧 외주 견적 요청」에서 고른 금액을 가져옵니다.'}),
+  daylabor:Object.freeze({n:'06',t:'일용근로계약서',prefix:'DL',ic:'👷',sub:'건설 일용근로자의 근로조건을 서면으로 정하고, 1부를 근로자에게 드립니다(근로기준법 제17조).',
+    desc:'양식 06 — 👷 팀원 연락처에서 근로자를 고르면 성명·연락처·일급이 채워져요. 주민번호 칸은 없어요.'}),
+  wagepay:Object.freeze({n:'07',t:'노임 지급 확인서',prefix:'WP',ic:'💸',sub:'일용 근로 노임을 지급하고 받은 금액을 확인하는 문서입니다. 근로자 1명당 1장씩 씁니다.',
+    desc:'양식 07 — 그 달 👷 인건비 장부의 사람별 공수가 근로 내역에 들어가요. 주민번호·계좌·세액은 손글씨.'}),
+  asfix:Object.freeze({n:'08',t:'하자보수(AS) 처리 확인서',prefix:'AF',ic:'🛠',sub:'접수된 하자의 확인 결과와 처리 내용을 기록하고, 보수 완료를 함께 확인하는 문서입니다.',
+    desc:'양식 08 — AS 접수를 고르면 접수일·내용·보증·처리 내용이 채워져요. 「🧰 수리·작업 확인서」와 다른 AS 전용 양식.'}),
+  cancel:Object.freeze({n:'09',t:'공사계약 해제 합의서',prefix:'CX',ic:'🚫',sub:'체결한 공사도급계약을 서로 합의해 해제하고, 이미 받은 돈과 들어간 비용을 정산하는 문서입니다.',
+    desc:'양식 09 — 계약 기록·받은 돈이 채워지고 ②③④는 적어 넣어요. 받을 계좌는 손글씨.'})
+});
+const HJ_FORM9_KEYS=Object.freeze(Object.keys(HJ_FORM9));
+const HJ_FORM9_EDITION='2026.11';   // 양식 판(원본 PDF 바닥글 '양식 01 · … · 2026.11') — 사용자 날짜가 아니라 양식의 판이다
+const HJ_FORM9_TEXT_MAX=600;
+const HJ_FORM9_YM_RE=/^\d{4}-\d{2}$/;   // 정규식은 상수로(office-ops-isolation 토크나이저가 && 뒤 정규식 리터럴을 못 읽는다)
+/* v433 발행 기록 종류 표에 얹을 9종 — HJ_DOC433_TYPES 가 이 함수로 펼친다(이름·접두 한 곳). */
+function hjForm9DocTypes(){const o={};HJ_FORM9_KEYS.forEach(k=>{o[k]=Object.freeze({t:HJ_FORM9[k].t,prefix:HJ_FORM9[k].prefix,ic:HJ_FORM9[k].ic});});return o;}
+function hjF9Text(v,max){return typeof v==='string'?v.slice(0,max||HJ_FORM9_TEXT_MAX):(v==null?'':String(v).slice(0,max||HJ_FORM9_TEXT_MAX));}
+function hjF9Blank(n){return '<span class="bl" style="min-width:'+(n||80)+'px">&nbsp;</span>';}
+function hjF9Cell(v,n){const s=hjF9Text(v).trim();return s?escapeHtml(s):hjF9Blank(n);}
+function hjF9Box(on,label){return '<span class="ck'+(on?' on':'')+'" data-f9-box="'+(on?'1':'0')+'">'+(on?'☑':'□')+'</span>'+(label?' '+escapeHtml(label):'');}
+function hjF9Pick(opts,picked){return opts.map(o=>o===picked?'<span class="pick">'+escapeHtml(o)+'</span>':escapeHtml(o)).join(' · ');}
+function hjF9Date(ymd){const s=String(ymd||'');return HJ_YMD_RE.test(s)?escapeHtml(s.replace(/-/g,'. ')+'.'):'20'+hjF9Blank(26)+'.'+hjF9Blank(22)+'.'+hjF9Blank(22)+'.';}
+function hjF9DateKo(ymd){const s=String(ymd||'');if(HJ_YMD_RE.test(s)){const a=s.split('-');return a[0]+'년 '+Number(a[1])+'월 '+Number(a[2])+'일';}return '20'+hjF9Blank(26)+'년'+hjF9Blank(22)+'월'+hjF9Blank(22)+'일';}
+function hjF9Money(n,w){n=Math.round(num(n));return n>0?hjNum(n):hjF9Blank(w||110);}
+function hjF9Num(v){const s=String(v==null?'':v).trim();return s===''?null:Math.round(num(s));}   // 입력칸 숫자 — 비우면 null(0 과 구분)
+function hjF9Site(p){const addr=hjF9Text(p&&p.customer&&p.customer.addr,300).trim();const nm=String(p&&p.name||'');return addr&&nm.indexOf(addr)<0?nm+' · '+addr:nm;}
+/* 지급 계좌 — COMPANY.accounts 를 양식 순서(대표 계좌 먼저)로, 양식 표기 '(예금주 전병덕·만물인테리어)' 꼴. */
+function hjF9Accounts(){
+  const own=a=>String(a&&a.holder||'').indexOf(COMPANY.owner)>=0?1:0;
+  return (COMPANY.accounts||[]).filter(a=>a&&a.no).slice().sort((a,b)=>own(b)-own(a))
+    .map(a=>String(a.bank||'')+' '+String(a.no)+' (예금주 '+String(a.holder||'').replace(/\s*\((.+)\)\s*$/,'·$1')+')');
+}
+/* 공사기간 — 이 현장 작업 일정 범위(상담·실측·💰·세금 제외, v441 과 같은 필터). 일수는 달력일(끝−시작+1). 일정이 없으면 빈칸. */
+function hjF9Period(p){
+  let from='',to='';
+  hjAptSchedRows(p).forEach(s=>{const sp=hjSchSpan(s);if(!from||sp.from<from)from=sp.from;if(!to||sp.to>to)to=sp.to;});
+  const days=(from&&to)?Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1:0;
+  return {from,to,days:days>0?days:0};
+}
+/* 공통 바탕 — 고객·견적·계약 기록·공사기간·받은 돈. 읽기 전용. */
+function hjF9Base(p){
+  const cust=p.customer&&typeof p.customer==='object'?p.customer:{};
+  let d=null;try{d=settleDocData(p.name);}catch(e){d=null;}
+  const quotes=(state.quotes||[]).filter(q=>q&&q.project===p.name).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  const q=(d&&d.quote)||quotes[0]||null;
+  const logs=Array.isArray(p.contractLog)?p.contractLog.filter(L=>L&&typeof L==='object'):[];
+  const L=logs.slice().reverse().find(x=>x.serverStatus==='COMPLETED')||logs[logs.length-1]||null;   // 서명 완료 기록 우선, 없으면 마지막 발송
+  let amount=0,vat=null,amountSrc='';
+  if(L&&num(L.amount)>0){amount=Math.round(num(L.amount));amountSrc='contract';if(typeof L.vatIncluded==='boolean')vat=L.vatIncluded;}
+  else if(d&&num(d.s&&d.s.bill)>0){
+    /* 청구 공사대금(bill = 견적 + '부가세 별도' 견적의 세액). 부가세 □ 는 이 현장 앱 견적이 모두 같은 표기이고 표기 모를 견적 파일이 없으며
+       세액 유무가 그 표기와 맞을 때만 — '별도'면 금액은 세액을 뺀 견적 금액(금액과 □ 가 같은 말을 하게), 아니면 금액만 적고 □ 는 비운다. */
+    const bill=Math.round(num(d.s.bill)),bv=Math.round(num(d.s.billVat));amount=bill;amountSrc='bill';
+    const same=quotes.length>0&&quotes.every(x=>typeof x.vatIncluded==='boolean'&&x.vatIncluded===quotes[0].vatIncluded)&&!(d.billVatUnknown||[]).length;
+    if(same&&quotes[0].vatIncluded===true&&bv===0)vat=true;
+    else if(same&&quotes[0].vatIncluded===false&&bv>0&&bill-bv>0&&!(state.files||[]).some(f=>f&&f.project===p.name&&f.kind==='estimate'&&!f._fromQuote&&!f._virtual)){vat=false;amount=bill-bv;}   // 견적 파일(부가세 포함 금액)이 섞이면 '별도'라 말하지 않는다
+  }
+  const items=q?quoteRealItems(q).map(it=>({name:hjF9Text(it.name,120).trim(),spec:hjF9Text(it.spec,80).trim(),qty:it.qty==null||it.qty===''?'':String(it.qty)})).filter(it=>it.name):[];
+  return {p,cust,q,quoteNo:q?hjF9Text(q.no,40).trim():'',items,scope:items.map(it=>it.name).slice(0,6).join(', '),
+    amount,vat,amountSrc,contractDay:L?hjIsoLocalDay(L.at):'',contractNo:L?hjF9Text(L.contractNo,40):'',received:d?Math.round(num(d.s.recv)):Math.round(num(p.received)),
+    period:hjF9Period(p),site:hjF9Site(p),doneAt:HJ_YMD_RE.test(String(p.doneAt||''))?p.doneAt:''};
+}
+/* 양식 공통 틀 — A4 인쇄용(hjDocShell 과 같은 @media print·keep 규칙), 머리 '만물인테리어 / No.', 바닥글은 원본 PDF 그대로(회사 정보는 COMPANY). */
+function hjF9Shell(key,inner,no){
+  const d=HJ_FORM9[key];
+  return '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>'+escapeHtml(d.t)+' — '+escapeHtml(COMPANY.name)+'</title>'+
+    '<style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Noto Sans KR",sans-serif;background:#f2f5f9;color:#1a2637;padding:14px}'+
+    '.doc{max-width:760px;margin:0 auto;background:#fff;border-radius:10px;padding:26px 30px 22px;box-shadow:0 4px 20px rgba(0,0,0,.08)}'+
+    '.hd{display:flex;justify-content:space-between;align-items:baseline;font-size:12px}.hd .co{color:#0b4ea2;font-weight:800}.hd .no{color:#5e6b7d}'+
+    'h1{text-align:center;font-size:24px;letter-spacing:5px;margin:12px 0 4px;color:#1a2637}.sub{text-align:center;font-size:12px;color:#5e6b7d;margin:0 0 8px;line-height:1.6}'+
+    '.rule{border-top:2px solid #0b4ea2;margin:8px 0 12px}.sec{font-size:13px;font-weight:800;margin:14px 0 6px}.sec::before{content:"■ ";color:#0b4ea2}'+
+    'table.f9{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:8px}.f9 th,.f9 td{border:1px solid #b8c7da;padding:7px 9px;vertical-align:middle;text-align:left;line-height:1.6}'+
+    '.f9 th{background:#e8f0f8;font-weight:700;text-align:center;width:104px}.f9 thead th{width:auto}.f9 .c{text-align:center}.f9 .r{text-align:right}.f9 .tall td{height:46px}'+
+    '.bl{display:inline-block;border-bottom:1px solid #8c97a6}.ck{font-size:14px;color:#5e6b7d}.ck.on{color:#0b4ea2}.pick{border:1.5px solid #0b4ea2;border-radius:50%;padding:0 3px;color:#0b4ea2;font-weight:700}'+
+    '.hint{font-size:11px;color:#5e6b7d;line-height:1.6}.sg{float:right;font-size:11px;color:#8c97a6}.cl{font-size:12.5px;line-height:1.75}.cl p{margin:0 0 3px}.cl p.i{padding-left:12px}.cl p.ii{padding-left:28px}'+
+    '.box{border:1px solid #b8c7da;background:#f4f8fc;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.7}.mid{text-align:center;font-size:13px;font-weight:700;margin:12px 0 6px}'+
+    '.sdate{text-align:center;font-size:14px;margin:12px 0 8px;color:#1a2637}.ft{margin-top:22px;border-top:1px solid #b8c7da;padding-top:8px;text-align:center;font-size:10.5px;color:#5e6b7d;line-height:1.7}'+
+    '.pbar{text-align:center;padding:0 0 10px}.pbtn{appearance:none;border:0;background:#0b4ea2;color:#fff;font:inherit;font-size:14px;font-weight:700;padding:12px 22px;border-radius:10px;cursor:pointer;min-height:44px}'+
+    '@media print{@page{size:A4;margin:12mm 14mm}body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0;max-width:none;padding:0}.keep,.cl p{break-inside:avoid;page-break-inside:avoid}.pbar{display:none}'+
+    'h1{font-size:21px;margin:6px 0 3px}.sub{font-size:11px;margin-bottom:4px}.rule{margin:5px 0 8px}.sec{font-size:12px;margin:8px 0 4px}.cl{font-size:10.8px;line-height:1.5}.cl p{margin:0 0 1px}'+
+    'table.f9{font-size:11px;margin-bottom:5px}.f9 th,.f9 td{padding:3.5px 7px;line-height:1.4}.f9 .tall td{height:27px}.hint{font-size:10px;line-height:1.4}.box{padding:6px 10px;font-size:11px;line-height:1.5}'+
+    '.mid{font-size:12px;margin:7px 0 4px}.sdate{font-size:12.5px;margin:7px 0 5px}.ft{margin-top:10px;padding-top:5px;font-size:9.5px}}'+
+    '</style></head><body><div class="doc">'+
+    '<div class="pbar"><button type="button" class="pbtn" onclick="window.print()">🖨 인쇄 / PDF 저장</button></div>'+
+    '<div class="hd"><span class="co">'+escapeHtml(COMPANY.name)+'</span><span class="no">No. '+(no?escapeHtml(String(no)):hjF9Blank(120))+'</span></div>'+
+    '<h1>'+escapeHtml(d.t)+'</h1>'+(d.sub?'<div class="sub">'+escapeHtml(d.sub)+'</div>':'')+'<div class="rule"></div>'+
+    inner+
+    '<div class="ft">'+escapeHtml(COMPANY.name)+' · 대표 '+escapeHtml(COMPANY.owner)+' · 사업자등록번호 '+escapeHtml(COMPANY.bizno)+' · '+escapeHtml(COMPANY.addr)+' · '+escapeHtml(COMPANY.tel)+
+    '<br>양식 '+d.n+' · '+escapeHtml(d.t)+' · '+HJ_FORM9_EDITION+'</div>'+
+    '</div></body></html>';
+}
+/* 서명표 2열(갑/을) — 양식마다 왼쪽·오른쪽 줄이 다르다. rows=[[왼쪽 라벨,왼쪽 값,오른쪽 라벨,오른쪽 값],…] */
+function hjF9SignTable(leftTitle,rightTitle,rows){
+  return '<table class="f9 keep"><thead><tr><th colspan="2">'+escapeHtml(leftTitle)+'</th><th colspan="2">'+escapeHtml(rightTitle)+'</th></tr></thead><tbody>'+
+    rows.map(r=>'<tr>'+(r[0]==null?'<td colspan="2"></td>':'<th>'+escapeHtml(r[0])+'</th><td>'+r[1]+'</td>')+(r[2]==null?'<td colspan="2"></td>':'<th>'+escapeHtml(r[2])+'</th><td>'+r[3]+'</td>')+'</tr>').join('')+'</tbody></table>';
+}
+const HJ_F9_SIGN='<span class="sg">(서명)</span>',HJ_F9_SEAL='<span class="sg">(서명 또는 인)</span>';
+/* 조항 글 → 문단. '제N조(…)' 머리는 굵게, ①②… 는 한 칸, '1. ' 는 두 칸 들여쓴다. 글자는 그대로(escapeHtml). */
+function hjF9Clauses(lines){
+  return '<div class="cl">'+lines.map(t=>{   // 조항 묶음은 쪽을 넘겨도 된다(통째로 keep 하면 2쪽 계약서가 3쪽이 된다) — 문단만 안 자른다
+    const m=/^(제\d+조\([^)]*\))\s*(.*)$/.exec(t);
+    if(m)return '<p><b>'+escapeHtml(m[1])+'</b>'+(m[2]?' '+escapeHtml(m[2]):'')+'</p>';
+    if(/^[①-⑮]/.test(t))return '<p class="i">'+escapeHtml(t)+'</p>';
+    if(/^\d+\.\s/.test(t))return '<p class="ii">'+escapeHtml(t)+'</p>';
+    return '<p class="i">'+escapeHtml(t)+'</p>';
+  }).join('')+'</div>';
+}
+/* ── 모델(읽기 전용) — 자동값 위에 입력 화면 값(s)을 얹는다. s[k] 가 문자열이면(빈 문자열이라도) 그 값이 이긴다 — 지울 수 있게. s.__blank 면 빈 양식(회사 정보만). ── */
+function hjForm9Model(p,key,input,base){
+  if(!p||!HJ_FORM9[key])return null;
+  const s=input&&typeof input==='object'?input:{},blank=s.__blank===true,b=base||hjF9Base(p),day=localDate();   // base: 같은 현장으로 9종을 한꺼번에 볼 때(서류 만들기 목록) 한 번만 계산
+  const pick=(k,auto)=>typeof s[k]==='string'?hjF9Text(s[k]).trim():(blank?'':hjF9Text(auto).trim());
+  const pickNum=(k,auto)=>{if(typeof s[k]==='string'){const n=hjF9Num(s[k]);return n==null?0:Math.max(0,n);}return blank?0:Math.max(0,Math.round(num(auto)));};
+  const pickVat=(k,auto)=>{if(s[k]==='inc')return true;if(s[k]==='exc')return false;if(s[k]==='none'||blank)return null;return typeof auto==='boolean'?auto:null;};
+  const m={type:key,title:HJ_FORM9[key].t,no:hjDoc433No(HJ_FORM9[key].prefix,s.no),at:new Date().toISOString(),project:p.name,
+    day:blank?'':(typeof s.day==='string'?(HJ_YMD_RE.test(s.day.trim())?s.day.trim():''):day),   // 서명일 — 기본은 오늘, 비우면(빈 양식도) 손글씨
+    custName:pick('custName',b.cust.name),custPhone:pick('custPhone',b.cust.phone),custAddr:pick('custAddr',b.cust.addr),fill:[]};
+  const F=(k,v)=>{m[k]=v;if(v!=null&&v!==''&&v!==0&&!(Array.isArray(v)&&!v.length))m.fill.push(k);return v;};
+  if(key==='contract'){
+    F('workName',pick('workName',p.name));F('place',pick('place',b.cust.addr));F('scope',pick('scope',b.scope));F('quoteNo',pick('quoteNo',b.quoteNo));
+    F('amount',pickNum('amount',b.amount));m.vat=pickVat('vat',b.vat);if(m.vat!==null)m.fill.push('vat');
+    F('from',pick('from',b.period.from));F('to',pick('to',b.period.to));
+    m.days=(HJ_YMD_RE.test(m.from)&&HJ_YMD_RE.test(m.to)&&m.to>=m.from)?Math.round((new Date(m.to+'T00:00:00')-new Date(m.from+'T00:00:00'))/86400000)+1:0;
+    if(m.custName)m.fill.push('custName');if(m.custPhone)m.fill.push('custPhone');
+  }else if(key==='finish'){
+    F('site',pick('site',b.site));F('quoteNo',pick('quoteNo',b.quoteNo));F('dueDay',pick('dueDay',''));
+    const useQuote=blank?false:(s.useQuote===false?false:true);m.quoteItems=Math.min(13,b.items.length);
+    F('rows',useQuote?b.items.slice(0,13).map(it=>({item:it.name,size:[it.spec,it.qty].filter(Boolean).join(' · ')})):[]);
+    if(m.custName)m.fill.push('custName');if(m.custPhone)m.fill.push('custPhone');
+  }else if(key==='change'){
+    F('site',pick('site',b.site));F('contractDay',pick('contractDay',b.contractDay));
+    F('round',pick('round',String(hjDocLogsOf(p,'change').length+1)));
+    F('amount',pickNum('amount',b.amount));m.vat=pickVat('vat',b.vat);if(m.vat!==null)m.fill.push('vat');
+    F('reason',pick('reason',''));F('reasonEtc',pick('reasonEtc',''));
+    const bill=hjExtrasBill(p),all=(Array.isArray(p.extras)?p.extras:[]).filter(x=>x&&typeof x==='object'&&x.id!=null);
+    const defaultIds=bill.agreed.concat(bill.pending).map(x=>String(x.id));
+    const ids=Array.isArray(s.extraIds)?s.extraIds.map(String):(blank?[]:defaultIds);
+    F('rows',all.filter(x=>ids.includes(String(x.id))).slice(0,6).map(x=>({kind:'추가',text:hjF9Text(hjExtraNorm(x.text),200),amount:hjExtraAmt(x),agreed:!!x.agreed})));
+    m.extraIds=ids;m.extrasAll=all;
+    const sum=m.rows.reduce((a,r)=>a+(r.amount>0?r.amount:0),0),anyAmt=m.rows.some(r=>r.amount>0);
+    m.sum=anyAmt?sum:0;m.newTotal=(anyAmt&&m.amount>0)?m.amount+sum:0;
+    F('payWhen',pick('payWhen',''));m.vat2=pickVat('vat2',null);
+    const extDays=all.filter(x=>ids.includes(String(x.id))).reduce((a,x)=>a+Math.max(0,Math.round(num(x.days))),0);
+    F('extDays',pickNum('extDays',extDays));F('newEnd',pick('newEnd',''));F('service',pick('service',''));
+    if(m.custName)m.fill.push('custName');if(m.custPhone)m.fill.push('custPhone');
+  }else if(key==='photoconsent'){
+    F('site',pick('site',p.name));if(m.custName)m.fill.push('custName');if(m.custPhone)m.fill.push('custPhone');
+  }else if(key==='subwork'){
+    const subs=hjForm9Subs(),sup=blank?null:(subs.find(x=>x.name===String(s.supName||'').trim())||null);
+    F('subName',pick('subName',sup?sup.name:''));F('subLead',pick('subLead',sup?sup.lead:''));F('subPhone',pick('subPhone',sup?sup.phone:''));
+    F('trade',pick('trade',sup?sup.trade:''));m.subs=subs;
+    F('site',pick('site',b.site));
+    const picked=sup?hjSubQuotes(p).filter(x=>String(x.sup||'').trim()===sup.name).sort((a,b2)=>String(b2.at||'').localeCompare(String(a.at||''))):[];
+    const sq=picked.find(x=>x.status==='picked'&&num(x.amount)>0)||picked.find(x=>num(x.amount)>0)||picked[0]||null;
+    F('scope',pick('scope',sq&&Array.isArray(sq.items)?sq.items.map(x=>String(x)).join('\n'):''));
+    F('from',pick('from',''));F('to',pick('to',''));F('amount',pickNum('amount',sq?sq.amount:0));m.vat=pickVat('vat',null);
+    let rules='';try{const r=hjSiteRulesSafe(p.siteRules);rules=HJ_SITE_FIELDS.map(f=>{const v=String((r||{})[f.k]||'').trim();return v?f.l+': '+v:'';}).filter(Boolean).join('\n');}catch(e){rules='';}
+    F('rules',pick('rules',rules));
+  }else if(key==='daylabor'||key==='wagepay'){
+    const workers=hjForm9Workers(),w=blank?null:(workers.find(x=>x.name===String(s.worker||'').trim())||null);
+    m.workers=workers;F('wName',pick('wName',w?w.name:''));F('wPhone',pick('wPhone',w?w.phone:''));
+    if(key==='daylabor'){
+      F('from',pick('from',''));F('to',pick('to',''));F('site',pick('site',b.site));F('task',pick('task',w?w.trade:''));F('dayRate',pickNum('dayRate',w?w.rate:0));
+    }else{
+      const ym=HJ_FORM9_YM_RE.test(String(s.ym||''))?s.ym:localDate().slice(0,7);m.ym=ym;
+      let lines=[];if(m.wName&&!blank){try{const d=hjCrewSettleData(ym),pp=d.people.find(x=>x.name===m.wName);lines=pp?pp.lines.slice():[];}catch(e){lines=[];}}
+      m.linesAll=lines.length;F('lines',lines.slice(0,10).map(l=>({date:l.date,project:l.project,title:l.title,days:l.days,rate:l.rate,amount:l.amount})));
+      m.daysSum=m.lines.reduce((a,l)=>a+l.days,0);m.amountSum=m.lines.reduce((a,l)=>a+l.amount,0);
+      let paidDay='';try{const e=(state.expenses||[]).find(x=>x&&x.sourceKey==='crewpay|'+m.wName+'|'+ym);paidDay=e&&HJ_YMD_RE.test(String(e.date||''))?e.date:'';}catch(e){paidDay='';}
+      F('payDay',pick('payDay',paidDay));F('payTotal',pickNum('payTotal',m.amountSum));
+      /* 주민등록번호·입금 계좌·소득세·지방소득세·실지급액은 모델에 칸 자체가 없다 — 양식에서 늘 빈칸(손글씨). */
+    }
+  }else if(key==='asfix'){
+    const list=hjForm9AsList(p),a=blank?null:(list.find(x=>String(x.id)===String(s.asId||''))||list[0]||null);m.asList=list;m.asId=a?String(a.id):'';
+    let w=null;try{w=hjWarranty(p);}catch(e){w=null;}
+    const wi=a&&String(a.warrantyItem||'').trim()?(w&&(w.items||[]).find(x=>x&&x.name===String(a.warrantyItem).trim()))||null:null;
+    F('asNo',pick('asNo',''));F('asDate',pick('asDate',a?String(a.date||'').slice(0,10):''));F('site',pick('site',b.site));F('doneAt',pick('doneAt',b.doneAt));
+    F('trade',pick('trade',a?String(a.warrantyItem||''):''));
+    const months=wi?num(wi.months):0;m.wBox=months===36?'방수':months===24?'설비':months===12?'마감':'';if(m.wBox)m.fill.push('wBox');
+    F('wEnd',pick('wEnd',wi&&wi.expiresAt?wi.expiresAt:''));
+    F('text',pick('text',a?hjF9Text(a.text):''));F('visitAt',pick('visitAt',a&&HJ_YMD_RE.test(String(a.visitAt||''))?a.visitAt:''));F('fixDay',pick('fixDay',a&&HJ_YMD_RE.test(String(a.doneAt||''))?a.doneAt:''));
+    F('result',pick('result',''));
+    const vr=a&&a.verdict&&typeof a.verdict==='object'?String(a.verdict.result||''):'';m.verdict=blank?'':(vr==='free'?'free':vr==='paid'?'paid':'');if(m.verdict)m.fill.push('verdict');
+    F('fix',pick('fix',a?hjF9Text(a.fix):''));F('materials',pick('materials',''));F('fee',pickNum('fee',a?hjAsFee(a):0));
+    if(m.custName)m.fill.push('custName');if(m.custPhone)m.fill.push('custPhone');
+  }else if(key==='cancel'){
+    F('site',pick('site',b.site));F('contractDay',pick('contractDay',b.contractDay));F('contractNo',pick('contractNo',b.contractNo));
+    F('amount',pickNum('amount',b.amount));m.vat=pickVat('vat',b.vat);if(m.vat!==null)m.fill.push('vat');
+    F('cancelDay',pick('cancelDay',blank?'':day));F('progress',pick('progress',''));F('pct',pick('pct',''));F('reason',pick('reason',''));
+    F('paid',pickNum('paid',b.received));
+    const n2=typeof s.doneAmt==='string'?hjF9Num(s.doneAmt):null,n3=typeof s.matAmt==='string'?hjF9Num(s.matAmt):null,n4=typeof s.etcAmt==='string'?hjF9Num(s.etcAmt):null;
+    m.doneAmt=n2;m.matAmt=n3;m.etcAmt=n4;
+    m.settle=(m.paid>0||(typeof s.paid==='string'&&hjF9Num(s.paid)!=null))&&n2!=null&&n3!=null&&n4!=null?m.paid-(n2+n3+n4):null;   // ②③④ 를 다 적었을 때만 ⑤ 를 센다(빈칸은 0 이 아니다)
+    F('payBy',pick('payBy',''));
+    if(m.custName)m.fill.push('custName');if(m.custPhone)m.fill.push('custPhone');
+  }
+  return m;
+}
+function hjForm9Subs(){return (state.suppliers||[]).filter(x=>x&&x.category==='외주'&&!x.hidden&&String(x.name||'').trim()).map(x=>({name:String(x.name).trim(),lead:hjF9Text(x.lead,40).trim(),phone:hjF9Text(x.phone,40).trim(),trade:hjF9Text(x.trade,40).trim()}));}
+function hjForm9Workers(){return hjTeamContacts().map(c=>({name:String(c.name).trim(),phone:hjF9Text(c.phone,40).trim(),trade:hjF9Text(c.trade,40).trim(),rate:num(c.dayRate)>0?Math.round(num(c.dayRate)):0}));}
+function hjForm9AsList(p){return (state.asLog||[]).filter(a=>a&&a.project===p.name&&a.id!=null).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));}
+/* ── 양식 HTML — 글자는 원본 그대로 ── */
+function hjF9ContractHtml(m){
+  const pay=m.amount>0?{down:Math.round(m.amount*HJ_PAY_RATIO.down),mid:Math.round(m.amount*HJ_PAY_RATIO.mid)}:null;if(pay)pay.bal=m.amount-pay.down-pay.mid;   // 잔금 = 총액−계약금−중도금(서버 paymentPlan 과 같은 셈)
+  const payRow=(k,pct,v,when)=>'<tr><th>'+k+'</th><td class="c" style="width:60px">'+pct+'</td><td class="r">'+(pay?hjNum(v):hjF9Blank(120))+' 원</td><td>'+when+'</td></tr>';
+  const clauses=[
+    '제1조(공사의 내용) 도급인(이하 "갑")과 수급인 만물인테리어(이하 "을")은 위 공사 장소의 공사에 관하여 이 계약을 체결한다. 공사의 구체적 범위·자재 사양·수량은 별첨 견적서에 따른다.',
+    '제2조(계약금액) 총 계약금액은 위 계약금액란에 적은 금액으로 하며, 부가가치세 포함 여부는 그 란의 표시에 따른다.',
+    '제3조(대금의 지급) 갑은 다음과 같이 을에게 지급하며, 회차별 금액은 위 대금 지급표에 적는다.',
+    '① 계약금(50%) — 계약 체결로 공사금액을 확정하고 자재를 구매하기 위한 대금으로, 계약 체결 시 지급한다.',
+    '② 중도금(40%) — 주요 공정 완료를 갑이 확인한 때 지급한다.',
+    '③ 잔금(10%) — 준공 및 하자 마무리 확인 후 지급한다.',
+    '지급 계좌는 을이 지정하여 갑에게 통지한 계좌로 한다.',
+    '제4조(공사기간) 공사기간은 위 공사기간란에 적은 기간으로 한다. 다만, 천재지변, 민원, 갑의 자재 선정 지연 또는 현장 출입 불가 등 을의 책임 없는 사유로 공사가 지연된 경우 그 기간만큼 공사기간은 연장된다.',
+    '제5조(공정별 확인과 동의)',
+    '① 을은 각 공정을 진행하기 전 그 내용을 갑에게 서면(문자·카카오톡 등 전자적 방법을 포함한다)으로 통지한다.',
+    '② 갑은 통지를 받은 날부터 3일 이내에 동의 여부를 회신한다.',
+    '③ 위 기간 내 회신이 없는 경우 을은 갑에게 유선으로 연락하여 동의 여부를 다시 확인하며, 이때의 구두 동의는 서면 동의와 같은 효력을 가진다.',
+    '④ 유선 연락으로도 회신을 받지 못한 경우, 을은 해당 공정의 작업 사진을 갑에게 전송하고 갑이 이에 대하여 이의를 제기하지 아니하면 그 공정에 동의한 것으로 본다.',
+    '⑤ 을은 위 각 단계의 통지·연락·사진 전송 기록을 보관하며, 갑이 이의를 제기하는 경우 을은 해당 공정을 즉시 중단하고 갑과 협의한다.',
+    '제6조(추가·변경 공사)',
+    '① 공사 중 추가 또는 변경이 필요한 경우 을은 그 내용과 금액을 갑에게 통지하고, 갑과 별도의 추가공사 계약서를 작성한 후 시공한다.',
+    '② 갑의 동의 없이 추가 비용을 청구하지 아니한다.',
+    '③ 별도 계약 없이 갑의 요청에 따라 을이 서비스로 시공한 작업은 제7조의 하자보증 대상에서 제외한다.',
+    '제7조(하자보증)',
+    '① 을은 목적물 인도일부터 방수 관련 공사는 3년, 급배수 등 설비공사는 2년, 그 밖의 마감공사는 1년 동안 하자보수 책임을 진다(건설산업기본법 시행령 별표4 기준).',
+    '② 통상의 마모, 갑 또는 제3자의 사용상 과실, 갑이 지급한 자재의 하자, 타 업체가 시공한 부분, 제6조 제3항의 서비스 작업은 보증 범위에서 제외한다.',
+    '③ 갑은 하자를 발견한 때 을에게 통지하고, 을은 통지를 받은 후 지체 없이 보수한다.',
+    '제8조(잔금과 하자보수의 관계)',
+    '① 갑은 제7조의 하자보수가 완료되지 아니한 경우에 한하여 그 하자에 상응하는 범위에서 잔금의 지급을 유보할 수 있다.',
+    '② 그 밖의 사유로 대금 지급이 지연된 경우 갑은 지연된 금액에 대하여 지급기일 다음 날부터 완제일까지 법정이율에 따른 지연이자를 지급한다.',
+    '제9조(지체상금) 을의 귀책사유로 준공이 지연된 경우 을은 지연 1일당 계약금액의 0.1%를 지체상금으로 갑에게 지급한다. 다만 제4조 단서에 해당하는 기간은 지연일수에서 제외한다.',
+    '제10조(안전 및 민원) 을은 공사 중 안전관리와 현장 청결을 유지하고, 해당 건물의 관리규약을 준수하며, 인접 세대의 민원이 발생한 경우 갑과 협의하여 대응한다.',
+    '제11조(손해배상의 범위와 한도)',
+    '① 을의 통상 과실로 발생한 재산상 손해에 대한 배상책임은 사고당 금 15,000,000원을 한도로 한다.',
+    '② 다음은 제1항의 한도를 적용하지 아니한다.',
+    '1. 을의 고의 또는 중대한 과실로 인한 손해',
+    '2. 생명·신체에 대한 손해',
+    '3. 그 밖에 법령상 책임을 제한할 수 없는 경우',
+    '③ 완성작업위험 등 보험의 가입 및 보장 여부는 견적서 또는 특약에 별도로 표시한다.',
+    '제12조(계약의 성립과 보관) 이 계약은 갑과 을이 계약서에 서명 또는 날인함으로써 성립하며, 계약서 2부를 작성하여 각 1부씩 보관한다. 별첨 견적서는 이 계약의 일부로 본다.',
+    '제13조(계약의 해제와 분쟁)',
+    '① 당사자 일방이 계약상 의무를 이행하지 아니하는 경우 상대방은 상당한 기간을 정하여 이행을 최고하고, 그 기간 내에 이행이 없으면 계약을 해제할 수 있다.',
+    '② 본 계약과 관련한 분쟁은 본 계약서의 내용을 기준으로 상호 협의하여 해결하되, 협의가 이루어지지 아니한 경우 관할 법원에 소를 제기할 수 있다.',
+    '③ 본 계약에 정하지 아니한 사항은 관련 법령과 거래 관행에 따른다.'];
+  const special=[
+    hjF9Box(false)+' 관리사무소 공사 신고·엘리베이터 보양 비용은 ( '+hjF9Box(false,'갑')+'&nbsp;&nbsp; '+hjF9Box(false,'을')+' )이 부담한다.',
+    hjF9Box(false)+' 철거 후 발견되는 은폐 하자(누수·배관 부식 등)의 보수는 별도 견적으로 협의한다.',
+    hjF9Box(false)+' 거주 중 공사의 경우 귀중품은 갑이 미리 정리하며, 을은 보양 후 시공한다.',
+    hjF9Box(false)+' 보험(제11조 제3항):&nbsp; '+hjF9Box(false,'가입')+' (보험 종류·한도: '+hjF9Blank(200)+' )&nbsp;&nbsp; '+hjF9Box(false,'미가입'),
+    hjF9Box(false)+' '+hjF9Blank(420),hjF9Box(false)+' '+hjF9Blank(420)];
+  const inner=
+    '<div class="sec">계약 요약</div><table class="f9 keep"><tbody>'+
+    '<tr><th>공사명</th><td>'+hjF9Cell(m.workName,300)+'</td></tr>'+
+    '<tr><th>공사 장소</th><td>'+hjF9Cell(m.place,300)+'</td></tr>'+
+    '<tr><th>공사 내용</th><td>'+hjF9Cell(m.scope,300)+'<div class="hint">세부 범위·자재 사양·수량은 별첨 견적서(No. '+hjF9Cell(m.quoteNo,90)+')에 따른다.</div></td></tr>'+
+    '<tr data-f9-amount><th>계약금액</th><td>일금 '+(m.amount>0?escapeHtml(won2kor(m.amount).replace(/원정$/,'')):hjF9Blank(170))+' 원정&nbsp;&nbsp; (₩ '+hjF9Money(m.amount,110)+' )&nbsp;&nbsp;&nbsp; '+hjF9Box(m.vat===true,'부가세 포함')+'&nbsp;&nbsp; '+hjF9Box(m.vat===false,'부가세 별도')+'</td></tr>'+
+    '<tr data-f9-period><th>공사기간</th><td>착공 '+hjF9Date(m.from)+' &nbsp;~&nbsp; 준공 '+hjF9Date(m.to)+' &nbsp;( '+(m.days>0?m.days:hjF9Blank(30))+' 일간)</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">대금 지급 (제3조)</div><table class="f9 keep" data-f9-pay><thead><tr><th>구분</th><th>비율</th><th>금액</th><th>지급 시기</th></tr></thead><tbody>'+
+    payRow('계약금','50%',pay?pay.down:0,'계약 체결 시')+payRow('중도금','40%',pay?pay.mid:0,'주요 공정 완료를 갑이 확인한 때')+payRow('잔금','10%',pay?pay.bal:0,'준공 및 하자 마무리 확인 후')+
+    '<tr><th>지급 계좌</th><td colspan="3">'+hjF9Accounts().map(a=>hjF9Box(false,a)).join('<br>')+'<div class="hint">을이 지정해 통지하는 계좌 하나에 ✓</div></td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">계약 조항</div>'+hjF9Clauses(clauses)+
+    '<div class="sec">특약사항</div><div class="hint" style="margin-bottom:4px">해당하는 항목에만 ✓ 표시하고, 필요한 내용은 빈 줄에 적습니다.</div>'+
+    '<table class="f9 keep"><tbody>'+special.map(t=>'<tr><td>'+t+'</td></tr>').join('')+'</tbody></table>'+
+    '<div class="sdate">계약일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('갑 (도급인)','을 (수급인)',[
+      ['성명',hjF9Cell(m.custName,120)+HJ_F9_SIGN,'상호·대표',escapeHtml(COMPANY.name)+'&nbsp; 대표 '+escapeHtml(COMPANY.owner)+HJ_F9_SEAL],
+      ['생년월일',hjF9Blank(120),'사업자번호',escapeHtml(COMPANY.bizno)],
+      ['연락처',hjF9Cell(m.custPhone,120),'연락처',escapeHtml(COMPANY.tel)],
+      ['주소',hjF9Cell(m.custAddr,160),'주소',escapeHtml(COMPANY.addr)]])+
+    '<div class="hint" style="margin-top:6px">첨부: 견적서 1부 (No. '+hjF9Cell(m.quoteNo,90)+')<br>※ 본 계약서는 당사자 확인용이며 법률 자문이 아닙니다.</div>';
+  return hjF9Shell('contract',inner,m.no);
+}
+function hjF9FinishHtml(m){
+  const rows=[];for(let i=0;i<13;i++){const r=m.rows[i]||{};rows.push('<tr class="tall"><td class="c" style="width:34px">'+(i+1)+'</td><td style="width:80px"></td><td style="width:110px">'+(r.item?escapeHtml(r.item):'')+'</td><td></td><td></td><td style="width:90px">'+(r.size?escapeHtml(r.size):'')+'</td><td class="c hint" style="width:76px">실물 · 사진</td></tr>');}
+  const inner=
+    '<table class="f9 keep"><tbody>'+
+    '<tr><th>공사명·현장</th><td colspan="3">'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>견적서 No.</th><td>'+hjF9Cell(m.quoteNo,150)+'</td><th>확인일</th><td>'+hjF9Date(m.day)+'</td></tr>'+
+    '<tr><th>선택 마감일</th><td colspan="3">'+hjF9Date(m.dueDay)+' &nbsp;<span class="hint">이 날까지 정하지 못한 항목은 공사 일정이 조정될 수 있습니다(계약서 제4조).</span></td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">선택 내역</div><table class="f9 keep" data-f9-rows><thead><tr><th>No</th><th>공간</th><th>품목</th><th>제품명 · 브랜드</th><th>품번 · 색상</th><th>규격 · 수량</th><th>확인</th></tr></thead><tbody>'+rows.join('')+'</tbody></table>'+
+    '<div class="hint">확인 칸: 실물 샘플로 봤으면 "실물", 사진·카탈로그로 봤으면 "사진"에 ○</div>'+
+    '<div class="sec">확인해 주세요</div><div class="cl keep">'+
+    '<p>1. 실제 색상·무늬는 조명·화면과 제조 차수(로트)에 따라 샘플과 조금 다를 수 있습니다.</p>'+
+    '<p>2. 품절·단종된 제품은 만물인테리어가 미리 알려 드리고 동급 이상 제품으로 바꿉니다.</p>'+
+    '<p>3. 이 확인서대로 발주한 뒤 바꾸시면 이미 발주·재단한 자재 비용과 일정 변경이 생길 수 있으며, 그 내용은 「추가·변경 공사 합의서」로 정합니다.</p>'+
+    '<p>4. 고객님이 직접 구매해 주시는 자재('+hjF9Box(false,'있음:')+' '+hjF9Blank(160)+')의 제품 하자는 하자보증 범위에서 제외됩니다(계약서 제7조 제2항).</p></div>'+
+    hjF9SignTable('고객 확인','만물인테리어 확인',[
+      ['성명',hjF9Cell(m.custName,120)+HJ_F9_SIGN,'대표',escapeHtml(COMPANY.owner)+HJ_F9_SEAL],
+      ['연락처',hjF9Cell(m.custPhone,120),'연락처',escapeHtml(COMPANY.tel)]]);
+  return hjF9Shell('finish',inner,m.no);
+}
+function hjF9ChangeHtml(m){
+  const rows=[];for(let i=0;i<6;i++){const r=m.rows[i]||null;rows.push('<tr class="tall"><td class="c" style="width:34px">'+(i+1)+'</td><td class="c hint" style="width:120px">'+(r?hjF9Pick(['추가','변경','감액'],r.kind):'추가 · 변경 · 감액')+'</td><td>'+(r?escapeHtml(r.text):'')+'</td><td style="width:90px"></td><td class="r" style="width:110px">'+(r&&r.amount>0?hjNum(r.amount):'')+'</td></tr>');}
+  const reasons=['고객 요청','현장 여건(철거 후 발견 등)','자재 품절·단종'];
+  const inner=
+    '<div class="sec">원 계약</div><table class="f9 keep"><tbody>'+
+    '<tr><th>공사명·현장</th><td colspan="3">'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>원 계약일</th><td>'+hjF9Date(m.contractDay)+'</td><th>합의 차수</th><td>제 '+hjF9Cell(m.round,40)+' 차</td></tr>'+
+    '<tr data-f9-amount><th>원 계약금액</th><td colspan="3">'+hjF9Money(m.amount,170)+' 원&nbsp;&nbsp;&nbsp; '+hjF9Box(m.vat===true,'부가세 포함')+'&nbsp;&nbsp; '+hjF9Box(m.vat===false,'부가세 별도')+'</td></tr>'+
+    '<tr><th>발생 사유</th><td colspan="3">'+reasons.map(r=>hjF9Box(m.reason===r,r)).join('&nbsp;&nbsp; ')+'&nbsp;&nbsp; '+hjF9Box(m.reason==='기타','기타(')+' '+hjF9Cell(m.reason==='기타'?m.reasonEtc:'',90)+' )</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">추가·변경 내역</div><table class="f9 keep" data-f9-rows><thead><tr><th>No</th><th>구분</th><th>내용 (위치 · 작업)</th><th>수량 · 단위</th><th>금액 (원)</th></tr></thead><tbody>'+rows.join('')+
+    '<tr><td colspan="4" class="r" style="font-weight:700">증감 합계 (감액은 − 로 표시)</td><td class="r">'+hjF9Money(m.sum,100)+' 원</td></tr>'+
+    '<tr><td colspan="4" class="r" style="font-weight:700">변경 후 총 계약금액 (원 계약금액 ± 증감 합계)</td><td class="r">'+hjF9Money(m.newTotal,100)+' 원</td></tr>'+
+    '</tbody></table><div class="hint">구분 칸: 해당하는 것에 ○</div>'+
+    '<div class="sec">정산 · 일정</div><table class="f9 keep"><tbody>'+
+    '<tr><th>부가세</th><td>'+hjF9Box(m.vat2===true,'위 금액에 부가세 포함')+'&nbsp;&nbsp; '+hjF9Box(m.vat2===false,'부가세 별도')+'</td></tr>'+
+    '<tr><th>지급 시기</th><td>'+['잔금과 함께','작업 착수 전','작업 완료 즉시'].map(x=>hjF9Box(m.payWhen===x,x)).join('&nbsp;&nbsp; ')+'&nbsp;&nbsp; '+hjF9Box(m.payWhen==='기타','기타(')+' '+hjF9Blank(90)+' )</td></tr>'+
+    '<tr><th>공사기간</th><td>'+hjF9Box(false,'변동 없음')+'&nbsp;&nbsp; '+hjF9Box(m.extDays>0)+' '+(m.extDays>0?escapeHtml(String(m.extDays)):hjF9Blank(36))+' 일 연장 &nbsp;→&nbsp; 변경 준공일 '+hjF9Date(m.newEnd)+'</td></tr>'+
+    '<tr><th>하자보증</th><td>이 합의로 시공하는 작업에도 계약서 제7조의 하자보증이 그대로 적용됩니다.</td></tr>'+
+    '<tr><th>서비스 작업</th><td>금액 없이 해 드리는 작업: '+hjF9Cell(m.service,260)+'<div class="hint">계약서 제6조 제3항에 따라 하자보증 대상에서 제외됩니다.</div></td></tr>'+
+    '</tbody></table>'+
+    '<div class="mid">갑과 을은 위 내용에 합의하며, 을은 이 합의서에 적은 금액 외의 추가 비용을 청구하지 않습니다.</div>'+
+    '<div class="sdate">합의일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('갑 (고객)','을 (만물인테리어)',[
+      ['성명',hjF9Cell(m.custName,120)+HJ_F9_SIGN,'대표',escapeHtml(COMPANY.name)+'&nbsp; '+escapeHtml(COMPANY.owner)+HJ_F9_SEAL],
+      ['연락처',hjF9Cell(m.custPhone,120),'연락처',escapeHtml(COMPANY.tel)]])+
+    '<div class="hint" style="margin-top:6px">※ 문자·카카오톡으로 먼저 합의한 경우에도 이 합의서로 정리해 각 1부씩 보관합니다.</div>';
+  return hjF9Shell('change',inner,m.no);
+}
+function hjF9PhotoConsentHtml(m){
+  const B=x=>hjF9Box(false,x);
+  const inner=
+    '<div class="box keep" style="text-align:center;margin-bottom:10px"><b>동의하지 않으셔도 계약·시공·AS에 아무런 불이익이 없습니다.</b><br>동의하시는 항목에만 □ 안에 ✓ 표시해 주세요.</div>'+
+    '<div class="sec">동의 범위</div><table class="f9 keep"><tbody>'+
+    '<tr class="tall"><th>현장</th><td>'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>사진</th><td>'+['시공 전','시공 중','시공 후','전후 비교'].map(B).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>올리는 곳</th><td>'+['만물인테리어 홈페이지','네이버 블로그','인스타그램·Threads'].map(B).join('&nbsp;&nbsp; ')+'<br>'+['지역 카페','상담용 포트폴리오(인쇄물·태블릿)'].map(B).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>지역 표시</th><td>'+['동까지 (예: 대전 중구 유천동)','구까지 (예: 대전 중구)','표시하지 않음'].map(B).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>단지·건물명</th><td>'+['표시하지 않음','표시해도 됨'].map(B).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>고객 말씀</th><td>'+['남겨 주신 말씀을 이름 없이 그대로 인용해도 됨','인용하지 않음'].map(B).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>이용 기간</th><td>동의하신 날부터 철회하실 때까지</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">만물인테리어의 약속</div><div class="box keep">'+
+    '· 고객님 성함·연락처·동·호수·차량번호, 사람 얼굴, 가족사진·우편물 같은 개인 물품은 싣지 않거나 가립니다.<br>'+
+    '· 공사 금액은 싣지 않습니다.<br>'+
+    '· 고객 말씀은 실제로 남겨 주신 문구만, 고치지 않고 인용합니다.<br>'+
+    '· 동의는 언제든 전화·문자로 철회하실 수 있고, 요청을 받은 날부터 7일 이내에 만물인테리어가 올린 게시물에서 내립니다. 이미 인쇄해 나눠 드린 자료는 회수가 어려울 수 있습니다.</div>'+
+    '<div class="mid">위 내용을 읽고, ✓ 표시한 범위에서 시공 사진 활용에 동의합니다.</div>'+
+    '<div class="sdate">동의일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('동의인 (고객)','만물인테리어',[
+      ['성명',hjF9Cell(m.custName,120)+HJ_F9_SIGN,'대표',escapeHtml(COMPANY.owner)+HJ_F9_SEAL],
+      ['연락처',hjF9Cell(m.custPhone,120),'연락처',escapeHtml(COMPANY.tel)]]);
+  return hjF9Shell('photoconsent',inner,m.no);
+}
+function hjF9SubworkHtml(m){
+  const trades=['철거','설비','전기','목공','타일','도배','바닥'],tr=String(m.trade||'').trim(),known=trades.includes(tr);
+  const inner=
+    '<table class="f9 keep"><thead><tr><th colspan="2">발주자</th><th colspan="2">수급자 (전문팀)</th></tr></thead><tbody>'+
+    '<tr><th>상호</th><td>'+escapeHtml(COMPANY.name)+'</td><th>상호·팀명</th><td>'+hjF9Cell(m.subName,140)+'</td></tr>'+
+    '<tr><th>대표</th><td>'+escapeHtml(COMPANY.owner)+'</td><th>대표·팀장</th><td>'+hjF9Cell(m.subLead,140)+'</td></tr>'+
+    '<tr><th>사업자번호</th><td>'+escapeHtml(COMPANY.bizno)+'</td><th>사업자번호</th><td>'+hjF9Blank(120)+' <span class="sg">'+hjF9Box(false,'없음(개인)')+'</span></td></tr>'+
+    '<tr><th>연락처</th><td>'+escapeHtml(COMPANY.tel)+'</td><th>연락처</th><td>'+hjF9Cell(m.subPhone,140)+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">작업 내용</div><table class="f9 keep"><tbody>'+
+    '<tr><th>현장</th><td>'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>공종</th><td>'+trades.map(t=>hjF9Box(tr===t,t)).join('&nbsp;&nbsp; ')+'&nbsp;&nbsp; '+hjF9Box(!!tr&&!known,'기타(')+' '+hjF9Cell(tr&&!known?tr:'',60)+' )</td></tr>'+
+    '<tr><th>작업 범위</th><td style="height:60px">'+(m.scope?'<div style="white-space:pre-wrap">'+escapeHtml(m.scope)+'</div>':'')+'<div class="hint" style="margin-top:6px">첨부:&nbsp; '+hjF9Box(false,'도면')+'&nbsp;&nbsp; '+hjF9Box(false,'사진')+' '+hjF9Blank(24)+' 장&nbsp;&nbsp; '+hjF9Box(false,'실측 치수')+'</div></td></tr>'+
+    '<tr><th>작업 일정</th><td>'+hjF9Date(m.from)+' &nbsp;~&nbsp; '+hjF9Date(m.to)+' &nbsp;&nbsp; 작업 시간 '+hjF9Blank(28)+' : '+hjF9Blank(28)+' ~ '+hjF9Blank(28)+' : '+hjF9Blank(28)+'</td></tr>'+
+    '<tr><th>자재</th><td>'+hjF9Box(false,'만물 지급 (시공만)')+'&nbsp;&nbsp; '+hjF9Box(false,'팀 포함')+'&nbsp;&nbsp; '+hjF9Box(false,'일부 포함 (')+' '+hjF9Blank(150)+' )</td></tr>'+
+    '<tr data-f9-amount><th>금액</th><td>금 '+hjF9Money(m.amount,170)+' 원&nbsp;&nbsp;&nbsp; '+hjF9Box(m.vat===true,'부가세 포함')+'&nbsp;&nbsp; '+hjF9Box(m.vat===false,'부가세 별도')+'</td></tr>'+
+    '<tr><th>지급 조건</th><td>'+hjF9Box(false,'완료 확인 후')+' '+hjF9Blank(30)+' 일 이내 일괄&nbsp;&nbsp; '+hjF9Box(false,'착수')+' '+hjF9Blank(30)+' % · 완료 '+hjF9Blank(30)+' %&nbsp;&nbsp; '+hjF9Box(false,'기타(')+' '+hjF9Blank(80)+' )</td></tr>'+
+    '<tr><th>증빙</th><td>'+['세금계산서','계산서','현금영수증','3.3% 원천징수 (사업자 없는 개인)'].map(x=>hjF9Box(false,x)).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>하자보수</th><td>팀 시공으로 생긴 하자는 완료일부터 아래 기간 동안 무상으로 보수합니다.<br>'+['방수 3년','급배수 등 설비 2년','마감 1년'].map(x=>hjF9Box(false,x)).join('&nbsp;&nbsp; ')+'&nbsp;&nbsp; '+hjF9Box(false,'기타(')+' '+hjF9Blank(60)+' )</td></tr>'+
+    '<tr><th>부산물·폐기물</th><td>부산물 정리&nbsp; '+hjF9Box(false,'팀')+'&nbsp;&nbsp; '+hjF9Box(false,'만물')+'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 폐기물 반출&nbsp; '+hjF9Box(false,'팀')+'&nbsp;&nbsp; '+hjF9Box(false,'만물')+'</td></tr>'+
+    '<tr><th>현장 규칙</th><td style="height:52px">'+(m.rules?'<div style="white-space:pre-wrap">'+escapeHtml(m.rules)+'</div>':'')+'<div class="hint" style="margin-top:4px">엘리베이터 보양 · 작업 가능 시간 · 소음 작업 · 주차 등</div></td></tr>'+
+    '<tr><th>완료 보고</th><td>작업이 끝나면 사진 3장(전경 · 디테일 · 정리 상태)을 보내 주세요.</td></tr>'+
+    '<tr><th>고객 정보</th><td>작업 중 알게 된 고객 정보(성함·연락처·주소)는 이 작업에만 쓰고 외부에 알리지 않습니다.</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">완료 확인</div><table class="f9 keep"><tbody>'+
+    '<tr><th>완료일</th><td>'+hjF9Date('')+'</td><th>확인자</th><td>'+hjF9Blank(120)+HJ_F9_SIGN+'</td></tr>'+
+    '<tr><th>확인 결과</th><td colspan="3">'+hjF9Box(false,'이상 없음')+'&nbsp;&nbsp; '+hjF9Box(false,'보완 필요 (')+' '+hjF9Blank(170)+' )&nbsp;&nbsp; 보완 완료일&nbsp; '+hjF9Date('')+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="mid">발주자와 수급자는 위 내용으로 작업을 발주하고 수주합니다.</div>'+
+    '<div class="sdate">발주일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('발주자','수급자',[['대표',escapeHtml(COMPANY.name)+'&nbsp; '+escapeHtml(COMPANY.owner)+HJ_F9_SEAL,'대표·팀장',hjF9Cell(m.subLead||m.subName,120)+HJ_F9_SIGN]]);
+  return hjF9Shell('subwork',inner,m.no);
+}
+function hjF9DayLaborHtml(m){
+  const inner=
+    '<div style="font-size:13px;margin:4px 0 10px">'+escapeHtml(COMPANY.name)+'(이하 "사업주")와 '+hjF9Cell(m.wName,130)+' (이하 "근로자")는 다음과 같이 근로계약을 체결한다.</div>'+
+    '<table class="f9 keep"><tbody>'+
+    '<tr><th>1. 계약기간</th><td>'+hjF9Date(m.from)+' &nbsp;~&nbsp; '+hjF9Date(m.to)+' &nbsp;&nbsp;<span class="hint">(기간을 정하지 않으면 시작일만 적음)</span></td></tr>'+
+    '<tr class="tall"><th>2. 근무 장소</th><td>'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>3. 업무 내용</th><td>'+['보통인부','조공'].map(x=>hjF9Box(false,x)).join('&nbsp;&nbsp; ')+'&nbsp;&nbsp; '+hjF9Box(false,'기공(')+' '+hjF9Blank(60)+' )&nbsp;&nbsp;&nbsp;&nbsp; 작업: '+hjF9Cell(m.task,140)+'</td></tr>'+
+    '<tr><th>4. 근로시간</th><td>'+hjF9Blank(36)+' : '+hjF9Blank(36)+' &nbsp;~&nbsp; '+hjF9Blank(36)+' : '+hjF9Blank(36)+' &nbsp;&nbsp;(휴게시간 '+hjF9Blank(30)+' : '+hjF9Blank(30)+' ~ '+hjF9Blank(30)+' : '+hjF9Blank(30)+' )</td></tr>'+
+    '<tr><th>5. 근무일·휴일</th><td>근무일: '+hjF9Blank(300)+'<br>주휴일: 1주간 소정근로일을 개근한 경우 근로기준법에 따라 유급휴일을 부여한다.</td></tr>'+
+    '<tr data-f9-wage><th>6. 임금</th><td>일급 '+hjF9Money(m.dayRate,120)+' 원&nbsp;&nbsp;&nbsp; 식대:&nbsp; '+hjF9Box(false,'중식 제공')+'&nbsp;&nbsp; '+hjF9Box(false,'일급에 포함')+'&nbsp;&nbsp; '+hjF9Box(false,'별도')+' '+hjF9Blank(70)+' 원<br>연장·야간·휴일근로: 근로기준법에 따라 지급한다.</td></tr>'+
+    '<tr><th>7. 지급 방법</th><td>지급일:&nbsp; '+hjF9Box(false,'당일')+'&nbsp;&nbsp; '+hjF9Box(false,'매주')+' '+hjF9Blank(30)+' 요일&nbsp;&nbsp; '+hjF9Box(false,'작업 종료 후')+' '+hjF9Blank(30)+' 일 이내<br>방법:&nbsp; '+hjF9Box(false,'근로자 명의 계좌 입금')+'&nbsp;&nbsp; '+hjF9Box(false,'직접 지급')+'&nbsp;&nbsp; (세법에 따라 원천징수 후 지급)</td></tr>'+
+    '<tr><th>8. 연차유급휴가</th><td>근로기준법에서 정하는 바에 따라 부여한다.</td></tr>'+
+    '<tr><th>9. 사회보험</th><td>'+['고용보험','산재보험','국민연금','건강보험'].map(x=>hjF9Box(false,x)).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>10. 안전</th><td>'+hjF9Box(false,'건설업 기초안전보건교육 이수증 확인')+'<br>근로자는 지급받은 안전장구를 착용하고 현장 안전수칙을 지킨다.</td></tr>'+
+    '<tr><th>11. 계약서 교부</th><td>사업주는 이 계약서를 2부 작성하여 1부를 근로자에게 교부한다.</td></tr>'+
+    '<tr><th>12. 기타</th><td>이 계약에 정하지 않은 사항은 근로기준법 등 관계 법령에 따른다.</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sdate">계약일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('사업주','근로자',[
+      ['사업체명',escapeHtml(COMPANY.name),'성명',hjF9Cell(m.wName,120)+HJ_F9_SIGN],
+      ['대표자',escapeHtml(COMPANY.owner)+HJ_F9_SIGN,'생년월일',hjF9Blank(120)],
+      ['연락처',escapeHtml(COMPANY.tel),'연락처',hjF9Cell(m.wPhone,120)],
+      ['주소',escapeHtml(COMPANY.addr),'주소',hjF9Blank(160)]])+
+    '<div class="hint" style="margin-top:6px">※ 같은 근로자를 계속·반복해 쓰는 경우 등 노무 판단이 필요하면 노무사 확인을 권합니다.</div>';
+  return hjF9Shell('daylabor',inner,m.no);
+}
+function hjF9WagePayHtml(m){
+  const rows=[];for(let i=0;i<10;i++){const l=m.lines[i]||null;rows.push('<tr><td class="c" style="width:70px">'+(l?escapeHtml(String(l.date).slice(5).replace('-','.')):'.')+'</td><td style="width:120px">'+(l?escapeHtml(l.project):'')+'</td><td>'+(l?escapeHtml(l.title):'')+'</td><td class="c" style="width:48px">'+(l?escapeHtml(String(l.days)):'')+'</td><td class="r" style="width:84px">'+(l&&l.rate>0?hjNum(l.rate):'')+'</td><td class="r" style="width:80px"></td><td class="r" style="width:90px">'+(l&&l.amount>0?hjNum(l.amount):'')+'</td></tr>');}
+  const inner=
+    '<div class="sec">근로자</div><table class="f9 keep"><tbody>'+
+    '<tr><th>성명</th><td>'+hjF9Cell(m.wName,140)+'</td><th>연락처</th><td>'+hjF9Cell(m.wPhone,140)+'</td></tr>'+
+    '<tr><th>주민등록번호</th><td data-f9-rrn>'+hjF9Blank(70)+' – '+hjF9Blank(80)+'</td><th>직종</th><td>'+['보통인부','조공','기공'].map(x=>hjF9Box(false,x)).join('&nbsp;&nbsp; ')+'</td></tr>'+
+    '<tr><th>입금 계좌</th><td colspan="3" data-f9-account>은행 '+hjF9Blank(70)+'&nbsp;&nbsp; 계좌번호 '+hjF9Blank(190)+'&nbsp;&nbsp; 예금주(본인)</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">근로 내역</div><table class="f9 keep" data-f9-rows><thead><tr><th>일자</th><th>현장</th><th>작업 내용</th><th>공수</th><th>일당 (원)</th><th>식대 등 (원)</th><th>금액 (원)</th></tr></thead><tbody>'+rows.join('')+
+    '<tr><th colspan="3" style="width:auto">합계</th><td class="c">'+(m.daysSum>0?escapeHtml(String(m.daysSum)):'')+'</td><td colspan="2" style="background:#e8f0f8"></td><td class="r">'+(m.amountSum>0?hjNum(m.amountSum):'')+'</td></tr>'+
+    '</tbody></table><div class="hint">공수: 하루 1.0 · 반나절 0.5 &nbsp;/&nbsp; 금액 = 공수 × 일당 + 식대 등'+(m.linesAll>10?' &nbsp;·&nbsp; ※ 이 달 기록 '+m.linesAll+'건 중 10건만 실렸습니다 — 나머지는 다음 장에':'')+'</div>'+
+    '<div class="sec">지급</div><table class="f9 keep" data-f9-pay><tbody>'+
+    '<tr><th>지급 총액</th><td class="r">'+hjF9Money(m.payTotal,140)+' 원</td><th>지급일</th><td>'+hjF9Date(m.payDay)+'</td></tr>'+
+    '<tr><th>소득세</th><td class="r" data-f9-tax>'+hjF9Blank(140)+' 원</td><th>지방소득세</th><td class="r" data-f9-tax>'+hjF9Blank(140)+' 원</td></tr>'+
+    '<tr><th>실지급액</th><td class="r" data-f9-tax>'+hjF9Blank(140)+' 원</td><th>지급 방법</th><td>'+hjF9Box(false,'계좌 입금')+'&nbsp;&nbsp; '+hjF9Box(false,'현금')+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="mid">위 금액을 정히 받았습니다.</div>'+
+    hjF9SignTable('받은 사람 (근로자)','지급한 사람',[['성명',hjF9Cell(m.wName,120)+HJ_F9_SIGN,'대표',escapeHtml(COMPANY.name)+'&nbsp; '+escapeHtml(COMPANY.owner)+HJ_F9_SEAL]])+
+    '<div class="hint" style="margin-top:8px">※ 원천징수(2026년 10월 기준): 소득세 = (하루 노임 − 150,000원) × 6% × (1 − 55%), 곧 15만 원 넘는 금액의 2.7%. 지방소득세는 소득세의 10%. 소득세가 1,000원 미만이면 떼지 않으며, 여러 날 몫을 한 번에 지급하면 그 합계 세액으로 판단합니다.<br>'+
+    '※ 신고: 일용근로소득 지급명세서는 지급한 달의 다음 달 말일까지, 원천세는 다음 달 10일까지 냅니다(반기별 납부 승인을 받았으면 그 기한). 세법이 바뀌면 세무사 확인이 필요합니다.<br>'+
+    '※ 주민등록번호·계좌는 노임 지급과 일용근로소득 지급명세서 제출(소득세법)에만 쓰고, 세법이 정한 보관 기간이 지나면 파기합니다.</div>';
+  return hjF9Shell('wagepay',inner,m.no);
+}
+function hjF9AsFixHtml(m){
+  const inner=
+    '<div class="sec">접수</div><table class="f9 keep"><tbody>'+
+    '<tr><th>접수번호</th><td>'+hjF9Cell(m.asNo,150)+'</td><th>접수일</th><td>'+hjF9Date(m.asDate)+'</td></tr>'+
+    '<tr><th>고객</th><td>'+hjF9Cell(m.custName,150)+'</td><th>연락처</th><td>'+hjF9Cell(m.custPhone,150)+'</td></tr>'+
+    '<tr><th>현장</th><td colspan="3">'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>준공(인도)일</th><td>'+hjF9Date(m.doneAt)+'</td><th>해당 공종</th><td>'+hjF9Cell(m.trade,150)+'</td></tr>'+
+    '<tr data-f9-warranty><th>보증기간</th><td colspan="3">'+hjF9Box(m.wBox==='방수','방수 3년')+'&nbsp;&nbsp; '+hjF9Box(m.wBox==='설비','급배수 등 설비 2년')+'&nbsp;&nbsp; '+hjF9Box(m.wBox==='마감','마감 1년')+' &nbsp;&nbsp;→&nbsp; 만료일 '+hjF9Date(m.wEnd)+'</td></tr>'+
+    '<tr><th>접수 내용</th><td colspan="3" style="height:56px">'+(m.text?'<div style="white-space:pre-wrap">'+escapeHtml(m.text)+'</div>':'')+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">확인 · 처리</div><table class="f9 keep"><tbody>'+
+    '<tr><th>방문일</th><td>'+hjF9Date(m.visitAt)+'</td><th>완료일</th><td>'+hjF9Date(m.fixDay)+'</td></tr>'+
+    '<tr><th>확인 결과</th><td colspan="3" style="height:56px">'+(m.result?'<div style="white-space:pre-wrap">'+escapeHtml(m.result)+'</div>':'')+'<div class="hint" style="margin-top:4px">현장에서 확인한 사실과 사진 근거만 적습니다.</div></td></tr>'+
+    '<tr data-f9-verdict><th>판정</th><td colspan="3">'+hjF9Box(m.verdict==='free','보증 범위 안의 시공 하자 — 무상 보수')+'<br>'+hjF9Box(m.verdict==='paid','보증 범위 밖(사용·환경·제3자 원인, 보증기간 경과 등) — 실비')+'<br>'+hjF9Box(false,'제품 자체 불량 — 제조사 접수 대행')+'<br>'+hjF9Box(false,'원인 복합 — 분담 (')+' '+hjF9Blank(200)+' )</td></tr>'+
+    '<tr><th>처리 내용</th><td colspan="3" style="height:48px">'+(m.fix?'<div style="white-space:pre-wrap">'+escapeHtml(m.fix)+'</div>':'')+'</td></tr>'+
+    '<tr><th>사용 자재</th><td colspan="3">'+hjF9Cell(m.materials,300)+'</td></tr>'+
+    '<tr data-f9-fee><th>비용</th><td colspan="3">'+hjF9Box(false,'무상')+'&nbsp;&nbsp; '+hjF9Box(m.fee>0,'유상')+' '+hjF9Money(m.fee,80)+' 원&nbsp;&nbsp; '+hjF9Box(false,'분담 (만물')+' '+hjF9Blank(70)+' 원 &nbsp;/&nbsp; 고객 '+hjF9Blank(70)+' 원)</td></tr>'+
+    '<tr><th>사진</th><td colspan="3">처리 전 '+hjF9Blank(30)+' 장 &nbsp;·&nbsp; 처리 후 '+hjF9Blank(30)+' 장&nbsp;&nbsp;&nbsp; '+hjF9Box(false,'고객에게 전송')+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">고객 확인</div><div class="box keep"><b>위 하자의 보수가 완료되었음을 확인합니다.</b><br>이 확인은 위 하자 1건에 한하며, 다른 부위의 하자와 남은 보증기간의 하자보수 책임에는 영향을 주지 않습니다.</div>'+
+    '<table class="f9 keep" style="margin-top:8px"><tbody><tr class="tall"><th>한 말씀 (선택)</th><td></td></tr></tbody></table>'+
+    '<div class="sdate">확인일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('고객','만물인테리어',[['성명',hjF9Cell(m.custName,120)+HJ_F9_SIGN,'대표',escapeHtml(COMPANY.owner)+HJ_F9_SEAL]]);
+  return hjF9Shell('asfix',inner,m.no);
+}
+function hjF9CancelHtml(m){
+  const money=(v,blankW)=>v==null?hjF9Blank(blankW||120):hjNum(v);
+  const settle=m.settle;
+  const inner=
+    '<div class="sec">원 계약</div><table class="f9 keep"><tbody>'+
+    '<tr><th>공사명·현장</th><td colspan="3">'+hjF9Cell(m.site,300)+'</td></tr>'+
+    '<tr><th>계약일</th><td>'+hjF9Date(m.contractDay)+'</td><th>계약번호</th><td>'+hjF9Cell(m.contractNo,150)+'</td></tr>'+
+    '<tr data-f9-amount><th>계약금액</th><td colspan="3">'+hjF9Money(m.amount,170)+' 원&nbsp;&nbsp;&nbsp; '+hjF9Box(m.vat===true,'부가세 포함')+'&nbsp;&nbsp; '+hjF9Box(m.vat===false,'부가세 별도')+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">해제 내용</div><table class="f9 keep"><tbody>'+
+    '<tr><th>해제일</th><td>'+hjF9Date(m.cancelDay)+'</td><th>진행 상태</th><td>'+hjF9Box(m.progress==='before','착공 전')+'&nbsp;&nbsp; '+hjF9Box(m.progress==='during','공사 중 (공정 약')+' '+(m.progress==='during'?hjF9Cell(m.pct,30):hjF9Blank(30))+' %)</td></tr>'+
+    '<tr class="tall"><th>해제 사유</th><td colspan="3">'+hjF9Box(m.reason==='갑','고객(갑)의 사정')+'&nbsp;&nbsp; '+hjF9Box(m.reason==='을','만물인테리어(을)의 사정')+'&nbsp;&nbsp; '+hjF9Box(m.reason==='합의','서로 합의')+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="sec">정산</div><table class="f9 keep" data-f9-settle><thead><tr><th>No</th><th>항목</th><th>금액</th><th>비고</th></tr></thead><tbody>'+
+    '<tr><td class="c" style="width:36px">①</td><td>갑이 이미 지급한 금액</td><td class="r" style="width:150px">'+(m.paid>0?hjNum(m.paid):hjF9Blank(120))+' 원</td><td style="width:100px"></td></tr>'+
+    '<tr><td class="c">②</td><td>이미 시공한 부분의 대금</td><td class="r">'+money(m.doneAmt)+' 원</td><td class="hint">'+hjF9Box(false,'내역 별첨')+'</td></tr>'+
+    '<tr><td class="c">③</td><td>이미 구입·발주해 반품·취소할 수 없는 자재 대금</td><td class="r">'+money(m.matAmt)+' 원</td><td class="hint">'+hjF9Box(false,'내역 별첨')+'</td></tr>'+
+    '<tr><td class="c">④</td><td>그 밖에 이미 들어간 비용 (철거·폐기물 처리 등)</td><td class="r">'+money(m.etcAmt)+' 원</td><td></td></tr>'+
+    '<tr style="background:#f4f8fc"><td class="c"><b>⑤</b></td><td><b>정산 금액&nbsp; ① − ( ② + ③ + ④ )</b></td><td class="r"><b>'+(settle==null?hjF9Blank(120):(settle<0?'− ':'')+hjNum(Math.abs(settle)))+' 원</b></td><td></td></tr>'+
+    '</tbody></table>'+
+    '<table class="f9 keep"><tbody>'+
+    '<tr><th>정산 방향</th><td colspan="3">'+hjF9Box(settle!=null&&settle>0,'을이 갑에게 돌려줌 (⑤가 플러스)')+'&nbsp;&nbsp; '+hjF9Box(settle!=null&&settle<0,'갑이 을에게 지급 (⑤가 마이너스)')+'</td></tr>'+
+    '<tr><th>지급 기한</th><td>'+hjF9Date(m.payBy)+' &nbsp;까지</td><th>지급 방법</th><td>'+hjF9Box(false,'계좌 이체')+'&nbsp;&nbsp; '+hjF9Box(false,'현금')+'</td></tr>'+
+    '<tr><th>받을 계좌</th><td colspan="3" data-f9-account>은행 '+hjF9Blank(70)+'&nbsp;&nbsp; 계좌번호 '+hjF9Blank(190)+'&nbsp;&nbsp; 예금주 '+hjF9Blank(70)+'</td></tr>'+
+    '<tr><th>③의 자재</th><td colspan="3">'+hjF9Box(false,'갑에게 인도')+'&nbsp;&nbsp; '+hjF9Box(false,'을이 회수 (이 경우 ③에 넣지 않음)')+'</td></tr>'+
+    '<tr><th>현장 정리</th><td colspan="3">'+hjF9Box(false,'현재 상태로 인도')+'&nbsp;&nbsp; '+hjF9Box(false,'을이 정리 후 인도 (')+hjF9Date('')+' &nbsp;까지)</td></tr>'+
+    '<tr><th>시공한 부분</th><td colspan="3">이미 시공한 부분의 하자보수는 원 계약 제7조에 따릅니다.</td></tr>'+
+    '</tbody></table>'+
+    '<div class="mid" style="font-weight:600">갑과 을은 위 정산으로 원 계약의 해제에 따른 대금 정산을 마친 것으로 하며, 이 합의서에 정하지 않은 사항은 서로 협의하여 정합니다.</div>'+
+    '<div class="sdate">합의일 &nbsp;&nbsp; '+hjF9DateKo(m.day)+'</div>'+
+    hjF9SignTable('갑 (고객)','을 (만물인테리어)',[
+      ['성명',hjF9Cell(m.custName,120)+HJ_F9_SIGN,'대표',escapeHtml(COMPANY.name)+'&nbsp; '+escapeHtml(COMPANY.owner)+HJ_F9_SEAL],
+      ['연락처',hjF9Cell(m.custPhone,120),'연락처',escapeHtml(COMPANY.tel)]])+
+    '<div class="hint" style="margin-top:6px">※ 전자계약으로 체결한 계약의 해제도 이 합의서로 합니다.<br>※ 해제에 따른 손해배상·위약금에 다툼이 있으면 서명 전에 전문가 검토를 권합니다.</div>';
+  return hjF9Shell('cancel',inner,m.no);
+}
+const HJ_FORM9_HTML=Object.freeze({contract:hjF9ContractHtml,finish:hjF9FinishHtml,change:hjF9ChangeHtml,photoconsent:hjF9PhotoConsentHtml,subwork:hjF9SubworkHtml,daylabor:hjF9DayLaborHtml,wagepay:hjF9WagePayHtml,asfix:hjF9AsFixHtml,cancel:hjF9CancelHtml});
+/* 📎 서류 만들기 줄의 상태 — 채워질 칸 수(자동값 기준) 또는 발행 기록. 읽기 전용. */
+function hjForm9Status(p,key,base){
+  const logs=hjDocLogsOf(p,key),last=logs.length?logs[logs.length-1]:null;
+  if(last)return {text:'발행 '+last.no+' · '+(hjPhotoKoreanDay({when:last.at})||''),tone:'ok'};
+  let m=null;try{m=hjForm9Model(p,key,{},base);}catch(e){m=null;}
+  const always=['round','site','workName','cancelDay'];   // 현장 이름·합의 차수 '1'·해제일(오늘)은 자료가 없어도 채워져 '채워짐' 으로 세지 않는다
+  const n=m?m.fill.filter(k=>!always.includes(k)).length:0;
+  return {text:n?'채워짐 '+n+'칸 · 나머지 손글씨':'빈 양식 — 현장 이름만, 나머지 손글씨',tone:''};
+}
+/* 입력 화면 → 미리보기·내보내기. 값은 이 화면 동안만(resume). 모달 단추는 openModal 뒤 직접 배선(#modalRoot 는 #view 위임 밖). */
+function hjForm9View(name,key,resume){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const def=HJ_FORM9[key];if(!def){toast('모르는 양식이에요');return false;}
+  const s=resume&&typeof resume==='object'?resume:{};delete s.__blank;
+  const m=hjForm9Model(p,key,s);
+  const inp='width:100%;min-height:44px;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;background:var(--paper)';
+  const F=(id,label,val,attr)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">'+label+'</label><input id="'+id+'" '+(attr||'type="text"')+' value="'+escapeAttr(val==null?'':String(val))+'" style="'+inp+'">';
+  const T=(id,label,val,rows)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">'+label+'</label><textarea id="'+id+'" rows="'+(rows||3)+'" maxlength="'+HJ_FORM9_TEXT_MAX+'" style="'+inp+';font-family:inherit">'+escapeHtml(val==null?'':String(val))+'</textarea>';
+  const S=(id,label,opts,val)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">'+label+'</label><select id="'+id+'" style="'+inp+'">'+opts.map(o=>'<option value="'+escapeAttr(o[0])+'"'+(String(val)===o[0]?' selected':'')+'>'+escapeHtml(o[1])+'</option>').join('')+'</select>';
+  const two=(a,b)=>'<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px">'+a+'</div><div style="flex:1;min-width:140px">'+b+'</div></div>';
+  const money=v=>v>0?Number(v).toLocaleString('ko-KR'):'';
+  const vatSel=(id,val)=>S(id,'부가세',[['auto','모름(빈칸)'],['inc','부가세 포함'],['exc','부가세 별도']],val===true?'inc':val===false?'exc':'auto');
+  const custRows=()=>two(F('f9CustName','갑(고객) 성명',m.custName),F('f9CustPhone','연락처',m.custPhone,'type="tel" inputmode="tel"'));
+  const dayRow=label=>F('f9Day',label+' (비우면 손글씨)',m.day,'type="date"');
+  let body='';
+  if(key==='contract'){
+    body=F('f9WorkName','공사명',m.workName)+F('f9Place','공사 장소',m.place)+F('f9Scope','공사 내용',m.scope)+two(F('f9QuoteNo','견적서 No.',m.quoteNo),F('f9Amount','계약금액 (원)',money(m.amount),'type="text" inputmode="numeric"'))+
+      vatSel('f9Vat',m.vat)+two(F('f9From','착공',m.from,'type="date"'),F('f9To','준공',m.to,'type="date"'))+dayRow('계약일')+custRows()+F('f9CustAddr','갑 주소',m.custAddr);
+  }else if(key==='finish'){
+    body=F('f9Site','공사명·현장',m.site)+two(F('f9QuoteNo','견적서 No.',m.quoteNo),dayRow('확인일'))+F('f9DueDay','선택 마감일',m.dueDay,'type="date"')+
+      (m.quoteItems?hjDoc433Check('f9UseQuote','견적 품목을 품목·규격 칸에 미리 적기 ('+m.quoteItems+'줄, 제품명·품번은 빈칸)',s.useQuote!==false):'<p class="hint" style="margin-top:6px">앱 견적이 없어 품목 칸은 전부 빈칸입니다.</p>')+custRows();
+  }else if(key==='change'){
+    const all=m.extrasAll||[];
+    body=F('f9Site','공사명·현장',m.site)+two(F('f9ContractDay','원 계약일',m.contractDay,'type="date"'),F('f9Round','합의 차수',m.round,'type="text" inputmode="numeric"'))+
+      two(F('f9Amount','원 계약금액 (원)',money(m.amount),'type="text" inputmode="numeric"'),vatSel('f9Vat',m.vat))+
+      S('f9Reason','발생 사유',[['','표시 안 함'],['고객 요청','고객 요청'],['현장 여건(철거 후 발견 등)','현장 여건(철거 후 발견 등)'],['자재 품절·단종','자재 품절·단종'],['기타','기타']],m.reason)+(m.reason==='기타'?F('f9ReasonEtc','기타 내용',m.reasonEtc):'')+
+      '<div style="font-size:12px;font-weight:700;margin:10px 0 3px">내역에 담을 추가공사 ('+(all.length?'최대 6건':'🖊 추가공사 확인 기록 없음 — 내역은 손글씨')+')</div>'+
+      all.slice(0,30).map(x=>hjDoc433Check('f9Ex_'+escapeAttr(String(x.id)),escapeHtml(hjExtraNorm(x.text)||'(내용 없음)')+' · '+(hjExtraAmt(x)>0?escapeHtml(won(hjExtraAmt(x))):'금액 협의')+(x.agreed?' · 확인받음':''),(m.extraIds||[]).includes(String(x.id)),' data-f9-extra="'+escapeAttr(String(x.id))+'"')).join('')+
+      S('f9PayWhen','지급 시기',[['','표시 안 함'],['잔금과 함께','잔금과 함께'],['작업 착수 전','작업 착수 전'],['작업 완료 즉시','작업 완료 즉시'],['기타','기타']],m.payWhen)+
+      S('f9Vat2','추가 금액의 부가세',[['auto','모름(빈칸)'],['inc','위 금액에 부가세 포함'],['exc','부가세 별도']],m.vat2===true?'inc':m.vat2===false?'exc':'auto')+
+      two(F('f9ExtDays','연장 일수 (0 이면 빈칸)',m.extDays>0?m.extDays:'','type="text" inputmode="numeric"'),F('f9NewEnd','변경 준공일',m.newEnd,'type="date"'))+
+      F('f9Service','서비스 작업 (금액 없이 해 드리는 작업)',m.service)+dayRow('합의일')+custRows();
+  }else if(key==='photoconsent'){
+    body=F('f9Site','현장',m.site)+dayRow('동의일')+two(F('f9CustName','동의인(고객) 성명',m.custName),F('f9CustPhone','연락처',m.custPhone,'type="tel" inputmode="tel"'))+
+      '<p class="hint" style="margin-top:8px">동의 항목(사진·올리는 곳·지역 표시·단지명·고객 말씀)은 고객이 종이에 ✓ 합니다 — 앱이 대신 표시하지 않아요.</p>';
+  }else if(key==='subwork'){
+    const subs=m.subs||[];
+    body=S('f9Sup','수급자 (📇 거래처 외주)',[['','직접 적기']].concat(subs.map(x=>[x.name,x.name+(x.trade?' · '+x.trade:'')])),String(s.supName||''))+
+      two(F('f9SubName','상호·팀명',m.subName),F('f9SubLead','대표·팀장',m.subLead))+two(F('f9SubPhone','연락처',m.subPhone,'type="tel" inputmode="tel"'),F('f9Trade','공종 (철거·설비·전기·목공·타일·도배·바닥, 그 밖은 기타)',m.trade))+
+      F('f9Site','현장',m.site)+T('f9Scope','작업 범위 (한 줄에 하나)',m.scope,3)+two(F('f9From','작업 시작',m.from,'type="date"'),F('f9To','작업 끝',m.to,'type="date"'))+
+      two(F('f9Amount','금액 (원)',money(m.amount),'type="text" inputmode="numeric"'),vatSel('f9Vat',m.vat))+T('f9Rules','현장 규칙 (🏢 현장 부대사항에서)',m.rules,3)+dayRow('발주일');
+  }else if(key==='daylabor'||key==='wagepay'){
+    const workers=m.workers||[];
+    body=S('f9Worker','근로자 (👷 팀원 연락처)',[['','직접 적기']].concat(workers.map(x=>[x.name,x.name+(x.trade?' · '+x.trade:'')+(x.rate?' · 일당 '+won(x.rate):'')])),String(s.worker||''))+
+      two(F('f9WName','성명',m.wName),F('f9WPhone','연락처',m.wPhone,'type="tel" inputmode="tel"'));
+    if(key==='daylabor')body+=two(F('f9From','계약 시작',m.from,'type="date"'),F('f9To','계약 끝 (비우면 시작일만)',m.to,'type="date"'))+F('f9Site','근무 장소',m.site)+two(F('f9Task','작업 (공종)',m.task),F('f9DayRate','일급 (원)',money(m.dayRate),'type="text" inputmode="numeric"'))+dayRow('계약일')+
+      '<p class="hint" style="margin-top:8px">생년월일·주소·근로시간·사회보험 칸은 근로자와 확인하며 손으로 적습니다. 주민등록번호 칸은 양식에 없어요.</p>';
+    else body+=two(F('f9Ym','정산 월',m.ym,'type="month"'),F('f9PayDay','지급일',m.payDay,'type="date"'))+F('f9PayTotal','지급 총액 (원)',money(m.payTotal),'type="text" inputmode="numeric"')+
+      '<p class="hint" style="margin-top:8px">근로 내역 '+(m.lines||[]).length+'건'+(m.linesAll>10?' (이 달 '+m.linesAll+'건 중 10건)':'')+' — 👷 인건비 장부의 사람별 공수에서. <b>주민등록번호·입금 계좌·소득세·지방소득세·실지급액은 늘 빈칸(손글씨)</b> — 앱에 적지도 저장하지도 않아요.</p>';
+  }else if(key==='asfix'){
+    const list=m.asList||[];
+    body=S('f9As','AS 접수 (🔧 AS 기록)',[['','직접 적기']].concat(list.map(a=>[String(a.id),String(a.date||'').slice(0,10)+' · '+hjF9Text(a.text,30).trim()+(a.status==='done'?' · 완료':'')])),m.asId)+
+      two(F('f9AsNo','접수번호',m.asNo),F('f9AsDate','접수일',m.asDate,'type="date"'))+custRows()+F('f9Site','현장',m.site)+two(F('f9DoneAt','준공(인도)일',m.doneAt,'type="date"'),F('f9Trade','해당 공종',m.trade))+
+      F('f9WEnd','보증 만료일',m.wEnd,'type="date"')+T('f9Text','접수 내용',m.text,2)+two(F('f9VisitAt','방문일',m.visitAt,'type="date"'),F('f9FixDay','완료일',m.fixDay,'type="date"'))+
+      T('f9Result','확인 결과 (현장에서 확인한 사실·사진 근거만)',m.result,2)+T('f9Fix','처리 내용',m.fix,2)+two(F('f9Materials','사용 자재',m.materials),F('f9Fee','유상 금액 (원, 0 이면 표시 안 함)',money(m.fee),'type="text" inputmode="numeric"'))+dayRow('확인일')+
+      '<p class="hint" style="margin-top:8px">판정 □ 는 ⚖ 판정 기록(무상/유상)이 있을 때만 표시하고, 보증기간 □ 는 그 공종의 보증 개월이 양식의 3년·2년·1년과 같을 때만 표시합니다.</p>';
+  }else if(key==='cancel'){
+    body=F('f9Site','공사명·현장',m.site)+two(F('f9ContractDay','계약일',m.contractDay,'type="date"'),F('f9ContractNo','계약번호',m.contractNo))+two(F('f9Amount','계약금액 (원)',money(m.amount),'type="text" inputmode="numeric"'),vatSel('f9Vat',m.vat))+
+      two(F('f9CancelDay','해제일',m.cancelDay,'type="date"'),S('f9Progress','진행 상태',[['','표시 안 함'],['before','착공 전'],['during','공사 중']],m.progress))+(m.progress==='during'?F('f9Pct','공정 약 (%)',m.pct,'type="text" inputmode="numeric"'):'')+
+      S('f9Reason','해제 사유',[['','표시 안 함'],['갑','고객(갑)의 사정'],['을','만물인테리어(을)의 사정'],['합의','서로 합의']],m.reason)+
+      F('f9Paid','① 갑이 이미 지급한 금액 (원) — 받은 돈',money(m.paid),'type="text" inputmode="numeric"')+
+      two(F('f9DoneAmt','② 이미 시공한 부분의 대금 (원)',m.doneAmt==null?'':money(m.doneAmt)||'0','type="text" inputmode="numeric"'),F('f9MatAmt','③ 반품·취소 불가 자재 대금 (원)',m.matAmt==null?'':money(m.matAmt)||'0','type="text" inputmode="numeric"'))+
+      F('f9EtcAmt','④ 그 밖에 이미 들어간 비용 (원)',m.etcAmt==null?'':money(m.etcAmt)||'0','type="text" inputmode="numeric"')+
+      '<p class="hint" style="margin:6px 0 0">⑤ 정산 금액은 ②③④ 를 모두 적었을 때만 계산해 넣어요(빈칸은 0 이 아니에요). 받을 계좌는 늘 손글씨.</p>'+
+      F('f9PayBy','지급 기한',m.payBy,'type="date"')+dayRow('합의일')+custRows();
+  }
+  openModal(def.ic+' '+def.n+' '+def.t+' — '+name,
+    '<div id="hjForm9" style="min-width:0;overflow-wrap:anywhere"><p class="hint" style="margin:0 0 4px">'+escapeHtml(def.desc)+'</p>'+
+    '<p class="hint" style="margin:0 0 6px">자동으로 채운 칸 '+m.fill.length+'개 — 고칠 수 있고, 비우면 그 칸은 손글씨. 번호 '+escapeHtml(m.no)+'. 문구는 양식 그대로입니다.</p>'+body+'</div>',
+    [{label:'📄 미리보기·내보내기',cls:'clay',fn:()=>make(false)},{label:'⬜ 빈 양식 그대로',cls:'ghost',fn:()=>make(true)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjForm9');
+  const v=id=>{const el=root.querySelector('#'+id);return el?String(el.value):null;};
+  const read=()=>{
+    const map={f9WorkName:'workName',f9Place:'place',f9Scope:'scope',f9QuoteNo:'quoteNo',f9Amount:'amount',f9From:'from',f9To:'to',f9Day:'day',f9CustName:'custName',f9CustPhone:'custPhone',f9CustAddr:'custAddr',
+      f9Site:'site',f9DueDay:'dueDay',f9ContractDay:'contractDay',f9Round:'round',f9Reason:'reason',f9ReasonEtc:'reasonEtc',f9PayWhen:'payWhen',f9ExtDays:'extDays',f9NewEnd:'newEnd',f9Service:'service',
+      f9SubName:'subName',f9SubLead:'subLead',f9SubPhone:'subPhone',f9Trade:'trade',f9Rules:'rules',f9WName:'wName',f9WPhone:'wPhone',f9Task:'task',f9DayRate:'dayRate',f9Ym:'ym',f9PayDay:'payDay',f9PayTotal:'payTotal',
+      f9AsNo:'asNo',f9AsDate:'asDate',f9DoneAt:'doneAt',f9WEnd:'wEnd',f9Text:'text',f9VisitAt:'visitAt',f9FixDay:'fixDay',f9Result:'result',f9Fix:'fix',f9Materials:'materials',f9Fee:'fee',
+      f9ContractNo:'contractNo',f9CancelDay:'cancelDay',f9Progress:'progress',f9Pct:'pct',f9Paid:'paid',f9DoneAmt:'doneAmt',f9MatAmt:'matAmt',f9EtcAmt:'etcAmt',f9PayBy:'payBy'};
+    Object.keys(map).forEach(id=>{const x=v(id);if(x!=null)s[map[id]]=x;});
+    ['f9Vat','f9Vat2'].forEach(id=>{const x=v(id);if(x!=null)s[id==='f9Vat'?'vat':'vat2']=x==='inc'?'inc':x==='exc'?'exc':'none';});
+    const uq=root.querySelector('#f9UseQuote');if(uq)s.useQuote=!!uq.checked;
+    const ex=root.querySelectorAll('[data-f9-extra]');if(ex.length)s.extraIds=Array.from(ex).filter(c=>c.checked).map(c=>c.dataset.f9Extra);
+    const sup=v('f9Sup');if(sup!=null)s.supName=sup;const wk=v('f9Worker');if(wk!=null)s.worker=wk;const as=v('f9As');if(as!=null)s.asId=as;
+    return s;};
+  const reopen=()=>{closeModal();hjForm9View(name,key,s);};
+  /* 명단에서 고르면 그 사람 값으로 다시 채운다 — 직접 고친 칸은 지워 자동값이 보이게. */
+  const repick=(id,fields)=>{const el=root.querySelector('#'+id);if(el)el.onchange=()=>{read();fields.forEach(k=>{delete s[k];});reopen();};};
+  repick('f9Sup',['subName','subLead','subPhone','trade','scope','amount']);repick('f9Worker',['wName','wPhone','task','dayRate','payDay','payTotal']);repick('f9As',['asNo','asDate','trade','wEnd','text','visitAt','fixDay','fix','fee']);
+  {const el=root.querySelector('#f9Ym');if(el)el.onchange=()=>{read();delete s.payDay;delete s.payTotal;reopen();};}
+  {const el=root.querySelector('#f9Reason');if(el)el.onchange=()=>{read();reopen();};}
+  {const el=root.querySelector('#f9Progress');if(el)el.onchange=()=>{read();reopen();};}
+  root.querySelectorAll('[data-f9-extra]').forEach(c=>c.onchange=()=>{read();reopen();});
+  const live=()=>(state.projects||[]).find(x=>x&&x.name===name)||null;
+  const make=blankForm=>{
+    read();const cur=live();if(!cur){toast('현장을 찾을 수 없어요');return;}
+    const input=blankForm?{__blank:true,no:s.no}:s;
+    const model=hjForm9Model(cur,key,input);if(!model)return;s.no=model.no;
+    const html=HJ_FORM9_HTML[key](model);if(!html){toast('양식을 만들 수 없어요');return;}
+    closeModal();
+    const who=model.wName||model.subName||'';
+    const base=safeName(name)+'_'+def.t.replace(/[\/\\:*?"<>|·]/g,'_')+'_'+model.no;
+    hjDocDeliverView(name,html,base,def.ic+' '+def.t+(blankForm?' (빈 양식)':''),()=>hjForm9View(name,key,s),{
+      onDeliver:via=>{hjDoc433IssueQuiet(name,{type:key,no:model.no,purpose:via+(blankForm?'·빈양식':''),name:def.t+(who?' · '+who:'')});}
+    });
+  };
+  return m;
+}
 function docHubView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
@@ -42956,6 +43585,8 @@ function docHubView(pjName){
     item('🗂','증빙 묶음'+NEW,'견적·사진 전중후·영수증·명세서·보증서·수금 기록을 ZIP 하나로. 용도 3종(세무사/보험·관리사무소/고객).','evidence',issued('evidence')||('사진 '+ph+'장 · 견적 '+anyQuote+'건 · 입금 '+pays.length+'건'),issued('evidence')?'ok':'')+
     group('아파트·행정')+
     item('🏢','공사 신청서 · 입주민 안내문 · 현관 게시문 · 이웃 동의서'+NEW,'아파트 4종 — 단지·동·호수·기간·공종이 채워지고, 4종 ZIP·관리사무소 문자 초안까지.','aptdocs',(function(){const u=hjAptUnitOf(p);const n=Object.keys(HJ_APT_DOC_TYPES).filter(t=>hjDocLogsOf(p,t).length).length;return (u.dong?escapeHtml((u.complex?u.complex+' ':'')+u.dong+'동 '+u.ho+'호'):'동·호수 없음')+(n?' · 발행 '+n+'/4':'');})(),hjAptUnitOf(p).dong?'':'warn')+
+    group('📑 계약·확인 양식(9종)')+   // v570 대표 전달 양식 — 문구는 양식 그대로, 앱이 아는 칸만 미리 채움
+    (function(){let f9b=null;try{f9b=hjF9Base(p);}catch(e){f9b=null;}return HJ_FORM9_KEYS.map(function(k){const d=HJ_FORM9[k],st=hjForm9Status(p,k,f9b);return item(d.ic,d.n+' '+d.t+NEW,d.desc,'form9:'+k,st.text,st.tone);}).join('');})()+
     group('보관')+
     item('📦','서류 묶음 ZIP','사진·견적·보고서를 한 파일로. 보관·세무·분쟁 대비용.','zip',logs.length?'발행 문서 '+logs.length+'건 포함':'','')+
     item('📕','PDF 묶음','사진·서류를 PDF 한 장으로 이어붙입니다.','pdf','','')+
@@ -42993,6 +43624,7 @@ function docHubView(pjName){
         else if(a==='aptdocs')hjAptDocsView(pjName);   // v441
         else if(a==='reviewqr')hjReviewQrCardView(function(){docHubView(pjName);});   // v446
         else if(a==='compare')hjQuoteCompareView(pjName);   // v437
+        else if(a.indexOf('form9:')===0)hjForm9View(pjName,a.slice(6));   // v570 계약·확인 양식 9종
       }catch(e){toast('열 수 없어요: '+(e.message||e));}
     },80);
   };});
@@ -43008,9 +43640,10 @@ const HJ_DOC433_TYPES=Object.freeze({
   leaknarr:Object.freeze({t:'누수 사고 경위서',prefix:'LN',ic:'📝'}),
   payrcpt:Object.freeze({t:'간이영수증',prefix:'MM',ic:'🧾'}),
   evidence:Object.freeze({t:'증빙 묶음',prefix:'EV',ic:'🗂'}),   // v427
-  damage:Object.freeze({t:'피해 확인서',prefix:'DC',ic:'🏢'})   // v442 아랫집 누수 피해 확인
+  damage:Object.freeze({t:'피해 확인서',prefix:'DC',ic:'🏢'}),   // v442 아랫집 누수 피해 확인
+  ...hjForm9DocTypes()   // v570 계약·확인 양식 9종(contract CT · finish FS · change CO · photoconsent PC · subwork SW · daylabor DL · wagepay WP · asfix AF · cancel CX)
 });
-const HJ_DOC433_NO_RE=/^(WC|LN|MM|EV|DC)-(\d{8})-(\d{2,})$/;
+const HJ_DOC433_NO_RE=/^(WC|LN|MM|EV|DC|CT|FS|CO|PC|SW|DL|WP|AF|CX)-(\d{8})-(\d{2,})$/;   // v441 AA/AN/AP/AC · v422 LR 은 따로 센다 — 접두가 겹치지 않게
 const HJ_LEAKNARR_PURPOSES=Object.freeze({insurance:'보험사 제출용',office:'관리사무소 제출용',self:'본인 보관용'});
 const HJ_LEAKNARR_SCOPES=Object.freeze(['우리 집(세대 안)','아랫집','공용부']);
 const HJ_DOC433_DISCLAIMER='사실 관계 정리용 — 보험 심사·책임 판단을 대신하지 않습니다.';
