@@ -3944,7 +3944,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v565-stmttab';
+const APP_BUILD='hyeonjang-v566-unbilled';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -37162,6 +37162,7 @@ function viewStatements(){
     kpi('year',D.nowYm.slice(0,4)+'년 누계',won(D.yearTotal),'')+'</div>';
   const led=hjStmtLedgerHTML();
   h+=led||'<div class="empty" data-stmt-empty><b>반영한 작업내역서가 없습니다</b>위 [📑 작업내역서 반영]으로 협력사에 보낸 작업내역서 엑셀을 넣으세요.</div>';
+  h+=hjUnbilledHTML();   // v566 🧾 내역서에 아직 없는 작업(사진·일정 대조)
   if(D.months.length){
     h+='<div data-stmt-months style="margin:14px 0 0"><div style="font-size:12px;letter-spacing:.08em;color:#0b4ea2;margin-bottom:6px">📅 월별 매출(내역서)</div>';
     D.months.forEach(m=>{const on=m.ym===D.sel,p=D.paidYm[m.ym]||0;
@@ -37175,6 +37176,87 @@ function viewStatements(){
   const estN=state.files.filter(f=>f&&f.kind==='estimate'&&!f._stmt).length;
   h+='<details data-stmt-old'+(__hjStmtOldOpen?' open':'')+' ontoggle="hjStmtOldToggle(this)" style="margin:18px 0 0"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)">📄 견적서 파일 · 예전 견적·정산 화면'+(estN?' ('+estN+'건)':'')+'</summary>'+(__hjStmtOldOpen?viewEstimates():'')+'</details>';
   return h+'</section>';
+}
+/* v566 🧾 내역서에 아직 없는 작업 — 사진·일정 ↔ 작업내역서 대조 (대표 지시 11/10 "사진 및 현장 관리에 개발 가능 부분 개발 진행").
+   내역서로 청구하려면 한 일이 내역서 줄에 들어가야 한다. 10/31 에는 클로드가 사진 날짜와 내역서를 손으로 맞춰 '청구 안 된 작업'을 찾았다(🧰 명령어 cw_unbilled).
+   · 근거(읽기만): 최근 90일, 보관 안 한 현장의 '사진 찍은 날'(한국 날짜)과 '일정 날'(💰·세금 자동·개인 일정 제외, 오늘까지). 하루 이내로 이어지는 날은 한 작업으로 묶는다.
+   · 내역서 줄(q.stmt.lines 의 작업 날짜, 없으면 작성일)이 그 작업 앞뒤 하루 안에 있으면 '들어간 작업'. 집계 제외한 내역서 줄도 청구한 것으로 본다.
+   · 견적서로 청구하는 현장(견적 파일·앱 견적은 있고 내역서는 없는 현장)과 사진 없이 '방문·견적·상담·실측·점검' 일정만 있는 날은 '참고'로 따로.
+   · [청구 안 함]은 그 현장 안 p.stmtSkip[{from,to,at}] 에만 적는다(새 최상위 저장 키 없음). [📋 글로 복사]는 다음 내역서를 쓸 때 붙여 넣을 글 — 금액·고객 정보 없음. */
+const HJ_UNBILLED_DAYS=90,HJ_UNBILLED_VISIT_RE=/방문|견적|상담|실측|미팅|점검/;
+function hjUnbilledSkipped(p,run){return (Array.isArray(p&&p.stmtSkip)?p.stmtSkip:[]).some(x=>x&&String(x.from)<=run.from&&String(x.to)>=run.to);}
+function hjUnbilledPlan(opts){
+  const today=localDate(),since=hjAddDays(today,-(Number(opts&&opts.days)||HJ_UNBILLED_DAYS)),ISO=/^\d{4}-\d{2}-\d{2}$/;
+  const pj=new Map();(state.projects||[]).forEach(p=>{if(p&&p.name&&!p.archived)pj.set(p.name,p);});
+  const ev=new Map();
+  const at=(name,day)=>{if(!pj.has(name)||!ISO.test(day)||day<since||day>today)return null;let m=ev.get(name);if(!m){m=new Map();ev.set(name,m);}let d=m.get(day);if(!d){d={photos:0,labels:new Map(),titles:[]};m.set(day,d);}return d;};
+  (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||!f.project)return;const d=at(f.project,hjPhotoKoreanDay(f));if(!d)return;d.photos++;const lb=hjWorkLabelClean(f._worklabel);if(lb)d.labels.set(lb,(d.labels.get(lb)||0)+1);});
+  (state.schedule||[]).forEach(s=>{if(!s||!s.project||!hjPrepOtherOk(s)||s.sourceUid)return;const d=at(s.project,String(s.date||''));if(!d)return;const t=String(s.title||'').replace(/\s*\(\d+일차 시작\)\s*$/,'').replace(/\s+/g,' ').trim();if(t&&!d.titles.includes(t))d.titles.push(t);});
+  const billed=new Map(),hasStmt=new Set(),hasEst=new Set();
+  (state.quotes||[]).forEach(q=>{if(!q||!q.project)return;if(!q.stmt){hasEst.add(q.project);return;}
+    hasStmt.add(q.project);if(!billed.has(q.project))billed.set(q.project,[]);
+    const ds=(Array.isArray(q.stmt.lines)?q.stmt.lines:[]).map(l=>String(l&&l.d||'')).filter(d=>ISO.test(d));
+    (ds.length?ds:[String(q.stmt.date||q.date||'')].filter(d=>ISO.test(d))).forEach(d=>billed.get(q.project).push(d));});
+  (state.files||[]).forEach(f=>{if(f&&f.kind==='estimate'&&f.project&&!f._stmt&&!f._fromQuote)hasEst.add(f.project);});
+  const rows=[],refs=[];let skipped=0;
+  ev.forEach((m,name)=>{
+    let run=null;
+    const flush=()=>{if(!run)return;const r=run;run=null;
+      const lo=hjAddDays(r.from,-1),hi=hjAddDays(r.to,1);
+      if((billed.get(name)||[]).some(d=>d>=lo&&d<=hi))return;                         // 내역서에 들어간 작업
+      if(hjUnbilledSkipped(pj.get(name),r)){skipped++;return;}
+      r.works=[...r.labels].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ko')).map(x=>x[0]).slice(0,2);delete r.labels;
+      r.visit=!r.photos&&r.titles.length>0&&r.titles.every(t=>HJ_UNBILLED_VISIT_RE.test(t));
+      r.byEst=hasEst.has(name)&&!hasStmt.has(name);
+      (r.visit||r.byEst?refs:rows).push(r);};
+    [...m.keys()].sort().forEach(day=>{const d=m.get(day);
+      if(!run||hjDaysBetween(run.to,day)>1){flush();run={project:name,from:day,to:day,photos:0,labels:new Map(),titles:[]};}
+      run.to=day;run.photos+=d.photos;d.labels.forEach((n,k)=>run.labels.set(k,(run.labels.get(k)||0)+n));d.titles.forEach(t=>{if(!run.titles.includes(t))run.titles.push(t);});});
+    flush();
+  });
+  const order=(a,b)=>b.from.localeCompare(a.from)||a.project.localeCompare(b.project,'ko');
+  return {since,today,rows:rows.sort(order),refs:refs.sort(order),skipped};
+}
+function hjUnbilledLine(r){
+  const what=(r.titles.length?r.titles:r.works).slice(0,2).join(' · ')||'작업 내용 없음';
+  return hjMdDow(r.from)+(r.to>r.from?'~'+hjMdDow(r.to):'')+' '+r.project+' — '+what+(r.photos?' · 사진 '+r.photos+'장':' · 사진 없음');
+}
+function hjUnbilledText(P){
+  P=P||hjUnbilledPlan();
+  return ['내역서에 아직 없는 작업 '+P.rows.length+'건 ('+hjStmtMd(P.since)+'~'+hjStmtMd(P.today)+' 사진·일정 기준)'].concat(P.rows.map(r=>'- '+hjUnbilledLine(r))).join('\n');
+}
+async function hjUnbilledCopy(){
+  const P=hjUnbilledPlan();if(!P.rows.length){toast('내역서에 없는 작업이 없어요');return false;}
+  const text=hjUnbilledText(P);
+  try{await navigator.clipboard.writeText(text);}catch(e){try{coworkCopyFallback(text);}catch(_){toast('복사 실패 — 다시 시도해 주세요');return false;}}
+  toast('📋 내역서에 없는 작업 '+P.rows.length+'건을 글로 복사했어요 — 다음 내역서를 쓸 때 붙여 넣으세요');return true;
+}
+function hjUnbilledSkip(name,from,to){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<from)return false;
+  if(window.__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return false;}
+  p.stmtSkip=(Array.isArray(p.stmtSkip)?p.stmtSkip:[]).filter(x=>x&&!(String(x.from)>=from&&String(x.to)<=to)).concat([{from,to,at:localDate()}]).slice(-60);
+  markDirty();render();toast('청구 안 함으로 넘겼어요 — 목록 아래 [넘긴 작업 다시 보기]로 되돌릴 수 있어요');return true;
+}
+function hjUnbilledUnskip(){
+  if(window.__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const since=hjAddDays(localDate(),-HJ_UNBILLED_DAYS);let n=0;
+  (state.projects||[]).forEach(p=>{if(!p||!Array.isArray(p.stmtSkip))return;const keep=p.stmtSkip.filter(x=>x&&String(x.to)<since);n+=p.stmtSkip.length-keep.length;if(keep.length)p.stmtSkip=keep;else delete p.stmtSkip;});
+  if(n){markDirty();render();toast('넘긴 작업 '+n+'건을 다시 보이게 했어요');}
+  return n;
+}
+function hjUnbilledHTML(){
+  let P;try{P=hjUnbilledPlan();}catch(e){return '';}
+  if(!P.rows.length&&!P.refs.length&&!P.skipped)return '';
+  const row=(r,ref)=>'<div data-unbilled-row="'+escapeAttr(r.project)+'"'+(ref?' data-unbilled-ref="'+(r.visit?'visit':'est')+'"':'')+' style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere">'+escapeHtml(hjUnbilledLine(r))+(ref?' <span style="color:var(--muted)">('+(r.visit?'방문·상담 일정만':'견적서로 청구하는 현장')+')</span>':'')+'</div>'+
+    '<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">현장</button><button type="button" class="mini-btn" data-unbilled-skip="'+escapeAttr(r.project)+'" data-from="'+r.from+'" data-to="'+r.to+'" style="min-height:44px" title="서비스·AS처럼 청구하지 않는 작업이면 목록에서 넘깁니다">청구 안 함</button></div>';
+  const SHOW=20;
+  return '<section data-unbilled class="card" style="cursor:default;padding:12px 14px;margin:0 0 14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">🧾 내역서에 아직 없는 작업 <span data-unbilled-n>'+P.rows.length+'</span>건</b>'+(P.rows.length?'<button type="button" class="mini-btn" data-unbilled-copy style="min-height:44px">📋 글로 복사</button>':'')+'</div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px">최근 '+HJ_UNBILLED_DAYS+'일 사진·일정이 있는 날인데 앞뒤 하루 안에 작업내역서 줄이 없는 작업이에요. 다음 내역서에 넣거나, 청구하지 않는 작업이면 [청구 안 함].</div>'+
+    (P.rows.length?P.rows.slice(0,SHOW).map(r=>row(r,false)).join('')+(P.rows.length>SHOW?'<div data-unbilled-more style="font-size:11.5px;color:var(--muted);padding-top:4px">…외 '+(P.rows.length-SHOW)+'건 — [📋 글로 복사]에는 모두 들어가요</div>':''):'<div data-unbilled-ok style="font-size:12.5px;color:var(--ok);padding:4px 0">✓ 최근 작업이 모두 내역서에 들어 있어요</div>')+
+    (P.refs.length?'<details data-unbilled-refs style="margin-top:8px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:12.5px;color:var(--muted)">참고 '+P.refs.length+'건 — 견적서로 청구하는 현장 · 방문 일정만 있는 날</summary>'+P.refs.slice(0,SHOW).map(r=>row(r,true)).join('')+'</details>':'')+
+    (P.skipped?'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:6px;font-size:11.5px;color:var(--muted)"><span style="flex:1 1 160px">청구 안 함으로 넘긴 작업 '+P.skipped+'건</span><button type="button" class="mini-btn" data-unbilled-unskip style="min-height:44px">넘긴 작업 다시 보기</button></div>':'')+
+    '</section>';
 }
 function viewEstimates(){
   // 다시 그리기 전에 '지금 화면에서 열려 있는 상세' 를 먼저 적어 둔다.
@@ -40689,13 +40771,16 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
     if(d.stmtYm!==undefined){__hjStmtYm=d.stmtYm;return render();}   // v565 📑 내역서 탭 — 달 고르기
     if(d.stmtBasis!==undefined){hjSalesBasisSet(true);return toast('📑 이제 매출은 작업내역서만 셉니다 — 📊 매출 목표 화면에서 끌 수 있어요');}
     if(d.stmtGo!==undefined)return hjGoTab(d.stmtGo);
+    if(d.unbilledSkip!==undefined)return hjUnbilledSkip(d.unbilledSkip,d.from,d.to);   // v566
+    if(d.unbilledCopy!==undefined)return hjUnbilledCopy();
+    if(d.unbilledUnskip!==undefined)return hjUnbilledUnskip();
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
     if(d.leakintake!==undefined)return hjLeakIntakeView(d.leakintake);
     if(d.leakdispatch!==undefined)return hjLeakDispatchView(d.leakdispatch);
