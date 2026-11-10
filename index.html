@@ -3944,7 +3944,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v566-unbilled';
+const APP_BUILD='hyeonjang-v567-calsync';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -39528,7 +39528,7 @@ function viewSchedule(){
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
   const sch=(state.schedule||[]).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   if(sch.length){
-    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
+    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button> <button class="ghost tiny" id="schCalSync" style="min-height:44px" title="구글 캘린더 일정을 읽어 앱 일정표와 견주고, 미리보기에서 고른 것만 넣습니다 — 구글 캘린더는 바꾸지 않아요">🔄 구글 캘린더 맞추기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
@@ -40183,6 +40183,186 @@ async function importICS(text){
   toast(added||updated||removed?msg:'바뀐 일정이 없습니다');
   return {추가:added,갱신:updated,취소:removed};
 }
+/* v567 🔄 구글 캘린더 맞추기 — 대표 지시(2026-11-10) "최근 운영 방법에 개발 가능 부분".
+   그날 대표는 "구글 캘린더를 보고 현장 웹에 반영해줘, @ 표시는 제미나이가 한 거야"라고 했고, 클로드가 캘린더 화면 글을 읽어 일정 5건을 손으로 넣고
+   구글 쪽 중복('@제목'과 앱이 올린 '[현장명] 제목')을 손으로 지웠다. 📥 캘린더 파일 가져오기(importICS)는 미리보기·현장 연결·중복 가리기가 없고
+   구글 내보내기의 UTC 시각(…Z)을 한국 시각으로 바꾸지 않는다. 이 창은 읽은 일정을 앱 일정표와 대조해 **미리보기에서 고른 것만** 넣는다.
+   · 읽는 것: 구글 캘린더 내보내기 .ics(…Z 는 한국 시각으로) 또는 캘린더 화면에서 복사한 글('오전 9시~오후 5시, 제목, 캘린더, 위치: …, 2026년 11월 6일' 줄).
+   · 제목 맨 앞 '@'(제미나이 표시)·'[현장명]'(앱이 올린 표시)은 떼고 비교한다 — 같은 날 같은 제목은 한 줄('구글에 n번').
+   · 새 일정 / 시간 다름 / 날짜 옮김(앞뒤 21일 안 같은 제목) / 앱에만 있음(지우기는 체크해야만, 작업 보고가 있는 일정은 대상 아님).
+   · [파수꾼]·💰·생일·취소된 일정과 7일보다 오래된 일정은 건너뛴다. 현장은 '[현장명]' → 이름 맞추기(hjStmtMatch 0.6↑) 제안, 사람이 바꿀 수 있다.
+   · 반영 전 🛡 안전판 1회(못 만들면 무변경), 미리보기 뒤 일정표가 바뀌었으면 거부. 구글 캘린더는 건드리지 않는다(읽기만). 새 저장 키 없음. */
+const HJ_CALSYNC_BACK=7,HJ_CALSYNC_MOVE=21;
+function hjCalSyncTitle(raw){
+  let t=String(raw||'').replace(/\s+/g,' ').trim(),mark='',tag='';
+  if(t.charAt(0)==='@'){mark='@';t=t.slice(1).trim();}
+  const m=t.match(/^\[([^\]]{1,40})\]\s*(.+)$/);if(m){tag=m[1].trim();t=m[2].trim();if(!mark)mark='app';}
+  return {title:t,mark,tag};
+}
+function hjCalSyncKey(t){return String(t||'').toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
+function hjCalSyncSkip(raw){const t=String(raw||'').trim();return /^\[파수꾼\]/.test(t)||/^💰/.test(t)||/happy birthday|^생일/i.test(t);}
+function hjCalSyncHours(a,b){   // 'HH:MM' 둘 → 시간(0.5 단위), 모르면 1
+  const f=x=>{const m=String(x||'').match(/^(\d{2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;},s=f(a),e=f(b);
+  return s==null||e==null||e<=s?1:Math.max(0.5,Math.round((e-s)/30)/2);
+}
+function hjCalSyncParseIcs(text){
+  const out=[];
+  icsUnfold(text).split(/BEGIN:VEVENT/i).slice(1).forEach(b=>{
+    const body=b.split(/END:VEVENT/i)[0];
+    const get=name=>{const m=body.match(new RegExp('^'+name+'([^:\\n]*):(.*)$','im'));return m?{params:m[1]||'',val:m[2].trim()}:null;};
+    const when=p=>{if(!p)return null;const m=p.val.replace(/\s/g,'').match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/);if(!m)return null;
+      if(/VALUE=DATE(?!-TIME)/i.test(p.params)||!m[4])return {date:m[1]+'-'+m[2]+'-'+m[3],time:''};
+      if(!m[7])return {date:m[1]+'-'+m[2]+'-'+m[3],time:m[4]+':'+m[5]};
+      const k=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]+9,+m[5]));   // …Z(UTC) → 한국 시각(+9, 서머타임 없음)
+      const p2=n=>String(n).padStart(2,'0');return {date:k.getUTCFullYear()+'-'+p2(k.getUTCMonth()+1)+'-'+p2(k.getUTCDate()),time:p2(k.getUTCHours())+':'+p2(k.getUTCMinutes())};};
+    const s=when(get('DTSTART'));if(!s)return;
+    const e=when(get('DTEND')),st=get('STATUS');
+    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
+      location:icsUnescape((get('LOCATION')||{}).val||''),memo:icsUnescape((get('DESCRIPTION')||{}).val||''),cancelled:!!(st&&/CANCELLED/i.test(st.val))});
+  });
+  return out;
+}
+// 구글 캘린더 화면 글 한 줄: '오전 9시~오후 5시, 제목, 캘린더(주인), 위치: …|위치 없음, 2026년 11월 6일' · '종일, …' · '2026년 11월 2일 오후 7:20~…, 제목, …, 위치: …,'
+function hjCalSyncParseText(text){
+  const out=[],seen=new Set(),DATE=/(\d{4})년 (\d{1,2})월 (\d{1,2})일/g,p2=n=>String(n).padStart(2,'0');
+  const clock=s=>{const m=String(s||'').match(/(오전|오후) (\d{1,2})(?::(\d{2}))?시?/);if(!m)return '';let h=(+m[2])%12;if(m[1]==='오후')h+=12;return p2(h)+':'+(m[3]||'00');};
+  String(text||'').split(/\r?\n/).forEach(line=>{
+    line=line.trim();
+    if(!/^(?:\d{4}년 \d{1,2}월 \d{1,2}일 )?(?:종일|오전|오후)/.test(line))return;
+    const li=Math.max(line.lastIndexOf(', 위치: '),line.lastIndexOf(', 위치 없음'));if(li<0)return;
+    const c1=line.indexOf(', ');if(c1<0||c1>=li)return;
+    const head=line.slice(0,c1),mid=line.slice(c1+2,li),tail=line.slice(li+2);
+    const ds=[...line.matchAll(DATE)];if(!ds.length)return;
+    const d=/^\d{4}년/.test(line)?ds[0]:ds[ds.length-1],date=d[1]+'-'+p2(d[2])+'-'+p2(d[3]);
+    const oc=mid.lastIndexOf(', '),raw=(oc>0?mid.slice(0,oc):mid).trim();if(!raw)return;
+    const allDay=/^종일/.test(head),times=head.replace(DATE,'').split('~'),time=allDay?'':clock(times[0]);
+    const lm=tail.match(/^위치: (.*?)(?:, \d{4}년 \d{1,2}월 \d{1,2}일.*|,)?$/);
+    const k=date+'|'+time+'|'+raw;if(seen.has(k))return;seen.add(k);
+    out.push({uid:'',date,time,hours:allDay?8:(/^\d{4}년/.test(line)?1:hjCalSyncHours(time,clock(times[1]))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
+  });
+  return out;
+}
+function hjCalSyncParse(text){return /BEGIN:VEVENT/i.test(String(text||''))?hjCalSyncParseIcs(text):hjCalSyncParseText(text);}
+function hjCalSyncStamp(){return (state.schedule||[]).map(s=>s?[s.id,s.date,s.time||'',s.title||''].join('\u0001'):'').join('\u0002');}
+function hjCalSyncPlan(events,opts){
+  const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
+  const stats={read:0,same:0,skipped:0,old:0,gdup:0};
+  const groups=new Map();
+  (Array.isArray(events)?events:[]).forEach(e=>{
+    if(!e||!ISO.test(String(e.date||'')))return;stats.read++;
+    if(e.cancelled||hjCalSyncSkip(e.raw)){stats.skipped++;return;}
+    if(e.date<from){stats.old++;return;}
+    const t=hjCalSyncTitle(e.raw),key=hjCalSyncKey(t.title);if(!key){stats.skipped++;return;}
+    const gk=e.date+'|'+key;let g=groups.get(gk);
+    if(!g){g={date:e.date,key,list:[]};groups.set(gk,g);}
+    g.list.push(Object.assign({},e,t));
+  });
+  const apps=(state.schedule||[]).filter(s=>s&&ISO.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid).map(s=>({s,key:hjCalSyncKey(hjCalSyncTitle(s.title).title),used:false}));
+  const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name);
+  const rows=[];let lo='',hi='';
+  const gs=[...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key));
+  gs.forEach(g=>{
+    if(!lo||g.date<lo)lo=g.date;if(!hi||g.date>hi)hi=g.date;
+    // 대표 한 건: 시각이 있는 것 → 위치가 있는 것 → 먼저 읽은 것. 같은 날 같은 제목이 여러 번이면 '구글에 n번'
+    const rep=g.list.slice().sort((a,b)=>(b.time?1:0)-(a.time?1:0)||(b.location?1:0)-(a.location?1:0))[0];
+    if(g.list.length>1)stats.gdup+=g.list.length-1;
+    const tag=(g.list.find(x=>x.tag)||{}).tag||'',marks=[...new Set(g.list.map(x=>x.mark).filter(Boolean))];
+    const base={date:g.date,time:rep.time,hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
+    const same=apps.find(a=>!a.used&&a.s.date===g.date&&a.key===g.key);
+    if(same){same.used=true;
+      if(rep.time&&String(same.s.time||'')!==rep.time)rows.push(Object.assign(base,{status:'time',check:true,app:{id:same.s.id,date:same.s.date,time:same.s.time||''}}));
+      else stats.same++;
+      return;}
+    g._base=base;
+  });
+  gs.forEach(g=>{
+    const base=g._base;if(!base)return;
+    const moved=apps.filter(a=>!a.used&&a.key===g.key&&Math.abs(hjDaysBetween(a.s.date,g.date))<=HJ_CALSYNC_MOVE&&!hjSchReported(a.s)).sort((a,b)=>Math.abs(hjDaysBetween(a.s.date,g.date))-Math.abs(hjDaysBetween(b.s.date,g.date)))[0];
+    if(moved){moved.used=true;rows.push(Object.assign(base,{status:'move',check:true,app:{id:moved.s.id,date:moved.s.date,time:moved.s.time||''}}));return;}
+    let project='',cands=[];
+    const tag=(g.list.find(x=>x.tag)||{}).tag||'';
+    if(tag&&live.includes(tag))project=tag;
+    try{cands=hjStmtMatch(base.title+(base.location?' '+base.location:'')).filter(c=>c.score>=0.5).slice(0,3);}catch(e){}
+    if(!project&&cands[0]&&cands[0].score>=0.6)project=cands[0].name;
+    rows.push(Object.assign(base,{status:'new',check:true,project,cands:cands.map(c=>c.name)}));
+  });
+  if(lo){const a0=lo>from?lo:from;
+    apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
+      rows.push({status:'apponly',check:false,date:a.s.date,time:a.s.time||'',title:String(a.s.title||''),key:a.key,dupN:0,marks:[],location:'',memo:'',app:{id:a.s.id,date:a.s.date,time:a.s.time||''},project:a.s.project||''});});}
+  const rank={new:0,time:1,move:2,apponly:3};
+  rows.sort((a,b)=>rank[a.status]-rank[b.status]||a.date.localeCompare(b.date)||String(a.time).localeCompare(String(b.time))||a.key.localeCompare(b.key));
+  return {rows,stats,from,lo,hi,stamp:hjCalSyncStamp()};
+}
+// picks=[{i,project}] — 미리보기에서 체크한 줄만. {added,changed,removed}
+async function hjCalSyncApply(plan,picks){
+  if(window.__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
+  if(!plan||plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
+  const sel=(Array.isArray(picks)?picks:[]).map(p=>({r:plan.rows[p.i],project:String(p.project||'')})).filter(x=>x.r);
+  if(!sel.length)throw new Error('반영할 줄을 체크하세요');
+  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}
+  if(!snapped)throw new Error('안전판을 만들지 못해 반영하지 않았습니다. 잠시 후 다시 시도하세요.');
+  if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0};
+  sel.forEach(({r,project})=>{
+    if(r.status==='new'){
+      state.schedule.push(Object.assign(newSchedule(),{date:r.date,time:r.time,title:r.title,project:names.has(project)?project:'',hours:r.hours||(r.time?1:8),
+        memo:[r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||('gcal:'+r.date+'|'+r.key)}));
+      out.added++;return;}
+    const s=state.schedule.find(x=>x&&x.id===r.app.id);if(!s)return;
+    if(r.status==='time'){s.time=r.time;out.changed++;}
+    else if(r.status==='move'){s.date=r.date;if(r.time)s.time=r.time;out.changed++;}
+    else if(r.status==='apponly'){state.schedule.splice(state.schedule.indexOf(s),1);out.removed++;}
+  });
+  markDirty();render();
+  return out;
+}
+function hjCalSyncRowText(r){
+  const when=hjMdDow(r.date)+' '+(r.time||'종일');
+  if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time;
+  if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date);
+  if(r.status==='apponly')return when+' '+r.title+' — 구글 캘린더에 없음(체크하면 앱에서 지움)';
+  return when+' '+r.title+(r.location?' · '+r.location:'');
+}
+function hjCalSyncRender(plan){
+  const box=document.getElementById('csBody');if(!box)return;
+  window.__hjCalSyncPlan=plan;
+  const L={new:'🆕 새 일정',time:'⏰ 시간 다름',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
+  const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
+  const sel=(r,i)=>'<select class="csSel" data-i="'+i+'" aria-label="'+escapeAttr(r.title)+' 현장" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 없이</option>'+
+    [...new Set((r.project?[r.project]:[]).concat(r.cands||[],live))].map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===r.project?' selected':'')+'>'+escapeHtml(nm)+((r.cands||[]).includes(nm)||nm===r.project?' (추천)':'')+'</option>').join('')+'</select>';
+  box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+' · 앱에만 '+n('apponly')+
+      (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(파수꾼·💰·생일·'+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+'</p>'+
+    (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
+      :'<div data-cs-clean class="empty" style="margin-top:8px"><b>✓ 앱 일정표가 구글 캘린더와 같아요</b>넣거나 바꿀 일정이 없습니다.</div>')+
+    (st.gdup?'<p class="hint" style="margin-top:8px">구글 캘린더에 같은 날 같은 제목이 두 번 있으면(예: ‘@제목’과 ‘[현장명] 제목’) 앱에는 한 번만 넣습니다. 구글 쪽 정리는 구글 캘린더에서 하세요 — 이 창은 구글을 바꾸지 않습니다.</p>':'');
+  const go=document.getElementById('csApply');if(go){go.disabled=!plan.rows.length;go.textContent=plan.rows.length?'체크한 일정 반영':'반영할 일정 없음';}
+}
+function hjCalSyncRead(text){
+  let evs=[];try{evs=hjCalSyncParse(text);}catch(e){evs=[];}
+  if(!evs.length){toast('일정을 읽지 못했어요 — 구글 캘린더 내보내기 .ics 파일이나 캘린더 화면의 글을 넣어 주세요');return null;}
+  const plan=hjCalSyncPlan(evs);hjCalSyncRender(plan);return plan;
+}
+function hjCalSyncView(){
+  window.__hjCalSyncPlan=null;
+  openModal('🔄 구글 캘린더 맞추기','<div id="hjCalSync"><p class="hint" style="margin:0 0 8px">구글 캘린더의 일정을 읽어 앱 일정표와 견줍니다. <b>미리보기에서 체크한 것만</b> 앱에 넣고, 구글 캘린더는 바꾸지 않습니다. 제목 앞 ‘@’(제미나이)·‘[현장명]’ 표시는 떼고 비교해요.</p>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px"><button type="button" class="blue tiny" id="csFile" style="min-height:44px">📂 캘린더 파일(.ics) 고르기</button><button type="button" class="ghost tiny" id="csRead" style="min-height:44px">📋 아래 붙여 넣은 글 읽기</button></div>'+
+    '<textarea id="csText" rows="4" aria-label="구글 캘린더 글 붙여 넣기" placeholder="구글 캘린더 화면에서 복사한 글(또는 .ics 내용)을 여기에 붙여 넣으세요" style="width:100%;box-sizing:border-box;font-size:16px;border:1px solid var(--line);border-radius:10px;padding:8px"></textarea>'+
+    '<div id="csBody"></div></div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal},{label:'반영할 일정 없음',cls:'clay',fn:async()=>{
+      const plan=window.__hjCalSyncPlan,root=document.getElementById('hjCalSync');if(!plan||!root)return;
+      const picks=[...root.querySelectorAll('.csChk:checked')].map(el=>{const i=+el.dataset.i,s=root.querySelector('.csSel[data-i="'+i+'"]');return {i,project:s?s.value:''};});
+      if(!picks.length){toast('반영할 줄을 체크하세요');return;}
+      const del=picks.filter(p=>plan.rows[p.i]&&plan.rows[p.i].status==='apponly').length;
+      if(del&&!confirm('앱에만 있는 일정 '+del+'건을 앱 일정표에서 지웁니다. 계속할까요?\n(🛡 안전판에서 되돌릴 수 있어요)'))return;
+      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+' — 되돌리려면 🛡 안전판');}
+      catch(e){toast(String(e&&e.message||e));}
+    }}],true);
+  const root=document.getElementById('hjCalSync');if(!root)return;
+  const go=[...document.querySelectorAll('#modalRoot .mfoot button')].pop();if(go){go.id='csApply';go.disabled=true;}
+  root.querySelector('#csRead').onclick=()=>hjCalSyncRead(root.querySelector('#csText').value);
+  root.querySelector('#csFile').onclick=()=>{const inp=document.createElement('input');inp.type='file';inp.accept='.ics,text/calendar,.txt,text/plain';
+    inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{hjCalSyncRead(await f.text());}catch(e){toast('파일을 읽지 못했습니다: '+(e&&e.message||e));}};inp.click();};
+}
 function pickICSFile(){
   const inp=document.createElement('input');
   inp.type='file'; inp.accept='.ics,text/calendar';
@@ -40771,7 +40951,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -40851,6 +41031,7 @@ function setupDelegation(){
     if(t.id==='schGcal')return toggleGcalAuto();
     if(t.id==='schExportAll')return exportAllICS();
     if(t.id==='schIcsIn')return pickICSFile();
+    if(t.id==='schCalSync')return hjCalSyncView();   // v567 🔄 구글 캘린더 맞추기
     if(t.id==='schCalSend')return hjSchCalSendView({ym:calMonth()});   // v552 작업자 캘린더로 보내기
     if(t.id==='schShowAll'){__calSelDate=null;return render();}
     if(d.calday!==undefined){if(state.tab==='dashboard'){__calSelDate=d.calday;__calYM=String(d.calday).slice(0,7);return hjGoTab('schedule');}return calSelectDay(d.calday);}   // v553 첫 화면 달력 → 캘린더 탭의 그날
