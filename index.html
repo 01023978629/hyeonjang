@@ -423,7 +423,7 @@ body:not(.mobile-mode) .wrap{min-height:calc(100vh - 76px)}
 body.hj-staff:not(.mobile-mode) header{top:44px}
 .hj-build-badge{font-size:11px;font-weight:800;letter-spacing:.02em;color:var(--blueprint);background:rgba(11,78,162,.08);border:1px solid rgba(11,78,162,.25);border-radius:999px;padding:2px 8px;align-self:center;font-variant-numeric:tabular-nums}
 .hj-build-badge:empty{display:none}
-/* v567 ☁ 서버 자료 받은 시각 — 폰 머리에서만(PC 는 사이드바 relayStat 가 저장 시각을 보여 준다). 경고 상태(오프라인·실패·충돌·인증·대기열·오래된 창)면 숨긴다. */
+/* v571 ☁ 서버 자료 받은 시각 — 폰 머리에서만(PC 는 사이드바 relayStat 가 저장 시각을 보여 준다). 경고 상태(오프라인·실패·충돌·인증·대기열·오래된 창)면 숨긴다. */
 .hj-sync-at{display:none;font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;align-self:center;min-width:0;overflow:hidden;text-overflow:ellipsis}
 body.mobile-mode .hj-sync-at:not([hidden]){display:inline-block}
 .hj-head-health{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;flex-wrap:wrap;justify-content:flex-end}
@@ -2939,7 +2939,7 @@ async function contractServerStatus(checkAdmin){
 }
 /* 리뷰 링크(네이버 플레이스 등) — 이 기기(idb)에만 저장. serialize/applyData·클라우드 백업에 절대 넣지 않음. relayBoot에서 복원 */
 let __reviewUrl='';
-// v569(PR #190 v426 를 v564 위에 다시 얹음): 설정 링크가 비어도 손님이 갈 곳이 있어야 한다 — 홈페이지 후기 페이지(manmool review.html, manmool PR #223 이 만든다).
+// v573(PR #190 v426 를 v564 위에 다시 얹음): 설정 링크가 비어도 손님이 갈 곳이 있어야 한다 — 홈페이지 후기 페이지(manmool review.html, manmool PR #223 이 만든다).
 // 네이버 플레이스 등을 설정에 넣으면 그쪽이 우선. 어느 링크를 쓸지는 hjReviewLink() 한 곳(QR 도우미 묶음 옆)에서 정한다 — 문자 세 입구·QR 전부.
 const REVIEW_FALLBACK_URL='https://01023978629.github.io/manmool/review.html';
 async function relayCall(action,payload){
@@ -3027,7 +3027,7 @@ async function relayDownloadOriginal(fileId){
   if(!bytes)return null;
   return {name:String(r.name||''),mime:String(r.mimeType||'application/octet-stream'),bytes:bytes};
 }
-/* v567 ☁ 폰 머리 '서버 자료 HH:MM 받음' — v530 '안 한 것'. 값은 __relay.syncAt(relayLoadApply·저장 성공 때 갱신)만 읽는다(새 저장 키 없음).
+/* v571 ☁ 폰 머리 '서버 자료 HH:MM 받음' — v530 '안 한 것'. 값은 __relay.syncAt(relayLoadApply·저장 성공 때 갱신)만 읽는다(새 저장 키 없음).
    오늘이 아니면 'M/D HH:MM'. 경고 상태(오프라인·연결 실패·충돌·인증·대기열·오래된 창 v534)면 비워 그쪽 표시가 이긴다 — 안심시키는 줄이 실패를 가리면 안 된다. */
 function relaySyncAtText(){
   const raw=(typeof __relay!=='undefined'&&__relay&&__relay.syncAt)||'';
@@ -3065,7 +3065,7 @@ function relaySetStatus(code){
   if(el){el.textContent=txt;el.style.color=warn?'var(--warn)':'var(--muted)';}
   const dot=document.getElementById('gdDot');if(dot&&relayReady())dot.textContent=txt;   // 설정 모달 안 상태 점도 relay 반영
   const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;
-  if(typeof relaySyncAtRender==='function')relaySyncAtRender(warn);   // v567 폰 머리 '☁ 서버 자료 HH:MM 받음' — 경고 상태면 숨김(함수만 떼어 도는 단위 검사는 typeof)
+  if(typeof relaySyncAtRender==='function')relaySyncAtRender(warn);   // v571 폰 머리 '☁ 서버 자료 HH:MM 받음' — 경고 상태면 숨김(함수만 떼어 도는 단위 검사는 typeof)
 }
 function relayAuthFail(res){relaySetStatus('auth');if(!__relayAuthToasted){__relayAuthToasted=true;toast('🔑 서버 인증키 오류 — ☁️ 설정에서 서버 주소·인증키를 확인하세요'+((res&&res.message)?(' ('+res.message+')'):''));}}
 /* ── 오프라인 동기화 대기열(idb relay_queue) — save는 최신 1건 병합, upload는 개별 누적 ── */
@@ -3719,7 +3719,7 @@ async function pcupRun(onTick){
   // 표시를 잃지 않게 지금 기록에 다시 붙인다 — 10/31 업로드 뒤 폴더 저장본에 새 사본 표시가 하나도 없던 일의 방어선.
   const uploaded=(__pcup&&__pcup.uploaded)||new Map();run.uploaded=uploaded;
   const pcupRelink=()=>{let n=0;(state.files||[]).forEach(r=>{if(r&&!r._driveId){const u=uploaded.get(fileKey(r));if(u){r._driveId=u.id;r._driveMimeType=u.mime;r._driveSize=u.size;n++;}}});if(n){run.relinked+=n;markDirty();}return n;};
-  // v567 같은 원본 파일을 가리키는 기록 둘(같은 경로·크기·수정 시각, 또는 같은 handle 객체)은 한 번만 올리고 올라간 Drive ID 를 둘 다에 잇는다(v531 '안 한 것').
+  // v571 같은 원본 파일을 가리키는 기록 둘(같은 경로·크기·수정 시각, 또는 같은 handle 객체)은 한 번만 올리고 올라간 Drive ID 를 둘 다에 잇는다(v531 '안 한 것').
   //   폴더 안 같은 경로에는 파일이 하나뿐이고 pcupFile 이 크기까지 맞춰 보므로 확신이 선다. 경로·수정 시각이 다르면(바이트가 다를 수 있음) 종전대로 둘 다 올린다.
   //   앞 묶음·이어하기에서 올린 원본(srcDone)도 기억해 다음 묶음의 같은 원본은 올리지 않고 잇는다.
   const srcDone=(__pcup&&__pcup.srcDone)||new Map(),handleDone=(__pcup&&__pcup.handleDone)||new Map();run.srcDone=srcDone;run.handleDone=handleDone;
@@ -5206,7 +5206,7 @@ async function hydrateThumbs(){
   return changed;
 }
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
-/* v567 OAuth 직접 들이기(__gdIngestOne)도 정리 표시(photoTombs, v556)의 Drive ID 를 지킨다 — v560 은 중계 길(relayLoadDriveFiles)만 고쳤고 이 길은 백로그였다.
+/* v571 OAuth 직접 들이기(__gdIngestOne)도 정리 표시(photoTombs, v556)의 Drive ID 를 지킨다 — v560 은 중계 길(relayLoadDriveFiles)만 고쳤고 이 길은 백로그였다.
    정리로 뺀 Drive 사진은 '새 기록'으로 다시 들이지 않는다. 이미 있는 기록에 잇는 길(같은 Drive ID 의 가상 기록·이름 연결 ph)은 그대로 —
    다시 스캔으로 Drive ID 를 잃은 남긴 기록이 같은 Drive 파일에 다시 이어져야 한다. 되살린 표시(r>t)는 빠진다. 한 번의 불러오기(수천 장)마다 다시 세지 않게 목록 신원으로 기억. */
 let __gdTombMemo=null;
@@ -5225,7 +5225,7 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize,photo
   }
   // _driveId가 같은 가상분, 또는 (레거시: _driveId 없이 저장된) 같은 이름의 가상분을 교체 대상으로
   const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId&&!hjPhotoLeakTag(x)&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project))&&(!photoHolds||!photoHolds.pendingTokens.has(x._shareInboxId)));
-  if(!ph&&__gdTombDrive().has(String(id))){window.__gdTombSkipped=(window.__gdTombSkipped||0)+1;return 0;}   // v567 정리로 뺀 Drive 사진을 새 기록으로 다시 들이지 않는다(받기 전에 거른다)
+  if(!ph&&__gdTombDrive().has(String(id))){window.__gdTombSkipped=(window.__gdTombSkipped||0)+1;return 0;}   // v571 정리로 뺀 Drive 사진을 새 기록으로 다시 들이지 않는다(받기 전에 거른다)
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
   if(!dr.ok)return 0;
   const blob=await dr.blob();
@@ -6078,7 +6078,7 @@ function openGdriveSetup(){
   };}
   {const rs=root.querySelector('#rvSave');if(rs)rs.onclick=async()=>{
     const inp=root.querySelector('#rvUrl');const v=(inp.value||'').trim();
-    // v569 https:// 로 시작하지 않는 값은 저장하지 않는다 — 문자·QR 이 그 값을 안 쓰고 기본 링크로 가는데 '저장됨'이라 믿게 되는 것을 막는다(이미 저장된 값은 그대로)
+    // v573 https:// 로 시작하지 않는 값은 저장하지 않는다 — 문자·QR 이 그 값을 안 쓰고 기본 링크로 가는데 '저장됨'이라 믿게 되는 것을 막는다(이미 저장된 값은 그대로)
     if(v&&!/^https?:\/\/[^\s<>"]+$/i.test(v)){hjFieldIssue(inp,'https:// 로 시작하는 주소를 넣어 주세요 — 네이버 지도·카카오맵 우리 업체 → 공유 → 링크 복사');return;}
     __reviewUrl=v;
     try{await idbSet('review_url',v);}catch(e){}
@@ -18465,7 +18465,7 @@ function hjReviewSms(name){
   const p=(state.projects||[]).find(x=>x.name===name);
   if(!p){toast('현장을 찾을 수 없습니다');return;}
   const cust=p.customer||{};
-  const link=hjReviewLink(),custom=!!hjReviewLinkCustom();   // v569 설정 링크, 없으면 홈페이지 후기 페이지 — 갈 곳 없는 리뷰 요청 문자를 보내지 않는다
+  const link=hjReviewLink(),custom=!!hjReviewLinkCustom();   // v573 설정 링크, 없으면 홈페이지 후기 페이지 — 갈 곳 없는 리뷰 요청 문자를 보내지 않는다
   const lines=['['+COMPANY.name+'] '+name+' 공사가 잘 마무리됐습니다.','만족하셨다면 리뷰 한 줄 부탁드립니다 🙏',link];   // 링크는 한 줄
   hjSendSms(cust.phone,lines.join('\n'));            // 딥링크에만 번호 사용(연락처 없으면 문안 복사)
   p.reviewRequestedAt=new Date().toISOString();      // 파생 필드 — 중복 요청 방지
@@ -18538,7 +18538,7 @@ function hjCompletionCard(p){
   const rvBtn=reqd
     ? '<span class="mini-btn" style="opacity:.7;pointer-events:none">✅ 리뷰 요청함'+(reqAt?' ('+reqAt+')':'')+'</span>'
     : '<button class="mini-btn" data-reviewreqp="'+escapeAttr(p.name)+'" title="리뷰 요청 문자 초안">⭐ 리뷰 요청</button>'+
-      (hjReviewLinkCustom()?'':'<button type="button" class="mini-btn" data-review-link-missing onclick="hjOpenSettingsTab(\'etc\',\'rvUrl\')" title="리뷰 요청 문자에 홈페이지 후기 페이지 링크가 붙습니다 — 설정 › 기타 › 리뷰 링크에서 네이버 플레이스 등으로 바꿀 수 있어요" style="color:var(--muted)">ⓘ 홈페이지 후기 링크 — 설정</button>');   // v456 보내기 전에 어느 링크인지 보이게(리허설 R2) · v569 기본 링크가 생겨 '없음'이 아니라 '홈페이지 후기 링크'
+      (hjReviewLinkCustom()?'':'<button type="button" class="mini-btn" data-review-link-missing onclick="hjOpenSettingsTab(\'etc\',\'rvUrl\')" title="리뷰 요청 문자에 홈페이지 후기 페이지 링크가 붙습니다 — 설정 › 기타 › 리뷰 링크에서 네이버 플레이스 등으로 바꿀 수 있어요" style="color:var(--muted)">ⓘ 홈페이지 후기 링크 — 설정</button>');   // v456 보내기 전에 어느 링크인지 보이게(리허설 R2) · v573 기본 링크가 생겨 '없음'이 아니라 '홈페이지 후기 링크'
   const wtBtn='<button class="mini-btn" data-warrantystart="'+escapeAttr(p.name)+'">'+(w&&w.items?'🛡 보증 수정':'🛡 보증 시작')+'</button>';
   return '<div class="cust-card" data-donecard="1" style="margin-top:10px"><div class="cust-h">🎉 준공 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">리뷰 요청 + 보증 등록</span></div>'+
     '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+rvBtn+wtBtn+'</div>'+warrLine+hjAdCaseLine(p)+'</div>';
@@ -27020,7 +27020,7 @@ function reviewRequestData(){
 function reviewRequestSms(projName){
   const p=(state.projects||[]).find(x=>x.name===projName);if(!p)return;
   const cust=p.customer||{};
-  const msg=(cust.name||'고객')+'님, '+COMPANY.name+'입니다. '+projName+' 공사를 맡겨주셔서 진심으로 감사합니다. 지내시며 불편한 점은 없으신가요? 혹시 만족하셨다면 주변에 저희를 소개해 주시거나, 한 줄 후기를 남겨주시면 큰 힘이 됩니다. 언제든 편히 연락 주세요. '+COMPANY.tel+'\n'+hjReviewLink();   // v569 더보기·AI 운영 큐 경로도 후기 링크 한 줄(hjReviewSms 와 같은 규칙)
+  const msg=(cust.name||'고객')+'님, '+COMPANY.name+'입니다. '+projName+' 공사를 맡겨주셔서 진심으로 감사합니다. 지내시며 불편한 점은 없으신가요? 혹시 만족하셨다면 주변에 저희를 소개해 주시거나, 한 줄 후기를 남겨주시면 큰 힘이 됩니다. 언제든 편히 연락 주세요. '+COMPANY.tel+'\n'+hjReviewLink();   // v573 더보기·AI 운영 큐 경로도 후기 링크 한 줄(hjReviewSms 와 같은 규칙)
   hjSendSms(cust.phone,msg);
   try{aiAddNote('[리뷰요청:'+projName+'] '+localDate()+' 리뷰·소개 요청 문자 발송',projName);markDirty();}catch(e){}
   return {발송:projName};
@@ -33524,7 +33524,7 @@ function msgTemplate(kind,p,extra){
     })(),
     taxreq:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n세금계산서 발행을 위해 아래 정보를 문자로 부탁드립니다.\n\n· 상호 (개인이시면 성함)\n· 사업자등록번호\n· 받으실 이메일 주소\n\n* 개인이시면 현금영수증(휴대폰 번호)으로도 처리해 드립니다.\n받는 대로 바로 발행해 드리겠습니다. 감사합니다.'+sign,
     sorry:'안녕하세요, '+COMPANY.name+' '+COMPANY.owner+'입니다.\n현장 작업 중이라 전화를 받지 못했습니다. 죄송합니다.\n용건을 문자로 남겨주시면 확인하는 대로 바로 연락드리겠습니다.\n급하신 일이면 잠시 후 다시 전화 부탁드립니다.'+sign,
-    review:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사는 만족스러우셨나요? 지내시다 불편한 점은 없으신지 궁금합니다.\n혹시 주변에 인테리어가 필요한 분이 계시면 소개해 주시면 정말 큰 힘이 됩니다. 늘 감사합니다.\n후기 한 줄: '+hjReviewLink()+sign,   // v569 문자 센터도 같은 후기 링크 한 줄
+    review:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사는 만족스러우셨나요? 지내시다 불편한 점은 없으신지 궁금합니다.\n혹시 주변에 인테리어가 필요한 분이 계시면 소개해 주시면 정말 큰 힘이 됩니다. 늘 감사합니다.\n후기 한 줄: '+hjReviewLink()+sign,   // v573 문자 센터도 같은 후기 링크 한 줄
     thanks:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n한 해 동안 저희를 믿고 맡겨주셔서 진심으로 감사드립니다.\n하시는 일 모두 잘 되시고, 가정에 늘 건강과 행복이 가득하시길 바랍니다.'+sign
   };
   return T[kind]||'';
@@ -42877,7 +42877,7 @@ function docHubView(pjName){
     item('🛡','하자보증서','관리사무소 제출용 「작업 하자보증서」. 제출처·작업장소·완료일·보증기간이 채워집니다.','warranty',doneOk?((w?'보증 ~'+escapeHtml(w.end):'보증 기간 기본값')+(sigs?' · 서명 '+sigs+'건':'')):'준공 처리 후 발급됩니다',doneOk?'':'warn')+
     item('🔗','보증서 문자 링크','파일 대신 문자로 바로 — 고객이 링크로 확인·서명.','wdoc',cust.phone?'고객 번호 있음':'고객 번호 없음',cust.phone?'':'warn')+
     item('🛠','AS 방문 확인 (AS 로그)','접수·방문·처리 기록.','aslog',asN?'AS '+asN+'건':'AS 기록 없음','')+
-    item('⭐','리뷰 QR 카드'+NEW,'"리뷰 한 줄 부탁드립니다" QR 카드 — A6 두 장이 한 쪽. 설정의 리뷰 링크로 만듭니다.','reviewqr',hjReviewLinkCustom()?(hjReviewQrOk()?'설정 리뷰 링크':'리뷰 링크가 너무 깁니다 — 설정'):'홈페이지 후기 링크(기본) — 설정에서 바꿀 수 있어요',hjReviewQrOk()?(hjReviewLinkCustom()?'ok':''):'warn')+   // v446 · v569 기본 링크로도 QR
+    item('⭐','리뷰 QR 카드'+NEW,'"리뷰 한 줄 부탁드립니다" QR 카드 — A6 두 장이 한 쪽. 설정의 리뷰 링크로 만듭니다.','reviewqr',hjReviewLinkCustom()?(hjReviewQrOk()?'설정 리뷰 링크':'리뷰 링크가 너무 깁니다 — 설정'):'홈페이지 후기 링크(기본) — 설정에서 바꿀 수 있어요',hjReviewQrOk()?(hjReviewLinkCustom()?'ok':''):'warn')+   // v446 · v573 기본 링크로도 QR
     group('누수·보험')+
     item('📄','누수 보고서',leak?'보험사·관리사무소·아랫집 용도별 PDF.':'누수 현장에서만.','leakreport',leak?('접수 '+(intake?'✓':'없음')+' · 탐지 '+(detect?'✓':'없음')+(reports?' · 발행 '+reports+'건':'')):'누수 현장 아님',(leak&&intake&&detect)?'':'warn')+
     item('📝','누수 사고 경위서'+NEW,'보험 청구 보조 — 접수·탐지·조치를 사실 순서로 1쪽. 용도 3종.','leaknarr',leak?(issued('leaknarr')||('접수 '+(intake?'✓':'없음')+' · 탐지 '+(detect?'✓':'없음')+' · 조치 '+((quotes.length||doneOk)?'✓':'없음'))):'누수 현장 아님',leak?(issued('leaknarr')?'ok':''):'warn')+
@@ -46120,7 +46120,7 @@ function hjQrImgHtml(text,px){
   if(!src)return hjQrSvg(t,px);
   return '<img data-qr src="'+src+'" alt="QR 코드" width="'+(px||132)+'" height="'+(px||132)+'" style="width:'+(px||132)+'px;height:'+(px||132)+'px;image-rendering:pixelated;display:block;flex:none">';
 }
-/* 리뷰 링크 — 입구가 어디든 한 규칙(v569, PR #190 v426): 설정 ⭐ 리뷰 링크(https:// 로 시작하는 것만 — 'naver.me/…' 처럼 앞이 빠지면 폰 카메라가
+/* 리뷰 링크 — 입구가 어디든 한 규칙(v573, PR #190 v426): 설정 ⭐ 리뷰 링크(https:// 로 시작하는 것만 — 'naver.me/…' 처럼 앞이 빠지면 폰 카메라가
    글자로만 읽어 리뷰 화면이 안 열린다) → 없으면 홈페이지 후기 페이지(REVIEW_FALLBACK_URL). 문자 세 입구(hjReviewSms·reviewRequestSms·msgTemplate review)와
    QR(⭐ 카드·완료보고서·간이영수증 끝)이 모두 이것을 쓴다 — 기본 주소로도 QR 이 된다(v446 때는 설정 링크가 있을 때만). 비어 있는 일은 없다. */
 function hjReviewLinkCustom(){const u=String((typeof __reviewUrl!=='undefined'&&__reviewUrl)||'').trim();return /^https?:\/\/[^\s<>"]+$/i.test(u)?u:'';}
@@ -46174,7 +46174,7 @@ function hjOpenSettingsTab(tab,focusId){
   const el=focusId&&r&&r.querySelector('#'+focusId);if(el)setTimeout(()=>{try{if(el.isConnected){el.scrollIntoView({block:'center'});el.focus();}}catch(e){}},60);
 }
 function hjReviewQrCardView(back){
-  const raw=String((typeof __reviewUrl!=='undefined'&&__reviewUrl)||'').trim(),url=hjReviewLink();   // v569 설정 링크, 없으면 홈페이지 후기 페이지 — 빈 일은 없다
+  const raw=String((typeof __reviewUrl!=='undefined'&&__reviewUrl)||'').trim(),url=hjReviewLink();   // v573 설정 링크, 없으면 홈페이지 후기 페이지 — 빈 일은 없다
   const html=hjReviewQrCardHtml(url);
   if(!html){   // 설정 링크가 QR 한 장을 넘을 때만
     const why='리뷰 링크가 너무 깁니다(QR 한 장에 213바이트까지).';
@@ -46183,7 +46183,7 @@ function hjReviewQrCardView(back){
       [{label:'⚙️ 설정 열기',cls:'clay',fn:()=>{closeModal();hjOpenSettingsTab('etc','rvUrl');}},{label:'닫기',cls:'ghost',fn:back||closeModal}]);
     hjModalTapTargets();return false;
   }
-  if(raw&&!hjReviewLinkCustom())toast('⚠ 설정의 리뷰 링크가 https:// 로 시작하지 않아 홈페이지 후기 페이지로 만듭니다 — ⚙️ 설정 › ⭐ 기타에서 고치세요');   // 옛 판에서 저장된 값(v569 부터는 저장 때 막는다)
+  if(raw&&!hjReviewLinkCustom())toast('⚠ 설정의 리뷰 링크가 https:// 로 시작하지 않아 홈페이지 후기 페이지로 만듭니다 — ⚙️ 설정 › ⭐ 기타에서 고치세요');   // 옛 판에서 저장된 값(v573 부터는 저장 때 막는다)
   hjDocDeliverView(COMPANY.name,html,'리뷰QR카드_'+localDate().replace(/-/g,''),'⭐ 리뷰 QR 카드',back||null,{image:true});
   hjModalTapTargets();return true;
 }
