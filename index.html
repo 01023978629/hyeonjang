@@ -14,10 +14,11 @@
 <!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·AI_TOOLS 168종 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 📈 거래처 장부 · 💾 수금 이력 -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>현장 — 인테리어 파일 정리</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<!-- v572 외부 스크립트·CSS 는 전부 jsDelivr /npm/<패키지>@<버전> 고정 주소 + integrity(sha384) + crossorigin. 해시 정본은 본문 _CDN 표(같은 값을 여기 글자 그대로) — tests/sri.check.js 가 태그와 표를 대조한다 -->
+<script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js" integrity="sha384-mjCisVk+9cQGYprByJbHxzwFO7BVEgR6iCftsCqnmHNKA8uzLYoRng5h1qKMvHjp" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"/>
 <!-- 성능: 무거운 라이브러리(leaflet·tesseract·pdf.js·jspdf·jszip·xlsx ≈1.8MB)는 시작 시 받지 않고, 실제로 쓸 때만 불러옵니다 → 아래 ensure* 함수가 처리 -->
-<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin>
 <link rel="preconnect" href="https://www.googleapis.com" crossorigin>
 <link rel="dns-prefetch" href="https://drive.google.com">
@@ -1400,7 +1401,7 @@ body.mobile-mode .apo-tools select.apoStat{font-size:16px!important;min-height:4
    도구 추가 5곳: AI_TOOLS → aiToolRun case → aiActionLabel → aiResultBrief → (변경시)AI_WRITE.
    스냅샷: hjSnapshot 훅 = markDirty(3분)·저장 성공·AI_WRITE 직전(force)·이사 직전.
    기능→함수 지도·수술기록·테스트 방법은 DEVELOPER.md §2·§8·§9. */
-if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// pdf.js 는 부팅 때 없다(ensurePdfjs 가 지연 로드) — worker 주소도 거기서 _CDN.pdfworker 로 정한다. v572: 외부 주소는 _CDN 표 한 곳에만.
 const FS_OK='showDirectoryPicker' in window;
 
 /* ===== 편집(쓰기·이동) 가능 여부 통일 가드 =====
@@ -2870,7 +2871,7 @@ async function relayFastForwardBlock(seq){
 }
 function relayReady(){return !!(__relay.url&&__relay.token);}
 /* 전자계약 서버 연결 — relay와 같은 idb 전용 비밀(serialize/applyData에 절대 넣지 않음). 부팅 때 relayBoot에서 복원 */
-let __contract={url:'',token:'',selfTestOk:false,selfTestAt:''};
+let __contract={url:'',token:'',selfTestOk:false,selfTestAt:'',changed:null};   // changed:{at,via:'link'|'settings'} — 연결값이 마지막으로 바뀐 때(v572, IDB contract_changed)
 /* Fly 계약 서버는 2026-07-30 종료. 새 계약 서버는 Apps Script 웹앱이다.
    ★ 잠금은 유지하되 조건을 더 엄격하게 바꿨다.
      이전: const CONTRACT_FEATURE_AVAILABLE=false — 사람이 소스를 고쳐야 켜진다.
@@ -2923,6 +2924,12 @@ async function contractSelfTest(){
     try{await idbSet('contract_selftest','');}catch(_){}
     throw e;
   }
+}
+/* v572 연결값(주소·토큰)이 마지막으로 바뀐 때 — 설치 QR 링크로 들어왔는지, 설정에서 직접 넣었는지. 기록이 없으면 이 버전 전에 저장된 값이다. */
+function contractChangedText(c){
+  if(!c||!c.at)return '연결값 변경 기록 없음(이 버전 전에 저장됨)';
+  const d=new Date(c.at);const when=isNaN(d.getTime())?String(c.at):localStamp(d);
+  return '연결값 마지막 변경 '+when+(c.via==='link'?' · 설치 QR 링크':' · 설정 화면');
 }
 async function contractServerStatus(checkAdmin){
   // health 는 토큰 없이도 되지만, 토큰까지 확인하려면 관리자 동작을 한 번 태워 봐야 한다.
@@ -3853,6 +3860,7 @@ async function relayBoot(){
     // selfTest 통과 기록이 있어야 계약 버튼이 열린다. 없으면 잠긴 채로 뜬다.
     __contract.selfTestAt=(await idbGet('contract_selftest'))||'';
     __contract.selfTestOk=!!__contract.selfTestAt;
+    __contract.changed=(await idbGet('contract_changed'))||null;   // v572 연결값이 바뀐 때 — 설정 › 전자계약 탭이 보여 준다
     __reviewUrl=(await idbGet('review_url'))||'';   // 리뷰 링크도 이 기기(idb)에서만 복원 — 스키마엔 넣지 않음
     relayConfigComplete({
       ok: true,
@@ -4238,7 +4246,11 @@ function gdLoginRedirect(){
   }
 }catch(_){}})();
 // 전자계약 설치 QR. 비밀값은 서버에 전송되지 않는 # 조각으로만 받고,
-// 읽기 전에 주소창에서 즉시 지운다. 저장은 대표가 확인을 한 번 눌렀을 때만 한다.
+// 읽기 전에 주소창에서 즉시 지운다. 저장은 대표가 배포 ID 뒤 4자리를 쳐서 확인했을 때만 한다(v572 — 전엔 [확인] 한 번이면 서버 주소·토큰이 덮였다).
+//   ⓐ 이 기기에 이미 **다른** 계약 서버 주소가 있으면 링크로는 바꾸지 않는다 — 누가 보낸 QR 한 장으로 고객 계약이 남의 서버로 나가는 길을 막는다.
+//      바꾸려면 설정 › 전자계약에서 직접(같은 주소의 토큰 교체는 ⓑ 로 간다).
+//   ⓑ 처음 설치(저장된 주소 없음)면 배포 ID 앞 6·뒤 4자리와 '이 주소로 고객 계약이 나갑니다' 를 보여 주고, 뒤 4자리를 받아 맞을 때만 저장.
+//   ⓒ 바뀐 때는 IDB contract_changed({at,via:'link'}) — 설정 › 전자계약 탭이 보여 준다. 비밀값은 전과 같이 IDB 에만.
 function contractQrDecode(v){
   try{
     let s=String(v||'').replace(/-/g,'+').replace(/_/g,'/');
@@ -4250,18 +4262,34 @@ function contractQrDecode(v){
     return {url:String(d.url),token:String(d.token)};
   }catch(_){return null;}
 }
+function contractQrDeployId(url){const m=String(url||'').match(/\/macros\/s\/([^\/]+)\/exec$/);return m?m[1]:'';}   // Apps Script 배포 ID(/macros/s/<id>/exec)
+function contractQrConfirmText(depId){
+  return '전자계약 서버를 이 기기에 저장합니다.\n\n배포 ID: '+depId.slice(0,6)+'……'+depId.slice(-4)+'\n이 주소로 고객 계약이 나갑니다.\n\n맞으면 배포 ID 뒤 4자리를 입력하세요 (취소하면 저장하지 않습니다)';
+}
 (function(){try{
   const m=(location.hash||'').match(/[#&]hjcontract=([^&\s]+)/);
   if(!m)return;
   const encoded=decodeURIComponent(m[1]);
   history.replaceState(null,'',location.pathname+location.search);
   const data=contractQrDecode(encoded);
-  if(!data){setTimeout(()=>toast('전자계약 QR을 읽지 못했습니다'),300);return;}
-  if(!confirm('전자계약 서버 주소와 관리자 토큰을 이 기기에 저장할까요?'))return;
-  Promise.all([idbSet('contract_url',data.url),idbSet('contract_token',data.token),idbSet('contract_selftest','')]).then(function(){
-    __contract.url=data.url;__contract.token=data.token;__contract.selfTestAt='';__contract.selfTestOk=false;
-    setTimeout(()=>toast('전자계약 연결값 저장 완료 · 자가진단을 실행하세요'),300);
-  }).catch(function(){setTimeout(()=>toast('전자계약 연결값 저장 실패'),300);});
+  const depId=data?contractQrDeployId(data.url):'';
+  if(!data||depId.length<10){setTimeout(()=>toast('전자계약 QR을 읽지 못했습니다'),300);return;}
+  // 저장된 주소는 IDB 에서 직접 읽는다 — 부팅(relayBoot)이 __contract 를 채우기 전에 이 코드가 먼저 돈다.
+  Promise.resolve().then(()=>idbGet('contract_url')).catch(()=>null).then(function(saved){
+    const prev=contractBaseUrl(saved||'');
+    if(prev&&prev!==contractBaseUrl(data.url)){   // ⓐ 다른 서버가 이미 있다 — 링크로는 안 바꾼다(저장된 값은 그대로)
+      setTimeout(()=>toast('이 기기에는 이미 다른 전자계약 서버가 저장돼 있어 링크로는 바꾸지 않습니다 — 설정 › 전자계약에서 직접 바꾸세요'),300);
+      return;
+    }
+    const typed=prompt(contractQrConfirmText(depId));   // ⓑ 배포 ID 앞 6·뒤 4 를 보여 주고 뒤 4자리를 받는다
+    if(typed===null)return;
+    if(String(typed).trim()!==depId.slice(-4)){setTimeout(()=>toast('배포 ID 뒤 4자리가 다릅니다 — 저장하지 않았습니다'),300);return;}
+    const changed={at:new Date().toISOString(),via:'link'};
+    Promise.all([idbSet('contract_url',data.url),idbSet('contract_token',data.token),idbSet('contract_selftest',''),idbSet('contract_changed',changed)]).then(function(){
+      __contract.url=data.url;__contract.token=data.token;__contract.selfTestAt='';__contract.selfTestOk=false;__contract.changed=changed;
+      setTimeout(()=>toast('전자계약 연결값 저장 완료 · 자가진단을 실행하세요'),300);
+    }).catch(function(){setTimeout(()=>toast('전자계약 연결값 저장 실패'),300);});
+  });
 }catch(_){}})();
 // 클로드가 준 링크(#hjreq=)로 들어온 안전한 작업 요청.
 // 쿼리형 작업요청·상담은 값 자체를 읽지 않고 주소에서 먼저 제거한다.
@@ -4466,13 +4494,42 @@ async function gdShowRestore(){
   root.querySelectorAll('[data-restore]').forEach(el=>el.onclick=async()=>{ if(confirm('이 시점으로 되돌릴까요? 지금 자료는 덮어집니다.')){ closeModal(); await gdRestoreBackup(el.dataset.restore); } });
 }
 /* ----- 파일(사진·PDF) 업로드 헬퍼 (만물인테리어 하위 폴더) ----- */
-function loadExtLib(src,check){return new Promise((res,rej)=>{try{if(check())return res();}catch(e){}if(navigator.onLine===false){rej(new Error('오프라인 상태입니다 — 이 기능은 인터넷 연결이 필요해요'));return;}const s=document.createElement('script');s.src=src;let done=false;const to=setTimeout(()=>{if(!done){done=true;rej(new Error('연결이 느려 기능을 불러오지 못했어요 — 잠시 후 다시'));}},15000);s.onload=()=>{if(done)return;done=true;clearTimeout(to);res();};s.onerror=()=>{if(done)return;done=true;clearTimeout(to);rej(new Error('기능 모듈을 불러오지 못했어요(인터넷 확인)'));};document.head.appendChild(s);});}
+/* 외부 스크립트 로더. lib 는 _CDN 표 항목({src,sri}) 또는 주소 문자열(apis.google.com 처럼 버전이 없는 Google 로더 — SRI 불가, 이 한 곳만).
+   sri 가 있으면 integrity + crossorigin=anonymous 를 붙인다. 바이트가 해시와 다르면 브라우저가 실행을 거부하고 onerror 로 온다 —
+   조용히 다시 받지 않는다(같은 바이트가 또 올 뿐이다). '무결성 확인 실패' 토스트로 알리고 호출자는 그 기능을 접는다(heic2any 와 같은 결). */
+const CDN_SRI_FAIL_MSG='무결성 확인 실패 — 네트워크·버전 확인';
+function _cdnScriptEl(lib){const s=document.createElement('script');s.src=(lib&&lib.src)?lib.src:String(lib);if(lib&&lib.sri){s.integrity=lib.sri;s.crossOrigin='anonymous';}return s;}
+function _cdnFail(lib,fallback){if(!(lib&&lib.sri))return new Error(fallback);try{toast(CDN_SRI_FAIL_MSG);}catch(_){}return new Error(CDN_SRI_FAIL_MSG);}
+function loadExtLib(lib,check){return new Promise((res,rej)=>{try{if(check())return res();}catch(e){}if(navigator.onLine===false){rej(new Error('오프라인 상태입니다 — 이 기능은 인터넷 연결이 필요해요'));return;}const s=_cdnScriptEl(lib);let done=false;const to=setTimeout(()=>{if(!done){done=true;rej(new Error('연결이 느려 기능을 불러오지 못했어요 — 잠시 후 다시'));}},15000);s.onload=()=>{if(done)return;done=true;clearTimeout(to);res();};s.onerror=()=>{if(done)return;done=true;clearTimeout(to);rej(_cdnFail(lib,'기능 모듈을 불러오지 못했어요(인터넷 확인)'));};document.head.appendChild(s);});}
 // 무거운 라이브러리 지연 로드(필요할 때만) — 초기 로딩 ~1.8MB 절감
-const _CDN={leaflet:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',tesseract:'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js',pdfjs:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',pdfworker:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',jspdf:'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',jszip:'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'};
+/* v572 외부 라이브러리 정본 — 주소·무결성 해시(SRI) 한 곳.
+   · 전부 jsDelivr /npm/<패키지>@<버전>/<경로> 꼴. jsDelivr 는 npm tarball 의 파일을 바이트 그대로 서빙하므로 해시를 `npm pack <패키지>@<버전>` 으로
+     네트워크 없이 계산할 수 있다(cdnjs 는 파일을 따로 빌드해 바이트가 다를 수 있어 쓰지 않는다). 버전 없는 주소 금지 — 최신판이 바뀌는 순간 해시가 깨진다.
+   · 해시 = sha384(그 tarball 의 그 파일). 항목마다 '패키지@버전 경로, 바이트' 주석 — 버전을 올리면 해시·바이트를 다시 계산하고
+     tests/sri.check.js(정적: 표·태그·주소 꼴)·tests/tools/sri-live.mjs(네트워크 되는 곳에서 손으로: 실제 CDN 바이트 대조 — run-all 은 안 돌린다)를 돌려라.
+   · 해시가 틀리면 브라우저가 그 라이브러리를 아예 실행하지 않는다 — 조용히 다시 받지 않고 토스트 '무결성 확인 실패' 로 알린다(_cdnFail).
+   · pdfworker 는 new Worker 로 받는다 — 브라우저 규격상 integrity 를 못 붙인다. 표에 두어 주소를 고정하고 sri-live 가 바이트를 대조한다.
+   · exifjs·leafletcss 는 head 의 정적 태그다(같은 값을 글자 그대로) — sri.check 가 태그와 표가 같은지 본다.
+   · tesseract 의 worker·core 는 라이브러리가 스스로 jsDelivr 에서 importScripts 로 받는다(SRI 불가 — 코드에 주소 없음). */
+const _CDN={
+  exifjs:    {src:'https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js',sri:'sha384-mjCisVk+9cQGYprByJbHxzwFO7BVEgR6iCftsCqnmHNKA8uzLYoRng5h1qKMvHjp'},   // exif-js@2.3.0 exif.js, 40,454바이트 (head 정적 <script>)
+  leafletcss:{src:'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css',sri:'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'},   // leaflet@1.9.4 dist/leaflet.css, 14,806바이트 (head 정적 <link>)
+  leaflet:   {src:'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',sri:'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'},   // leaflet@1.9.4 dist/leaflet.js, 147,552바이트
+  tesseract: {src:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js',sri:'sha384-1zP4ZOtlk2FXAOiUArpMuWf7INJJKe/ROfYFAVSeUa11DEfXdKWGiPI3dVma2Gt0'},   // tesseract.js@5.1.0 dist/tesseract.min.js, 66,711바이트
+  pdfjs:     {src:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',sri:'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e'},   // pdfjs-dist@3.11.174 build/pdf.min.js, 320,004바이트
+  pdfworker: {src:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',sri:'sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2',worker:true},   // pdfjs-dist@3.11.174 build/pdf.worker.min.js, 1,087,212바이트 (Worker — integrity 속성 불가)
+  jspdf:     {src:'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',sri:'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk'},   // jspdf@2.5.1 dist/jspdf.umd.min.js, 364,463바이트
+  jszip:     {src:'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',sri:'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG'},   // jszip@3.10.1 dist/jszip.min.js, 97,630바이트
+  xlsx:      {src:'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',sri:'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw'},   // xlsx@0.18.5 dist/xlsx.full.min.js, 881,727바이트
+  html2canvas:{src:'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',sri:'sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H'},   // html2canvas@1.4.1 dist/html2canvas.min.js, 198,689바이트
+  exceljs:   {src:'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',sri:'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz'},   // exceljs@4.4.0 dist/exceljs.min.js, 947,702바이트
+  heic2any:  {src:'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',sri:'sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL'},   // heic2any@0.0.4 dist/heic2any.min.js, 1,351,840바이트
+  exifr:     {src:'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js',sri:'sha384-KrOocIA+lZcNUz2MDavnT/FuX+CbTREJihUi0bp8QUSwhE2AkGTNpv2b7yMbBkx5'},   // exifr@7.1.3 dist/full.umd.js, 75,848바이트 (v572 고정 — 전엔 버전 없는 주소라 jsDelivr 가 최신판을 줬다)
+};
 function ensureXLSX(){return loadExtLib(_CDN.xlsx,()=>window.XLSX);}
 function ensureJSZip(){return loadExtLib(_CDN.jszip,()=>window.JSZip);}
 function ensureJsPDF(){return loadExtLib(_CDN.jspdf,()=>window.jspdf&&window.jspdf.jsPDF);}
-async function ensurePdfjs(){await loadExtLib(_CDN.pdfjs,()=>window.pdfjsLib);try{if(window.pdfjsLib&&!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc=_CDN.pdfworker;}catch(e){}}
+async function ensurePdfjs(){await loadExtLib(_CDN.pdfjs,()=>window.pdfjsLib);try{if(window.pdfjsLib&&!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc=_CDN.pdfworker.src;}catch(e){}}
 function ensureLeaflet(){return loadExtLib(_CDN.leaflet,()=>window.L&&window.L.map);}
 function ensureTesseract(){return loadExtLib(_CDN.tesseract,()=>window.Tesseract);}
 async function gdEnsureSubfolder(name,options){
@@ -5352,7 +5409,7 @@ async function gdPickFiles(){
 /* ----- 견적서 PDF 만들기(브라우저 렌더 → 한글 그대로) + 발송/드라이브저장 ----- */
 const QUOTE_PDF_CSS="*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#1a1a1a}.qtop{width:100%;border-collapse:collapse;margin-bottom:10px}.qtitle{vertical-align:top;width:40%;padding-top:6px}.qtitle h1{font-size:34px;letter-spacing:14px;font-weight:800}.qtitle .sub2{font-size:11px;color:#444;margin-top:16px}.qsupwrap{width:60%;vertical-align:top}.qsup{width:100%;border-collapse:collapse}.qsup td{border:1px solid #555;padding:4px 6px;font-size:10.5px}.qsup td.vlabel{background:#ececec;font-weight:700;text-align:center;width:20px;line-height:1.5}.qsup td.l{background:#ececec;font-weight:700;white-space:nowrap;text-align:center;width:62px}.qmeta{width:100%;border-collapse:collapse;margin-bottom:3px}.qmeta td{padding:3px 2px;font-size:11px;font-weight:700}.qmeta td.r2{text-align:right}.qinfo{width:100%;border-collapse:collapse}.qinfo td{border:1px solid #333;padding:6px 8px;font-size:11px}.qinfo td.l{background:#ececec;font-weight:700;text-align:center;white-space:nowrap}.qinfo td.amt-kor{text-align:center;font-size:13px;font-weight:700}.qitems{width:100%;border-collapse:collapse}.qitems th{background:#dfe8cf;color:#46682a;border:1px solid #8a9a6a;padding:6px 4px;font-size:10.5px;font-weight:700}.qitems td{border:1px solid #b0b0b0;padding:4px 6px;font-size:10.5px;height:23px}.qitems td.c{text-align:center}.qitems td.r{text-align:right}.qitems td.nm{font-weight:700;text-align:center}.qitems td.neg{color:#c0392b}.qitems .foot td{font-weight:700;font-size:12px;height:26px}.qitems .tot-l{background:#fbe5d6;color:#c1622e;text-align:center}.qitems .tot-v{background:#fbe5d6;color:#c1622e;text-align:right}.qitems .sum-l{background:#e3edd3;color:#46682a;text-align:center}.qitems .sum-v{background:#e3edd3;color:#46682a;text-align:right}.qcond{width:100%;border-collapse:collapse}.qcond td{border:1px solid #333;padding:6px 8px;font-size:10.5px}.qcond td.vlabel2{background:#d8d8d8;font-weight:700;text-align:center;width:64px}.qcond td.l{background:#ececec;font-weight:700;text-align:center;white-space:nowrap;width:100px}";
 async function quotePdfBlob(q){
-  await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',()=>window.html2canvas);
+  await loadExtLib(_CDN.html2canvas,()=>window.html2canvas);
   const host=document.createElement('div');
   host.style.cssText='position:fixed;left:-9999px;top:0;width:760px;background:#fff;padding:24px';
   host.innerHTML='<style>'+QUOTE_PDF_CSS+'</style><div>'+quoteHTML(q)+'</div>';
@@ -5678,6 +5735,7 @@ function openGdriveSetup(){
     <b style="font-size:14px">📨 전자계약 서버 연결 (Google Apps Script)</b>
     ${ctBanner}
     <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">주소·관리자 토큰은 <b>이 기기(IndexedDB)에만</b> 저장되며 클라우드 백업·직렬화에 포함되지 않습니다.</p>
+    <p id="ctChanged" style="margin:0 0 8px;font-size:12px;color:var(--muted-2)">${escapeHtml(contractChangedText(__contract.changed))}</p>
     <label style="display:block;margin-bottom:6px">웹앱 배포 주소 (Apps Script <b>/exec</b> 주소)
       <input type="text" id="ctUrl" value="${escapeAttr(__contract.url||CONTRACT_SERVER_DEFAULT)}" placeholder="${CONTRACT_URL_HINT}" style="width:100%;margin-top:4px">
     </label>
@@ -6035,6 +6093,9 @@ function openGdriveSetup(){
     __contract.url=u;
     if(tin)__contract.token=tin;
     try{await idbSet('contract_url',u);if(tin)await idbSet('contract_token',tin);}catch(e){}
+    const changed={at:new Date().toISOString(),via:'settings'};__contract.changed=changed;   // v572 바뀐 때 기록(설치 QR 링크 저장과 같은 키)
+    try{await idbSet('contract_changed',changed);}catch(e){}
+    const chEl=root.querySelector('#ctChanged');if(chEl)chEl.textContent=contractChangedText(changed);
     root.querySelector('#ctTok').value='';   // 저장 후 입력칸 비움 — 토큰 원문 재노출 금지
     root.querySelector('#ctTok').placeholder=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'스크립트 속성에 넣은 ADMIN_TOKEN';
     // 주소나 토큰이 바뀌면 예전 자가진단 결과는 다른 서버의 것이다. 반드시 무효화한다.
@@ -6638,9 +6699,8 @@ function ensureHeic2any(){
   if(typeof heic2any!=='undefined')return Promise.resolve();
   if(__heicLoading)return __heicLoading;
   __heicLoading=new Promise((res,rej)=>{
-    const s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
-    s.onload=()=>res(); s.onerror=()=>{__heicLoading=null;rej(new Error('HEIC 변환 모듈 로드 실패(네트워크)'));};
+    const s=_cdnScriptEl(_CDN.heic2any);   // v572 integrity+crossorigin — 해시가 다르면 실행 거부 → 아래 onerror(토스트 '무결성 확인 실패')
+    s.onload=()=>res(); s.onerror=()=>{__heicLoading=null;rej(_cdnFail(_CDN.heic2any,'HEIC 변환 모듈 로드 실패(네트워크)'));};
     document.head.appendChild(s);
   });
   return __heicLoading;
@@ -6702,14 +6762,14 @@ function observeHeicLazy(){
   targets.forEach(el=>__heicIO.observe(el));
 }
 // exifr 지연 로드: HEIC EXIF(GPS·촬영일시)를 읽기 위함 (EXIF.js는 HEIC 미지원)
+// v572 exifr@7.1.3 고정 + integrity — 전엔 버전 없는 주소라 jsDelivr 가 그때그때 최신판을 줬다(쓰는 API: exifr.parse 옵션 tiff/ifd0/exif/gps, 7.x 그대로).
 let __exifrLoading=null;
 function ensureExifr(){
   if(typeof exifr!=='undefined')return Promise.resolve();
   if(__exifrLoading)return __exifrLoading;
   __exifrLoading=new Promise((res,rej)=>{
-    const s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js';
-    s.onload=()=>res(); s.onerror=()=>{__exifrLoading=null;rej(new Error('exifr 로드 실패'));};
+    const s=_cdnScriptEl(_CDN.exifr);
+    s.onload=()=>res(); s.onerror=()=>{__exifrLoading=null;rej(_cdnFail(_CDN.exifr,'exifr 로드 실패'));};
     document.head.appendChild(s);
   });
   return __exifrLoading;
@@ -6983,7 +7043,7 @@ async function getFileOf(rec){
 // 엑셀(.xlsx/.xls) 견적서에서 견적 정보 추출 → {text(검색·분류용), quote(품목·금액)}
 async function xlsxEstimate(rec){
   const file=await getFileOf(rec); if(!file)return {text:'',quote:null};
-  if(typeof XLSX==='undefined'){ try{ await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX); }catch(e){ return {text:'',quote:null,unavailable:true}; } }   // v521 못 받으면 '읽지 않음'으로 남긴다
+  if(typeof XLSX==='undefined'){ try{ await loadExtLib(_CDN.xlsx,()=>window.XLSX); }catch(e){ return {text:'',quote:null,unavailable:true}; } }   // v521 못 받으면 '읽지 않음'으로 남긴다
   try{
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
@@ -7048,7 +7108,7 @@ async function pdfText(rec){
   const file=await getFileOf(rec);if(!file)return'';
   const buf=await file.arrayBuffer();
   await ensurePdfjs();
-  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const pdf=await pdfjsLib.getDocument({data:buf,isEvalSupported:false}).promise;   // v572 CVE-2024-4367 완화 — 글꼴 프로그램을 eval 로 돌리지 않는다(pdf.js 3.x 공식 완화책)
   let out='';const pages=Math.min(pdf.numPages,5);
   for(let i=1;i<=pages;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n';}
   if(out.replace(/\s/g,'').length<10){ // 스캔본 PDF → 첫 페이지 래스터 후 OCR
@@ -33880,7 +33940,7 @@ function excelColor(c){
 async function renderRichXlsx(box,buf,fname){
   try{
     if(typeof ExcelJS==='undefined'){
-      await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',function(){return window.ExcelJS;});
+      await loadExtLib(_CDN.exceljs,function(){return window.ExcelJS;});
     }
     if(typeof ExcelJS==='undefined')return false;
     const wb=new ExcelJS.Workbook();
@@ -33962,7 +34022,7 @@ function ledgerYm(v){
 async function ledgerParse(rec){
   try{
     const file=await getFileOf(rec);if(!file)return null;
-    if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',function(){return window.XLSX;});
+    if(typeof XLSX==='undefined')await loadExtLib(_CDN.xlsx,function(){return window.XLSX;});
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
     const ws=wb.Sheets[wb.SheetNames[0]];if(!ws)return null;
@@ -35068,7 +35128,7 @@ function recvQuickView(pjName,back){
 async function ledgerExportTax(){
   const files=ledgerFiles().filter(function(f){return f.ledger;});
   if(!files.length){toast('먼저 회계 파일을 넣고 집계하세요');return;}
-  if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',function(){return window.XLSX;});
+  if(typeof XLSX==='undefined')await loadExtLib(_CDN.xlsx,function(){return window.XLSX;});
   const wb=XLSX.utils.book_new();
   const agg=ledgerAggregate();
   const yms=Object.keys(agg).sort();
@@ -42175,7 +42235,7 @@ async function previewEstimate(id){
     }else if(f.ext==='pdf'){
       const buf=await file.arrayBuffer();
       await ensurePdfjs();
-      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      const pdf=await pdfjsLib.getDocument({data:buf,isEvalSupported:false}).promise;   // v572 CVE-2024-4367 완화(pdfText 와 같은 옵션)
       const pg=await pdf.getPage(1);
       const vp=pg.getViewport({scale:1.4});
       const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;cv.className='pv-img';
@@ -42186,7 +42246,7 @@ async function previewEstimate(id){
       const buf=await file.arrayBuffer();
       // 🎨 원본 서식(색·병합셀·너비) 미리보기 우선 — 실패 시 아래 표 형태 폴백
       try{if(await renderRichXlsx(box,buf.slice(0),f.name))return;}catch(e){}
-      if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX);
+      if(typeof XLSX==='undefined')await loadExtLib(_CDN.xlsx,()=>window.XLSX);
       const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       if(!ws){box.innerHTML='<div class="pv-loading">엑셀 시트가 없습니다.</div>';return;}
@@ -43084,7 +43144,7 @@ function hjDoc433IssueQuiet(name,entry){
    화면 밖 iframe 에 문서를 띄워 .doc 만 그린다(인쇄 버튼줄 .pbar 제외) — 문서 스타일이 앱 화면으로 새지 않는다. 공유 가능하면 공유창, 아니면 다운로드. */
 async function hjDocHtmlToPng(html,base){
   if(!html)return false;
-  await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',()=>window.html2canvas);
+  await loadExtLib(_CDN.html2canvas,()=>window.html2canvas);
   let ifr=document.getElementById('hjDocPngFrame');if(ifr)ifr.remove();
   ifr=document.createElement('iframe');ifr.id='hjDocPngFrame';
   ifr.style.cssText='position:fixed;left:-10000px;top:0;width:760px;height:1400px;border:0;opacity:0;pointer-events:none';

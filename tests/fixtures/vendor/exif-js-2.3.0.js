@@ -1,4 +1,3 @@
-/* exif-js 2.3.0 (MIT, https://github.com/exif-js/exif-js) — npm 원본 그대로. 검사 전용: 앱은 cdnjs 의 같은 판을 쓴다(index.html). scandup-v557 이 깨진 JPEG 멈춤을 실제 라이브러리로 재현한다. */
 (function() {
 
     var debug = false;
