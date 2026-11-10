@@ -106,11 +106,11 @@ const KPI = () => Object.fromEntries([...document.querySelectorAll('#view [data-
       assert.deepEqual(a.months.map(m => m.slice(0, 2)), [[D.YM, 'true'], [D.PYM, 'false']], '월 줄 최신 먼저 — ' + JSON.stringify(a.months));
       assert.ok(a.months[0][2].includes('내역서 2건 · 현장 2곳 · 받은 돈 100,000원') && a.months[0][2].endsWith('1,320,000원'), '이번 달 줄 — ' + a.months[0][2]);
       assert.equal(a.list, D.YM);
-      assert.deepEqual(a.items, [D.mm + '/1 가온 우수관 방수 · 시험누수 220,000원', D.mm + '/1 다솜 욕조 방수 · 시험누수 1,100,000원'], '이번 달 현장별 줄 — ' + JSON.stringify(a.items));
+      assert.deepEqual(a.items, [D.mm + '/1 가온 우수관 방수 · 시험누수 📷 사진 없음 220,000원', D.mm + '/1 다솜 욕조 방수 · 시험누수 📷 사진 없음 1,100,000원'], '이번 달 현장별 줄 — ' + JSON.stringify(a.items));
       await page.click('#view [data-stmt-ym="' + D.PYM + '"]');
       const b = await page.evaluate(() => ({ list: document.querySelector('#view [data-stmt-month-list]').dataset.stmtMonthList, items: [...document.querySelectorAll('#view [data-stmt-item]')].map(el => el.innerText.replace(/\s+/g, ' ').trim()),
         pressed: [...document.querySelectorAll('#view [data-stmt-ym]')].map(x => x.getAttribute('aria-pressed')) }));
-      assert.deepEqual([b.list, b.items, b.pressed], [D.PYM, [D.pmm + '/15 나래 배관 교체 · 시험누수 330,000원'], ['false', 'true']], '지난달 고름 — ' + JSON.stringify(b));
+      assert.deepEqual([b.list, b.items, b.pressed], [D.PYM, [D.pmm + '/15 나래 배관 교체 · 시험누수 📷 사진 없음 330,000원'], ['false', 'true']], '지난달 고름 — ' + JSON.stringify(b));
       await page.click('#view [data-stmtpay="S2.xlsx"]');
       await page.waitForSelector('#modalRoot .modal');
       const modal = await page.evaluate(() => { const t = document.querySelector('#modalRoot .modal').innerText; closeModal(true); return t; });
