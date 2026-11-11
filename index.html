@@ -3992,7 +3992,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v575-memoscrub';
+const APP_BUILD='hyeonjang-v576-stmtproof';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -39170,6 +39170,73 @@ function hjStmtPayView(src){
   const inp=root.querySelector('#spAmt');if(inp)inp.addEventListener('input',draw);
   draw();
 }
+/* v576 🧾 내역서 입금 증빙 한 번에 — 협력사는 내역서 한 장에 세금계산서 한 장을 끊는데, 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌러야 했다
+   (현장 8곳이면 🧾 입금 증빙 기록 창에서 8번, 첫 화면 '증빙 미기록'도 8건). AGENTS v533 '안 한 것'.
+   · 대상(hjStmtProofTargets): 그 내역서(stmt===src) 입금 기록 중 증빙이 아직 없고(HJ_PROOF 아님) 견적 받은 돈과 이어지지 않은 것(v543 연결 기록은 그 창에서).
+   · 한 번에 적기(hjStmtProofSave): 기록마다 hjProofSet 과 같은 뜻(세금계산서·현금영수증 = 발행, 카드 = 해당 없음, 기타 = 기타)을 hjTaxIssueNormalize·hjTaxIssueApply 로
+     **한 번의 원자 저장**(안전판 1개 — 줄마다 저장하면 안전판 12칸이 금방 찬다). 연 뒤 입금 기록이 바뀌었으면 아무것도 적지 않는다. 데모는 화면에서만.
+   · 발행일(오늘까지)·승인번호(선택)는 모든 줄에 같게 — 내역서 한 장에 한 장. 발행 자체는 홈택스에서(앱이 대신하거나 발행했다고 짓지 않는다). */
+function hjStmtProofTargets(src){
+  const linked=new Set((state.quotes||[]).map(q=>q&&q.paid&&q.paid.payLogId).filter(Boolean));
+  return (state.payLog||[]).filter(x=>x&&typeof x==='object'&&x.stmt===src&&Math.round(num(x.amt))>0&&!HJ_PROOF[x.proof]&&!(x.id&&linked.has(x.id)));
+}
+function hjStmtProofKinds(src){const out={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt===src&&HJ_PROOF[x.proof])out[x.proof]=(out[x.proof]||0)+1;});return out;}
+function hjStmtProofInput(rec,kind,at,no){
+  const old=hjTaxIssueRead(rec),method=kind==='card'?'카드':kind==='etc'?'기타':old.method;
+  const issue=kind==='cash'||kind==='tax'?{type:kind,status:'issued',no:String(no||'').trim(),at:at||localDate()}:kind==='card'?{type:'none',status:'notApplicable',no:'',at:''}:{type:'none',status:'pending',no:'',at:''};
+  return hjTaxIssueNormalize({method,issue},rec);
+}
+async function hjStmtProofSave(src,kind,o){
+  if(!Object.prototype.hasOwnProperty.call(HJ_PROOF,kind))throw new Error('증빙 종류를 고르세요');
+  if(window.__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');
+  const at=String(o&&o.at||localDate()),no=String(o&&o.no||'').trim().slice(0,100);
+  if((kind==='tax'||kind==='cash')&&(!/^\d{4}-\d{2}-\d{2}$/.test(at)||at>localDate()))throw new Error('발행일은 오늘까지의 실제 날짜로 넣어 주세요');
+  const recs=o&&Array.isArray(o.recs)?o.recs:hjStmtProofTargets(src);
+  if(!recs.length)throw new Error('증빙을 적을 입금 기록이 없어요');
+  const now=hjStmtProofTargets(src);
+  if(recs.length!==now.length||recs.some(r=>!now.includes(r)))throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');
+  const vals=recs.map(r=>hjStmtProofInput(r,kind,at,no));   // 하나라도 막히면 아무것도 안 적는다
+  if(state._demo){recs.forEach((r,i)=>hjTaxIssueApply(r,vals[i]));render();return {n:recs.length,demo:true};}
+  const idx=recs.map(r=>state.payLog.indexOf(r)),stamp=paidStableJson(state.payLog||[]),rows=state.payLog;
+  const ensure=()=>{if(window.__tabStale||state.payLog!==rows||paidStableJson(state.payLog||[])!==stamp)throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');};
+  await durableLocalMutation({snapshotLabel:'내역서 증빙 한 번에 전',beforeCommit:ensure,mutateDraft:draft=>{
+    if(paidStableJson(draft.payLog||[])!==stamp)throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');
+    idx.forEach((i,k)=>{const r=draft.payLog[i];if(!r||r.stmt!==src||HJ_PROOF[r.proof])throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');hjTaxIssueApply(r,vals[k]);});
+    return idx.length;
+  }});
+  try{webWorkMarkDirtyAfterPersist();}catch(e){}
+  return {n:recs.length};
+}
+function hjStmtProofView(src,back){
+  const s=hjStmtLedger().find(x=>x.src===src);if(!s){toast('반영한 내역서를 찾지 못했습니다');return;}
+  const recs=hjStmtProofTargets(src),today=localDate(),done=hjStmtProofKinds(src);
+  const sum=recs.reduce((a,x)=>a+Math.round(num(x.amt)),0);
+  const doneTxt=Object.keys(done).map(k=>hjProofLabel(k)+' '+done[k]+'건').join(' · ');
+  const list=recs.slice(0,30).map(x=>'<div data-stmtproof-row style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;border-top:1px dashed var(--line-soft)"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(String(x.d||''))+' · '+escapeHtml(x.project||'현장 없음')+'</span><b style="white-space:nowrap">'+won(Math.round(num(x.amt)))+'</b></div>').join('')+(recs.length>30?'<div class="hint">…외 '+(recs.length-30)+'건</div>':'');
+  const kinds=['tax','cash','etc','card'];
+  const body='<div style="font-size:13px;line-height:1.6">'+
+    '<div style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px">'+escapeHtml((s.to?s.to+' · ':'')+s.doc+' '+s.date)+' · 받음 <b>'+won(s.paid)+'</b>'+(doneTxt?'<br><span style="font-size:12px;color:var(--ok)">✓ 기록함: '+escapeHtml(doneTxt)+'</span>':'')+'</div>'+
+    (recs.length?'<div style="font-size:12.5px;margin-bottom:6px">증빙이 아직 없는 입금 기록 <b data-stmtproof-n>'+recs.length+'건</b> · '+won(sum)+' — 현장마다 나눠 적힌 같은 입금입니다</div>'+list+
+      '<div style="font-size:12px;font-weight:700;margin:12px 0 6px">무엇을 발행했나요?</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      kinds.map(k=>'<button type="button" class="ghost spfKind" data-k="'+k+'" aria-pressed="'+(k==='tax')+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px">'+escapeHtml(HJ_PROOF[k])+'</button>').join('')+'</div>'+
+      '<div id="spfIssued" style="margin-top:8px"><label for="spfAt" style="font-size:11.5px;color:var(--muted)">발행일 (오늘까지)</label><input id="spfAt" type="date" value="'+today+'" max="'+today+'" style="width:100%;min-height:44px;font-size:16px;padding:8px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px">'+
+      '<label for="spfNo" style="font-size:11.5px;color:var(--muted)">승인번호 (선택 — 홈택스 발행 내역의 번호)</label><input id="spfNo" type="text" maxlength="100" autocomplete="off" style="width:100%;min-height:44px;font-size:16px;padding:8px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 0"></div>'+
+      '<div class="hint" style="margin-top:8px">발행은 홈택스에서 합니다 — 여기서는 발행했다는 기록만 남깁니다. 저장 전 안전판을 하나 만듭니다.</div>'
+    :'<div class="empty" data-stmtproof-done style="padding:14px"><b>증빙을 적을 입금 기록이 없어요</b>'+(s.paid?'이 내역서의 입금은 모두 증빙을 기록했어요.':'아직 받은 돈이 없어요 — [💰 입금]을 먼저 적으세요.')+'</div>')+'</div>';
+  const btns=[...(back?[{label:'‹ 뒤로',cls:'ghost',fn:back}]:[]),{label:recs.length?'취소':'닫기',cls:'ghost',fn:closeModal}];
+  if(recs.length)btns.push({label:'🧾 '+recs.length+'건 한 번에 기록',cls:'clay',fn:async()=>{
+    const root=$('#modalRoot'),k=(root.querySelector('.spfKind[aria-pressed="true"]')||{}).dataset;
+    const kind=k&&k.k||'tax';
+    try{const r=await hjStmtProofSave(src,kind,{recs,at:(root.querySelector('#spfAt')||{}).value||today,no:(root.querySelector('#spfNo')||{}).value||''});
+      closeModal();render();toast('🧾 '+HJ_PROOF[kind]+' — 입금 기록 '+r.n+'건에 한 번에 기록했어요'+(r.demo?' (데모라 저장은 안 함)':''));}
+    catch(e){toast((e&&e.message)||'증빙을 기록하지 못했습니다');}
+  }});
+  openModal('🧾 내역서 입금 증빙',body,btns,true);
+  const root=$('#modalRoot');
+  const pick=k=>{root.querySelectorAll('.spfKind').forEach(b=>{const on=b.dataset.k===k;b.setAttribute('aria-pressed',String(on));b.className=(on?'blue':'ghost')+' spfKind';});const box=root.querySelector('#spfIssued');if(box)box.hidden=!(k==='tax'||k==='cash');};
+  root.querySelectorAll('.spfKind').forEach(b=>b.onclick=()=>pick(b.dataset.k));
+  if(recs.length)pick('tax');
+}
 // 앱이 색인한 작업내역서 엑셀 — [{f,applied}] (작업내역서/ 폴더 또는 이름에 작업내역서·공사내역서, 양식 제외)
 function hjStmtFiles(){
   const used=new Set((state.quotes||[]).filter(q=>q&&q.stmt).map(hjStmtSrcOf));
@@ -39200,6 +39267,7 @@ function hjStmtLedgerHTML(){
         <span style="font-size:12px">합계 ${won(s.total)} · 받음 <b style="color:var(--ok)">${won(s.paid)}</b> · ${s.left?'남음 <b>'+won(s.left)+'</b>'+hjStmtAgeChip(s,today):'<b style="color:var(--ok)">✓ 다 받음</b>'}</span><br>
         <span style="font-size:11px;color:var(--muted);word-break:break-all">${escapeHtml(s.src)}</span></div>
       ${s.left?`<button class="mini-btn" data-stmtpay="${escapeAttr(s.src)}" style="min-height:44px" title="협력사가 이 내역서 금액을 입금했으면 — 현장마다 나눠 입금 기록">💰 입금</button>`:''}
+      ${(()=>{const n=hjStmtProofTargets(s.src).length;return n?`<button class="mini-btn" data-stmtproof="${escapeAttr(s.src)}" style="min-height:44px" title="이 내역서 입금 기록(현장마다 나눠 적힌 것)에 세금계산서 등 증빙을 한 번에 기록">🧾 증빙 ${n}건 아직</button>`:'';})()}
     </div>`).join('');
   const frows=todo.slice(0,8).map(x=>`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)">
       <div style="flex:1 1 220px;min-width:0;font-size:12.5px">📄 ${escapeHtml(x.f.name)} <span style="font-size:11px;color:var(--muted)">아직 안 넣음</span></div>
@@ -41157,7 +41225,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],[data-stmtproof],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -41335,6 +41403,7 @@ function setupDelegation(){
     if(t.id==='qmImport')return importQuoteXlsx();
     if(t.id==='qmStmt')return hjStmtImportPick();
     if(d.stmtpay!==undefined)return hjStmtPayView(d.stmtpay);   // v527
+    if(d.stmtproof!==undefined)return hjStmtProofView(d.stmtproof);   // v576
     if(d.stmtbank!==undefined)return hjBankImportView();   // v533 🏦 통장 파일로 내역서 입금 맞추기
     if(d.stmtdun!==undefined)return hjStmtDunView(d.stmtdun);   // v535 📋 협력사 미수 안내 글
     if(d.stmtunit!==undefined)return hjStmtUnitView(d.stmtunit);   // v537 🏢 내역서 동·호수 → 세대 등록
