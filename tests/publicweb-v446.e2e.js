@@ -14,7 +14,7 @@ try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); } cat
 const APP = process.env.HJ_TEST_APP || 'http://127.0.0.1:8299/index.html', ORIGIN = new URL(APP).origin;
 const LEAK = 'TEST_PW_LEAK 평화로운아파트 107동 1302호', CUST = '테스트고객', PHONE = '010-1234-5678';
 const LINK = 'https://naver.me/5Abc12Xy';
-const FALLBACK = 'https://01023978629.github.io/manmool/review.html';   // v573(PR #190 v426): 설정 링크가 없을 때 문자·QR 이 쓰는 홈페이지 후기 페이지
+const FALLBACK = 'https://01023978629.github.io/manmool/review.html';   // v575(PR #190 v426): 설정 링크가 없을 때 문자·QR 이 쓰는 홈페이지 후기 페이지
 const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
 const ROOT = path.resolve(__dirname, '..');
 const baseline = process.env.HJ_V446_BASELINE && execFileSync('git', ['show', process.env.HJ_V446_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
@@ -208,15 +208,15 @@ let browser, passed = 0, page;
     assert.equal(qrDecode(png).text, LINK, 'PNG pixels decode back to the link');
   });
 
-  await test('② ⭐ 리뷰 QR 카드 — 설정 링크 없으면 홈페이지 후기 페이지로(v573)·https 아닌 옛 값은 기본 링크+토스트, 저장 안 한 칸도 먼저 저장, A6 두 장·PNG 다시 읽기, PDF, 너무 긴 링크만 안내 → 설정 칸', async () => {
+  await test('② ⭐ 리뷰 QR 카드 — 설정 링크 없으면 홈페이지 후기 페이지로(v575)·https 아닌 옛 값은 기본 링크+토스트, 저장 안 한 칸도 먼저 저장, A6 두 장·PNG 다시 읽기, PDF, 너무 긴 링크만 안내 → 설정 칸', async () => {
     await seed(); const before = await snapshot();
-    // v573(PR #190 v426): 설정이 비어 있어도 카드가 나온다 — 홈페이지 후기 페이지 링크. v446 때는 '비어 있습니다' 안내만 있었다.
+    // v575(PR #190 v426): 설정이 비어 있어도 카드가 나온다 — 홈페이지 후기 페이지 링크. v446 때는 '비어 있습니다' 안내만 있었다.
     await page.evaluate(() => hjReviewQrCardView()); await page.waitForFunction(() => __v446.deliver.length === 1);
     assert.equal(await page.locator('[data-review-qr-empty]').count(), 0, 'blank setting is not an empty state any more');
     const dflt = await page.evaluate(() => __v446.deliver[0]); assert.equal(dflt.label, '⭐ 리뷰 QR 카드');
     const dsrcs = imgSrcs(dflt.html); assert.equal(dsrcs.length, 2);
     assert.equal(qrDecode(await page.evaluate(src => __qrSample(src), dsrcs[0])).text, FALLBACK, 'blank setting → card QR reads back the homepage review page');
-    // https:// 로 시작하지 않는 옛 저장값: 그 글자를 QR 로 굽지 않고 기본 링크로 만들되 토스트가 설정을 고치라고 말한다(v573 부터 저장 때 막힌다 — reviewlink-v573)
+    // https:// 로 시작하지 않는 옛 저장값: 그 글자를 QR 로 굽지 않고 기본 링크로 만들되 토스트가 설정을 고치라고 말한다(v575 부터 저장 때 막힌다 — reviewlink-v575)
     await close(); await page.evaluate(() => { __reviewUrl = 'naver.me/5Abc12Xy'; hjReviewQrCardView(); }); await page.waitForFunction(() => __v446.deliver.length === 2);
     assert.match(await lastToast(), /https:\/\/ 로 시작하지 않아 홈페이지 후기 페이지로/);
     const lsrcs = imgSrcs(await page.evaluate(() => __v446.deliver[1].html));
@@ -251,7 +251,7 @@ let browser, passed = 0, page;
     await footer('← 뒤로').click(); await page.locator('#modalRoot .docHubBtn[data-act="reviewqr"]').waitFor();
   });
 
-  await test('③ 완료보고서·간이영수증 끝 QR — 링크 있으면 기본 켬·다시 읽으면 링크, 끄면 이 기기에 기억·QR 없음, 설정 링크 없으면 홈페이지 후기 페이지 QR(v573), 너무 긴 링크면 칸 없음', async () => {
+  await test('③ 완료보고서·간이영수증 끝 QR — 링크 있으면 기본 켬·다시 읽으면 링크, 끄면 이 기기에 기억·QR 없음, 설정 링크 없으면 홈페이지 후기 페이지 QR(v575), 너무 긴 링크면 칸 없음', async () => {
     await seed({ link: LINK }); const before = await snapshot();
     await page.evaluate(name => payRcptDialog(name), LEAK); await page.locator('#prcQr').waitFor();
     assert.equal(await page.locator('#prcQr').isChecked(), true, 'receipt QR is on by default'); await tapOk('label:has(#prcQr)'); await noOverflow(); await shot('03-receipt-toggle');
@@ -272,7 +272,7 @@ let browser, passed = 0, page;
     await page.evaluate(name => aptReportView(name), LEAK); await page.locator('#rpQr').uncheck(); await footer('📄 PDF 만들기').click(); await page.waitForFunction(() => __v446.pdf.length === 2 && __v446.pdf[1].saved);
     assert.deepEqual(await page.evaluate(() => [window.__rptQr, window.__rptTexts.some(t => /리뷰 한 줄/.test(t)), JSON.parse(localStorage.getItem('hj_qr_on'))]), [null, false, { rcpt: false, report: false }]);
     await page.evaluate(() => { __reviewUrl = ''; localStorage.removeItem('hj_qr_on'); });
-    // v573(PR #190 v426): 설정 링크가 없어도 칸이 있다 — 홈페이지 후기 페이지 QR(기본 켬), 칸 글이 어느 링크인지 말한다
+    // v575(PR #190 v426): 설정 링크가 없어도 칸이 있다 — 홈페이지 후기 페이지 QR(기본 켬), 칸 글이 어느 링크인지 말한다
     await page.evaluate(name => payRcptDialog(name), LEAK); await page.locator('#prcQr').waitFor();
     assert.equal(await page.locator('#prcQr').isChecked(), true, 'blank setting → receipt QR toggle present and on');
     assert.match(await page.locator('label:has(#prcQr)').innerText(), /홈페이지 후기 페이지/);

@@ -16,7 +16,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
 const RAW_PHONE = '01033338888';   // 준공 현장 고객 전화 원문 — 딥링크 외 화면·이력 노출 금지
 const REVIEW_URL = 'https://naver.me/REVIEWTEST';
-const HOMEPAGE_REVIEW_URL = 'https://01023978629.github.io/manmool/review.html';   // v573(PR #190 v426) 기본 링크 — 설정이 비었을 때
+const HOMEPAGE_REVIEW_URL = 'https://01023978629.github.io/manmool/review.html';   // v575(PR #190 v426) 기본 링크 — 설정이 비었을 때
 const DONE_AT = '2026-07-01';
 
 (async () => {
@@ -105,7 +105,7 @@ const DONE_AT = '2026-07-01';
     const reqd = await page.evaluate(() => (document.querySelector('[data-donecard]') || {}).outerHTML.includes('요청함'));
     assert(reqd, '리뷰 요청 후 "요청함" 표시');
   });
-  await test('리뷰 링크 미설정 시 홈페이지 후기 페이지 링크가 붙는다 (v573 · PR #190 v426)', async () => {
+  await test('리뷰 링크 미설정 시 홈페이지 후기 페이지 링크가 붙는다 (v575 · PR #190 v426)', async () => {
     // 설정 UI로 리뷰 링크 비우기(실제 저장 경로 — __reviewUrl은 let이라 UI 통해서만 갱신)
     await page.evaluate(() => { openGdriveSetup(); const el = document.querySelector('#rvUrl'); el.value = ''; document.querySelector('#rvSave').click(); });
     await page.waitForTimeout(200);
@@ -122,7 +122,7 @@ const DONE_AT = '2026-07-01';
     assert((t.match(/https?:\/\//g) || []).length === 1, '링크는 한 줄만: ' + JSON.stringify(t));
   });
 
-  await test('리뷰 링크 규칙은 더보기 리뷰 요청·AI 큐(reviewRequestSms)와 문자 센터 문안에도 같다 (v573)', async () => {
+  await test('리뷰 링크 규칙은 더보기 리뷰 요청·AI 큐(reviewRequestSms)와 문자 센터 문안에도 같다 (v575)', async () => {
     // 비어 있을 때: 두 경로 모두 홈페이지 후기 페이지 링크 한 줄
     await seed();
     const empty = await page.evaluate(() => { window.__sms = []; reviewRequestSms('준공현장 A'); return { sms: window.__sms[0], tpl: msgTemplate('review', state.projects[0]) }; });

@@ -1,10 +1,10 @@
-/* v577 📝 다음 작업내역서 초안(엑셀) — '내역서에 아직 없는 작업'(v566)을 협력사에 보내는 내역서 양식으로 (v566 '안 한 것').
+/* v579 📝 다음 작업내역서 초안(엑셀) — '내역서에 아직 없는 작업'(v566)을 협력사에 보내는 내역서 양식으로 (v566 '안 한 것').
    합성 자료(이름은 지어낸 것), 시계 2026-11-10 고정, 엑셀 라이브러리는 가짜(쓴 격자·파일 이름만 기록), 바깥 쓰기 0.
    ① 격자 — 받는 분·작성일·머리글 '작업 날짜|위치|작업명|작업비용'·작업비용 빈칸·합계 줄 · 위치는 지난 내역서 줄 위치(없으면 현장 이름) · 여러 날 작업명 (GRID)
    ② 왕복 — 작업비용을 채운 격자를 [📑 작업내역서 반영]의 읽기(hjStmtParse)에 넣으면 같은 줄·거래처·작성일·합계 · 파일 이름에서도 거래처 (ROUNDTRIP)
    ③ 창 — '내역서에 아직 없는 작업' 칸의 [📝 내역서 초안] → 받는 분(최근 협력사)·체크 해제 → 고른 줄만 · SUM 합계 · 파일 이름 · 저장본 불변 (VIEW)
    ④ 고른 게 없거나 작성일이 틀리면 안 만듦 · 폰 390 넘침 없음·44px · 페이지 오류 0 · 외부 쓰기 0 (GUARD)
-   HJ_V577_BASELINE=<commit> 은 ①, HJ_V577_MUTATION=amount-filled(작업비용 칸에 0 을 넣음)은 ① 에서 실패해야 한다. */
+   HJ_V579_BASELINE=<commit> 은 ①, HJ_V579_MUTATION=amount-filled(작업비용 칸에 0 을 넣음)은 ① 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,14 +17,14 @@ const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone',
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = { 'amount-filled': ["g.push([r.from,hjStmtDraftLoc(r.project),hjStmtDraftWork(r),''])", 'g.push([r.from,hjStmtDraftLoc(r.project),hjStmtDraftWork(r),0])'] };
-let html = process.env.HJ_V577_BASELINE ? execFileSync('git', ['show', process.env.HJ_V577_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
-if (process.env.HJ_V577_MUTATION) {
-  const m = MUT[process.env.HJ_V577_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V577_MUTATION);
+let html = process.env.HJ_V579_BASELINE ? execFileSync('git', ['show', process.env.HJ_V579_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
+if (process.env.HJ_V579_MUTATION) {
+  const m = MUT[process.env.HJ_V579_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V579_MUTATION);
   assert.equal(SRC.split(m[0]).length, 2, 'mutation anchor'); html = SRC.replace(m[0], m[1]);
 }
 let browser, passed = 0;
 const errors = [], network = { writes: 0 };
-async function test(name, fn) { await fn(); passed++; console.log('PASS stmtdraft-v577 ' + name); }
+async function test(name, fn) { await fn(); passed++; console.log('PASS stmtdraft-v579 ' + name); }
 async function open(width) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block', timezoneId: 'Asia/Seoul' });
   const page = await context.newPage(); page.setDefaultTimeout(20000);
@@ -127,9 +127,9 @@ const SEED = () => {
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '외부 쓰기 0');
     });
-    console.log(`stmtdraft-v577: ${passed}/4 PASS; synthetic data · fixed clock · fake xlsx; external writes=${network.writes}`);
+    console.log(`stmtdraft-v579: ${passed}/4 PASS; synthetic data · fixed clock · fake xlsx; external writes=${network.writes}`);
   } catch (error) {
-    console.error('FAIL stmtdraft-v577 ' + (error && error.stack || error));
+    console.error('FAIL stmtdraft-v579 ' + (error && error.stack || error));
     process.exitCode = 1;
   } finally {
     await browser.close();

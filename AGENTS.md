@@ -3,24 +3,24 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
-## 2026-11-11 v575~v577 — 🔒 팀에게 나가는 메모의 출입 번호 · 🧾 내역서 입금 증빙 한 번에 · 📝 다음 작업내역서 초안(엑셀)
+## 2026-11-11 v577~v579 — 🔒 팀에게 나가는 메모의 출입 번호 · 🧾 내역서 입금 증빙 한 번에 · 📝 다음 작업내역서 초안(엑셀)
 
-대표 지시(11/11 "개발 진행"·"이어서 진행"). v570~v574 위에 같은 PR(#162)로 얹었다. **핀은 묶음 끝 번호 하나** `hyeonjang-v577-stmtdraft`(v575·v576 번호는 검사 파일 이름에 남는다).
+대표 지시(11/11 "개발 진행"·"이어서 진행"). v572~v576 위에 같은 PR(#162)로 얹었다. **핀은 묶음 끝 번호 하나** `hyeonjang-v579-stmtdraft`(v577·v578 번호는 검사 파일 이름에 남는다).
 셋 다 결정 없이 할 수 있는 빈칸(AGENTS 의 '안 한 것'·'후속 후보')이고, 새 저장 키·서버·고객 발송 변경이 없다.
 
-**v575 🔒 팀에게 나가는 일정 메모에서 출입 번호 빼기** (`tests/memoscrub-v575.e2e.js` 5/5 · 변이 no-scrub)
+**v577 🔒 팀에게 나가는 일정 메모에서 출입 번호 빼기** (`tests/memoscrub-v577.e2e.js` 5/5 · 변이 no-scrub)
 - v552 는 '작업자 캘린더로 보내기'만 걸렀다. 이제 📤 일정 공유 글·.ics·팀원별 글(v356·v360), 🔔 작업자 문안(`notifyDrafts`, 한 건·전체 묶음), 🔨 다음 공정 안내의 '전달 사항'(`hjHandoffText`)도 같은 규칙.
 - 규칙은 `hjMemoOut(t)` 한 곳 → `{text,cut}`: 줄·' / '·' · ' 토막 중 `hjLooksLikeAccessCode` 인 것을 빼고 ' · ' 로 잇고, 첫 토막의 공정표 기간을 뗀다. `hjSchShareMemo`·`hjSchCalSendItems` 가 이것을 쓴다.
   공유 창 `[data-sh-cut]`·알림 카드 `[data-sn-cut]` 에 '🔒 … n곳은 뺐어요'.
 - **일정 메모 자체·대표 화면·내 폰 캘린더(🔔 알림 .ics `hjAlertIcsItems`)·구글 캘린더 추가 링크는 그대로** — 대표 본인 것이라 거르지 않는다(대표 결정 11/11 "그대로 둬", 검사 ⑤가 고정).
 
-**v576 🧾 내역서 입금 증빙 한 번에** (`tests/stmtproof-v576.e2e.js` 4/4 · 변이 no-recheck)
+**v578 🧾 내역서 입금 증빙 한 번에** (`tests/stmtproof-v578.e2e.js` 4/4 · 변이 no-recheck)
 - 협력사는 내역서 한 장에 세금계산서 한 장인데 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌렀다(AGENTS v533 '안 한 것'). 📑 장부 줄 `[data-stmtproof]` '🧾 증빙 n건 아직' → `hjStmtProofView(src)`.
 - 대상 `hjStmtProofTargets(src)` = 그 내역서 입금 중 증빙 없음 · 견적 받은 돈과 이어진 기록(v543 `paid.payLogId`) 제외. 뜻은 `hjProofSet` 과 같게 `hjStmtProofInput` → `hjTaxIssueNormalize`·`hjTaxIssueApply`.
 - 저장 `hjStmtProofSave` 는 **한 번의 `durableLocalMutation`(안전판 1개)** — 줄마다 `hjTaxIssueSave` 를 부르면 안전판이 줄 수만큼 생겨 12칸을 밀어낸다. 연 뒤 입금 기록이 바뀌면(목록·stamp) 아무것도 적지 않는다. 데모는 화면에서만.
 - 위임 셀렉터의 `[data-stmtproof]` 는 `[data-stmtunit]` **뒤**에 둔다 — stmtpay-v527·bankstmt-v533·stmtdun-v535 가 `#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun]` 순서를 정규식으로 고정한다.
 
-**v577 📝 다음 작업내역서 초안(엑셀)** (`tests/stmtdraft-v577.e2e.js` 4/4 · 변이 amount-filled)
+**v579 📝 다음 작업내역서 초안(엑셀)** (`tests/stmtdraft-v579.e2e.js` 4/4 · 변이 amount-filled)
 - v566 '내역서에 아직 없는 작업' 칸 `[data-unbilled-draft]` → `hjStmtDraftView()` → `hjStmtDraftDownload(rows,to,date)`. 격자는 `hjStmtDraftGrid` — **[📑 작업내역서 반영](`hjStmtParse`)이 읽는 꼴 그대로**:
   위에 '받는 분'·'작성일'·안내 한 줄, 머리글 '작업 날짜 | 위치 | 작업명 | 작업비용', 끝에 합계(D 칸 SUM 수식). 머리글 아래에 글을 넣지 마라(금액 없는 줄은 위 줄 작업명에 붙는다).
 - 작업비용은 비운다(금액은 사람이). 위치 = 그 현장의 지난 내역서 줄 위치(`hjStmtDraftLoc`), 없으면 현장 이름. 작업명 = 일정 제목(없으면 사진 작업명), 여러 날이면 '(11/5~11/6)'.
@@ -32,13 +32,14 @@
 
 검사: 새 검사 3개 + 주변(schshare-v356·crew-v357·percrew-v360·calsend-v552·handoff-v374·multiday-v354·mwmat-v370·mobilealert-v443·stmtpay-v527·bankstmt-v533·bankmulti-v538·stmtdun-v535·stmtunit-v537·payproof-v348·vatproof-v349·taxmerge-v543·stmttab-v565·stmtphoto-v568·unbilled-v566·stmtimport-v526·healthline-v524) 통과, 정적 `*.check.js` 전부. 기준선 3305d36 은 세 검사 모두 ① 에서 실패. 전체 결과는 PR #162 본문.
 
-## 2026-11-11 v570~v574 한 묶음 — 📑 계약·확인 양식 9종 · 사진 뒷정리 3건 · 외부 스크립트 무결성·설치 QR 확인 · 리뷰 링크 기본값 · 캘린더 맞추기 덧붙임
+## 2026-11-11 v572~v576 한 묶음 — 📑 계약·확인 양식 9종 · 사진 뒷정리 3건 · 외부 스크립트 무결성·설치 QR 확인 · 리뷰 링크 기본값 · 캘린더 맞추기 덧붙임
 
 대표 지시(11/9 "문서 양식도 넣어주고 위내용 개발 진행" — 11/8 운영 분석 보고의 권장 순서, 11/10 "최종본을 확인하여 개발 진행"). 클라우드 세션이 갈래 다섯을
-v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤) 위로 옮겼다. **핀은 묶음 끝 번호 하나** `hyeonjang-v574-fieldpack`, 갈래 번호는 검사 파일 이름에 남는다.
+v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤) 위로 옮겼다. 갈래 번호는 검사 파일 이름에 남는다(핀은 아래 v577~v579 끝의 하나).
+**번호 다시 매김(11/11 저녁)**: PC 쪽이 v570(relayscan)·v571(placejudge)을 먼저 병합해 이 묶음의 옛 번호 v570~v577 이 겹쳤다 → main 을 합치고 v572~v579 로 한 칸씩 밀었다(옛 v570 = 새 v572 … 옛 v577 = 새 v579). 검사 파일 이름·`HJ_Vnnn_*` 변이 변수·주석도 같이. 대표에게 보고한 'v575~v577' 은 지금 v577~v579 다.
 이 세션이 같은 날 먼저 만든 'v565 캘린더 가져오기 보강'(importICS 쪽)은 main 의 v567·v569 와 겹쳐 접었다(옛 PR #162 내용 v328~v333 은 `archive/pr162-v333` 브랜치).
 
-**v570 📑 계약·확인 양식 9종** (`tests/forms-v570.e2e.js` 5/5 · 변이 9종)
+**v572 📑 계약·확인 양식 9종** (`tests/forms-v572.e2e.js` 5/5 · 변이 9종)
 - 📎 서류 만들기 '보관' 앞 묶음 「📑 계약·확인 양식(9종)」(`data-act="form9:<key>"`) → `hjForm9View` 입력 → 기존 `hjDocDeliverView`(PDF·워드·HTML). 01 공사도급계약서 CT · 02 마감재 선택 확인서 FS ·
   03 추가·변경 합의서 CO · 04 사진 활용 동의서 PC · 05 외주 발주·확인서 SW · 06 일용근로계약서 DL · 07 노임 지급 확인서 WP · 08 AS 처리 확인서 AF · 09 해제 합의서 CX.
 - 문구의 정본은 `docs/문서양식/`(대표가 준 docx·pdf — Pages 허용목록 밖). 앱 템플릿(`HJ_FORM9_HTML`)의 조항·안내문을 고치려면 원본과 같이 — 검사 ① PHRASES 가 글자를 고정한다.
@@ -47,14 +48,14 @@ v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤
 - 인쇄 쪽수는 원본과 같다(계약서 2쪽·나머지 1쪽) — 조항 묶음을 통째로 keep 하면 3쪽이 된다.
 - 대표 확인 대기: 서명일 기본값이 오늘(비우면 손글씨) · 01 계약금액 출처(전자계약 서명 기록 → 청구 공사대금) · 02 견적 품목 미리 적기 기본 켜짐 · 워드에서 □·표가 실제로 어떻게 보이는지(Chromium 만 확인).
 
-**v571 사진 뒷정리 3건** (`tests/photosync-v571.e2e.js` 4/4 · 변이 5종)
+**v573 사진 뒷정리 3건** (`tests/photosync-v573.e2e.js` 4/4 · 변이 5종)
 - 폰 머리 `#hjSyncAt` '☁ 서버 자료 HH:MM 받음'(오늘이 아니면 M/D HH:MM) — `__relay.syncAt` 을 **읽기만**. 경고 상태(offline·netfail·conflict·auth·qfail·stale)·`__tabStale`·중계 미설정이면 숨긴다
   (안심시키는 줄이 실패를 가리면 안 된다). PC 머리에는 안 그린다. `relaySetStatus` 에서 `typeof relaySyncAtRender==='function'` 로 부른다(함수만 떼어 도는 단위 검사).
-- **Drive 에서 새 사진 기록을 만드는 길은 모두 정리 표시의 Drive ID 를 대조한다** — 중계 `relayLoadDriveFiles`(v560)·OAuth `__gdIngestOne`(v571). 이미 있는 기록에 잇는 길·되살린 표시(r>t)는 막지 않는다.
+- **Drive 에서 새 사진 기록을 만드는 길은 모두 정리 표시의 Drive ID 를 대조한다** — 중계 `relayLoadDriveFiles`(v560)·OAuth `__gdIngestOne`(v573). 이미 있는 기록에 잇는 길·되살린 표시(r>t)는 막지 않는다.
   `__gdTombDrive()` 는 `state.photoTombs` 배열 신원+길이로 기억한다 — **photoTombs 를 제자리에서 push/splice 하지 말고 새 배열로 대입**하라.
 - 📤 PC 사진 올리기: 같은 원본('같은 경로+크기+수정 시각' 또는 같은 handle 객체)의 두 기록은 한 번만 올리고 Drive ID 를 둘 다에. 이름·크기·바이트가 같아 보여도 경로가 다르면 둘 다 올린다. 진행 글 '· 같은 원본 연결 n'.
 
-**v572 외부 스크립트 무결성 · pdf.js eval 끔 · 설치 QR 확인** (`tests/sri.check.js` 정적 · `sri-loader-v572` · `contract-qr-link-v572` · 변이 30종)
+**v574 외부 스크립트 무결성 · pdf.js eval 끔 · 설치 QR 확인** (`tests/sri.check.js` 정적 · `sri-loader-v574` · `contract-qr-link-v574` · 변이 30종)
 - 외부 라이브러리 주소·sha384 는 `_CDN` 표 **한 곳**. jsDelivr `/npm/<패키지>@<x.y.z>/<경로>` 꼴 13항목, 줄마다 `// 패키지@버전 경로, N바이트`. cdnjs·버전 없는 주소 금지(exifr 는 7.1.3 고정).
   로더는 `loadExtLib(_CDN.키, check)`·`_cdnScriptEl(_CDN.키)`. 실패는 재시도 없이 `CDN_SRI_FAIL_MSG` 토스트. head 의 exif-js·leaflet css 도 같은 주소·integrity + `crossorigin="anonymous"`.
 - **해시는 `npm pack` tarball 의 파일에서 계산했다. jsDelivr 가 그 바이트를 그대로 주는지는 개발 컨테이너에서 확인할 수 없다(바깥 주소 차단)** — PR 검사(`verify-release.yml`)의
@@ -65,17 +66,17 @@ v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤
 - `#hjcontract=` 설치 QR 링크: 다른 계약 서버가 이미 저장돼 있으면 거부(설정에서 직접), 아니면 배포 ID 뒤 4자리를 입력해야 저장. 바뀐 때는 IDB `contract_changed {at,via}`(직렬화 밖) → 설정 › 전자계약 '연결값 마지막 변경'.
 - integrity 를 못 단 것: Google api.js·GIS·카카오 지도 SDK(버전 없는 사업자 로더), tesseract 가 스스로 받는 worker·언어 자료, **`team-projects.js` 의 heic2any**(버전만 고정 — 위 v333 절의 '둘 다 integrity' 는 main 에 없는 커밋 이야기다).
 
-**v573 리뷰 링크 기본값 = 홈페이지 후기 페이지** (`tests/reviewlink-v573.e2e.js` 7/7 · 변이 5종 — PR #190 v426 을 다시 얹음)
+**v575 리뷰 링크 기본값 = 홈페이지 후기 페이지** (`tests/reviewlink-v575.e2e.js` 7/7 · 변이 5종 — PR #190 v426 을 다시 얹음)
 - 규칙은 `hjReviewLink()` 한 곳: 설정 링크(`hjReviewLinkCustom()`, https:// 로 시작하는 것만) → 없으면 `REVIEW_FALLBACK_URL`. **빈 문자열을 돌려주지 않는다** — `if(link)` 분기를 되살리지 마라, `__reviewUrl` 을 직접 읽지 마라.
 - 문자 세 입구(`hjReviewSms`·`reviewRequestSms`·`msgTemplate('review')`)는 링크 정확히 한 줄(자동 발송 없음). QR 카드·끝 QR 토글도 기본 주소로 나온다(칸이 사라지는 경우는 설정 링크가 213바이트를 넘을 때뿐).
 - 설정 저장은 https:// 값만, 빈 값 저장 = 기본으로 돌아감(키 입력칸의 '빈 값 = 안 바꿈' 과 다르다). 준공 카드 힌트는 `data-review-link-missing` 그대로(글자만 'ⓘ 홈페이지 후기 링크 — 설정').
 - **기본 주소는 manmool `review.html` 에 의존한다 — manmool PR #223 이 병합·배포되기 전에는 손님에게 404 다.** 이 묶음을 #223 보다 먼저 병합하면 안 된다(먼저 나가야 하면 `REVIEW_FALLBACK_URL` 을 홈페이지 첫 화면으로).
-  그쪽 경로를 바꾸면 상수와 검사 3개(reviewlink-v573·warranty-review·publicweb-v446)의 주소를 같이.
+  그쪽 경로를 바꾸면 상수와 검사 3개(reviewlink-v575·warranty-review·publicweb-v446)의 주소를 같이.
 
-**v574 🔄 구글 캘린더 맞추기 덧붙임** (`tests/calextras-v574.e2e.js` 5/5 · 변이 2종 — v567 '안 한 것' 두 가지)
+**v576 🔄 구글 캘린더 맞추기 덧붙임** (`tests/calextras-v576.e2e.js` 5/5 · 변이 2종 — v567 '안 한 것' 두 가지)
 - 종일 여러 날: `hjCalSyncParseIcs` 가 DTEND(끝난 다음 날)에서 하루 뺀 날을 `to` 로(60일 넘으면 하루짜리), `hjCalSyncApply` 가 메모 머리를 공정표 꼴 `시작~끝 (N일)` 로 — `hjSchSpan`·`hjSchContOn`(v354)이 그대로 읽는다.
   화면 글 붙여 넣기(`hjCalSyncParseText`)의 여러 날 줄과 '날짜 옮김' 줄의 기간은 아직 안 다룬다.
-- 🤖 제미나이 칩(`[data-schgemini]`, 일정표 제목 옆): `hjSchGemini(s)` = 레코드 `icsBy:'gemini'`(v574 부터 '@' 일정에) 또는 v567~v573 이 메모에 남긴 '(@ 제미나이 입력)' 글. 읽기만 — 메모에서 그 글을 지우면 옛 일정의 칩도 사라진다.
+- 🤖 제미나이 칩(`[data-schgemini]`, 일정표 제목 옆): `hjSchGemini(s)` = 레코드 `icsBy:'gemini'`(v576 부터 '@' 일정에) 또는 v567~v575 이 메모에 남긴 '(@ 제미나이 입력)' 글. 읽기만 — 메모에서 그 글을 지우면 옛 일정의 칩도 사라진다.
 
 검사: 묶음 새 검사 6개 + 주변 통과, 정적 `*.check.js` 전부. 전체 run-all·CI 결과는 PR #162 본문.
 ## 2026-11-11 v571 📍📅 사진 현장 판단 = 위치 + 그날 일정 — 🧹 AI 자동 정리가 '그날 일정 하나'로 고르던 것 고침, 🧭/👉 추천에 위치 확인

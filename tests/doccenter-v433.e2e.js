@@ -134,7 +134,7 @@ let browser, passed = 0, page;
     await page.evaluate(name => docHubView(name), LEAK);
     await page.locator('#modalRoot .docHubBtn').first().waitFor();
     const groups = await page.locator('#modalRoot .docHubGroup').allInnerTexts();
-    assert.deepEqual(groups, ['영업·계약', '시공 중', '준공·돈', 'AS·보증', '누수·보험', '아파트·행정', '📑 계약·확인 양식(9종)', '보관']);   // v570 대표 전달 양식 9종 묶음이 '보관' 앞에 생겼다(의도된 변경)
+    assert.deepEqual(groups, ['영업·계약', '시공 중', '준공·돈', 'AS·보증', '누수·보험', '아파트·행정', '📑 계약·확인 양식(9종)', '보관']);   // v572 대표 전달 양식 9종 묶음이 '보관' 앞에 생겼다(의도된 변경)
     const acts = await page.locator('#modalRoot .docHubBtn').evaluateAll(nodes => nodes.map(n => n.dataset.act));
     for (const act of [...LEGACY_ACTS, 'workcert', 'leaknarr', 'leakreport', 'statement', 'invoice', 'quote', 'contract', 'worklog', 'progress', 'order', 'aslog']) assert(acts.includes(act), 'entry ' + act);
     assert(acts.filter(a => a.startsWith('todo:')).length >= 3, 'planned rows are listed as 예정'); // v442 피해 확인서·v441 아파트 4종·v437 견적 비교표가 실제 항목이 되어 예정 줄이 줄었다

@@ -1,5 +1,5 @@
 /* 전자계약 설정 QR — # 조각 즉시 제거, 배포 ID 뒤 4자리 확인(prompt) 1회 뒤 기기 저장
-   v572: 확인 창이 confirm → prompt(배포 ID 앞 6·뒤 4 표시, 뒤 4자리 입력)로 바뀌었다. 거부·오입력·changedAt 은 contract-qr-link-v572.e2e.js. */
+   v574: 확인 창이 confirm → prompt(배포 ID 앞 6·뒤 4 표시, 뒤 4자리 입력)로 바뀌었다. 거부·오입력·changedAt 은 contract-qr-link-v574.e2e.js. */
 'use strict';
 let chromium;
 try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }

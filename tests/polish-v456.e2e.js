@@ -1,5 +1,5 @@
 /* v456 다듬기 — 리허설 R2·R7 남은 것. 합성 자료만, 외부 쓰기 0.
-   ① 🎉 준공 관리 카드: 리뷰 링크가 비어 있으면 [ⓘ 홈페이지 후기 링크 — 설정] 단추(v573 전에는 '⚠ 리뷰 링크 없음' — 기본 링크가 생겨 글이 바뀌었다)가 보이고 누르면 ⚙️ 설정 › 기타 › 리뷰 링크 칸으로 간다 · 링크를 넣으면 사라진다(REVIEW_LINK_HINT)
+   ① 🎉 준공 관리 카드: 리뷰 링크가 비어 있으면 [ⓘ 홈페이지 후기 링크 — 설정] 단추(v575 전에는 '⚠ 리뷰 링크 없음' — 기본 링크가 생겨 글이 바뀌었다)가 보이고 누르면 ⚙️ 설정 › 기타 › 리뷰 링크 칸으로 간다 · 링크를 넣으면 사라진다(REVIEW_LINK_HINT)
    ② 밝은 화면 작은 글자 — 단계 탭 보조 글자·진행 ○·사진 안내·비준공 카드·문서 센터 '준비 중'·원가 출처 '없음'·손익 지출·AI 두뇌 카드 — 글자/배경 4.5:1 이상(LIGHT_SMALL_TEXT),
       주황 #e8912d 는 글자색으로 더 쓰지 않는다
    ③ PC(≥900px) 🧾 영수증 확인: 사진은 왼쪽 칸에 고정(sticky), 입력칸은 모두 오른쪽 칸 · 폰(390px)은 한 줄(RECEIPT_TWO_COL)
@@ -90,7 +90,7 @@ let browser, passed = 0;
     for (const page of [pc.page, ph.page]) {
       await detail(page, DONE); await page.waitForTimeout(150);
       const r = await page.evaluate(() => { const b = document.querySelector('[data-donecard="1"] [data-review-link-missing]'); return { card: !!document.querySelector('[data-donecard="1"]'), hint: !!b, text: b && b.textContent.trim(), tap: b && b.getBoundingClientRect().height >= 32, review: !!document.querySelector('[data-reviewreqp]') }; });
-      assert(r.card && r.review, 'done card ' + JSON.stringify(r)); assert(r.hint, 'REVIEW_LINK_HINT ' + JSON.stringify(r)); assert.match(r.text, /홈페이지 후기 링크/); assert.doesNotMatch(r.text, /없음/, 'v573: 기본 링크가 있으니 "없음"이라 말하지 않는다');
+      assert(r.card && r.review, 'done card ' + JSON.stringify(r)); assert(r.hint, 'REVIEW_LINK_HINT ' + JSON.stringify(r)); assert.match(r.text, /홈페이지 후기 링크/); assert.doesNotMatch(r.text, /없음/, 'v575: 기본 링크가 있으니 "없음"이라 말하지 않는다');
       await page.locator('[data-donecard="1"] [data-review-link-missing]').click(); await page.waitForTimeout(200);
       const s = await page.evaluate(() => { const tab = document.querySelector('#modalRoot #setTab-etc'), inp = document.querySelector('#modalRoot #rvUrl'); return { tab: tab ? tab.getAttribute('aria-selected') : null, input: !!inp, focused: document.activeElement === inp, visible: !!inp && inp.getClientRects().length > 0 }; });
       assert.deepEqual(s, { tab: 'true', input: true, focused: true, visible: true }, 'settings etc tab + rvUrl focus ' + JSON.stringify(s));

@@ -1,4 +1,4 @@
-/* sri.check.js — 외부 라이브러리 주소·무결성(SRI) 정적 검사 (v572)
+/* sri.check.js — 외부 라이브러리 주소·무결성(SRI) 정적 검사 (v574)
 
    왜: index.html 은 엑셀·PDF·지도·OCR·HEIC·EXIF 라이브러리를 CDN 에서 받는다. 2026-11 까지는
      · exifr 이 버전 없는 주소(https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js)라 jsDelivr 가 그때그때 최신판을 줬고
@@ -120,7 +120,7 @@ const MUTATIONS = {
   '표 해시 sha256': mut("sri:'" + t.rows.xlsx.sri + "'", "sri:'sha256-" + t.rows.xlsx.sri.slice(7, 51) + "'"),
   'loadExtLib 글자 주소': mut('loadExtLib(_CDN.exceljs,', "loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',"),
   '표 밖 jsDelivr 주소': mut("const s=_cdnScriptEl(_CDN.exifr);", "const s=document.createElement('script');s.src='" + t.rows.exifr.url + "';"),
-  'getDocument eval 허용': mut('getDocument({data:buf,isEvalSupported:false}).promise;   // v572 CVE-2024-4367 완화(pdfText 와 같은 옵션)', 'getDocument({data:buf}).promise;'),
+  'getDocument eval 허용': mut('getDocument({data:buf,isEvalSupported:false}).promise;   // v574 CVE-2024-4367 완화(pdfText 와 같은 옵션)', 'getDocument({data:buf}).promise;'),
   'worker 주소 표 밖': mut('workerSrc=_CDN.pdfworker.src;', "workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';"),
   '실패 문구 변경': mut("const CDN_SRI_FAIL_MSG='무결성 확인 실패 — 네트워크·버전 확인';", "const CDN_SRI_FAIL_MSG='모듈 로드 실패';"),
 };

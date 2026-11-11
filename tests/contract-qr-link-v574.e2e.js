@@ -1,4 +1,4 @@
-/* contract-qr-link-v572.e2e.js — 설치 QR 링크(#hjcontract=) 강화 (v572)
+/* contract-qr-link-v574.e2e.js — 설치 QR 링크(#hjcontract=) 강화 (v574)
 
    왜: 전엔 링크 한 번 + [확인] 한 번으로 전자계약 서버 주소·관리자 토큰이 덮였다. 누가 보낸 QR 을 무심코 열면
    고객 계약이 남의 서버로 나간다(계약 문자·서명 링크가 그 서버에서 만들어진다). 그래서
@@ -164,6 +164,6 @@ async function scenarioWrongDigits(html) {
     assert(w.saved && w.s.url === NEW.url, '변이 no-4digit 가 잡히지 않았다 — ③ 이 4자리 비교 없이도 통과한다');
     console.log('PASS ⑦ 변이 2종(no-reject·no-4digit) 검출'); }
 
-  console.log('PASS  contract-qr-link-v572 — 거부·확인 창·오입력·저장·changedAt·변이 2');
+  console.log('PASS  contract-qr-link-v574 — 거부·확인 창·오입력·저장·changedAt·변이 2');
 })().catch((e) => { console.error('FAIL ', e.stack || e); process.exitCode = 1; })
   .finally(async () => { if (browser) await browser.close(); });

@@ -1,6 +1,6 @@
-/* v570 📑 계약·확인 양식 9종 — 합성 레코드만 쓴다(실제 고객·전화·계좌 없음). 실제 인쇄·공유·문자·외부 쓰기는 0.
-   HJ_V570_BASELINE=<commit> 은 FORMS9_API_PRESENT 에서 실패해야 한다.
-   HJ_V570_MUTATION=<이름> 은 index.html 을 메모리에서만 바꿔(파일은 그대로) 보호 동작을 되돌린다 — 아래 MUTATIONS 의 단언에서 실패해야 한다:
+/* v572 📑 계약·확인 양식 9종 — 합성 레코드만 쓴다(실제 고객·전화·계좌 없음). 실제 인쇄·공유·문자·외부 쓰기는 0.
+   HJ_V572_BASELINE=<commit> 은 FORMS9_API_PRESENT 에서 실패해야 한다.
+   HJ_V572_MUTATION=<이름> 은 index.html 을 메모리에서만 바꿔(파일은 그대로) 보호 동작을 되돌린다 — 아래 MUTATIONS 의 단언에서 실패해야 한다:
      clause-drop(조항 한 줄 삭제) · rrn-prefill(주민번호 미리 채움) · account-prefill(받을 계좌 미리 채움) · tax-compute(소득세 계산해 채움)
      early-issue(미리보기에서 발행 기록) · vat-guess(모르는 부가세를 포함으로) · amount-invent(없는 계약금액 지어냄) · settle-zero(빈 ②③④ 를 0 으로 정산) */
 'use strict';
@@ -77,8 +77,8 @@ const MUTATIONS = {
   'settle-zero': [["&&n2!=null&&n3!=null&&n4!=null?m.paid-(n2+n3+n4):null;", "?m.paid-((n2||0)+(n3||0)+(n4||0)):null;"]]
 };
 function appBody() {
-  if (process.env.HJ_V570_BASELINE) return execFileSync('git', ['show', process.env.HJ_V570_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 30 * 1024 * 1024 });
-  const kind = process.env.HJ_V570_MUTATION; if (!kind) return null;
+  if (process.env.HJ_V572_BASELINE) return execFileSync('git', ['show', process.env.HJ_V572_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 30 * 1024 * 1024 });
+  const kind = process.env.HJ_V572_MUTATION; if (!kind) return null;
   assert(MUTATIONS[kind], 'unknown mutation ' + kind);
   let src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   for (const [from, to] of MUTATIONS[kind]) { assert.equal(src.split(from).length - 1, 1, 'unique mutation anchor: ' + kind); src = src.replace(from, to); }
@@ -124,7 +124,7 @@ let browser, passed = 0, page;
     hjWarrantyShareHtml = async (name, html, fname) => { __f9Calls.html.push(fname); return true; };
     __mobileMode = true; applyMobileMode();
   });
-  async function test(name, fn) { await fn(); passed++; console.log('PASS forms-v570 ' + name); }
+  async function test(name, fn) { await fn(); passed++; console.log('PASS forms-v572 ' + name); }
   async function close() {
     await page.evaluate(() => closeModal(true));
     await page.waitForFunction(() => typeof __mobileSheetHistoryRetire === 'undefined' || !__mobileSheetHistoryRetire);
@@ -159,7 +159,7 @@ let browser, passed = 0, page;
       state.activeProject = full; state.tab = 'project'; state.search = ''; __photoCache.key = null; __sel.clear(); __selMode = false;
       __relay.url = ''; __relay.token = ''; __gdToken = null; for (const k of Object.keys(__f9Calls)) __f9Calls[k] = [];
       render(); syncMobileNav(); clearTimeout(__idbSaveTimer);
-      if (!(await guardedPersistCurrentState())) throw Error('TEST_V570_SEED_SAVE_FAILED');
+      if (!(await guardedPersistCurrentState())) throw Error('TEST_V572_SEED_SAVE_FAILED');
     }, { full: FULL, bare: BARE, qonly: QONLY, cust: CUST, worker: WORKER, sub: SUB });
   }
   async function snapshot() {
@@ -387,7 +387,7 @@ let browser, passed = 0, page;
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), vs = fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8');
     const build = (html.match(/const APP_BUILD='([^']+)'/) || [])[1], target = (vs.match(/const TARGET_BUILD = '([^']+)'/) || [])[1];
     assert(build && build === target && sw.includes(build), 'PINS_IN_SYNC ' + build + ' / ' + target);
-    if (!process.env.HJ_V570_BASELINE && !process.env.HJ_V570_MUTATION) {
+    if (!process.env.HJ_V572_BASELINE && !process.env.HJ_V572_MUTATION) {
       const fn = (html.match(/\nfunction hjForm9View\([\s\S]*?\n}\n/) || [''])[0], model = (html.match(/\nfunction hjForm9Model\([\s\S]*?\n}\n/) || [''])[0];
       assert(fn && model, 'source found'); assert.doesNotMatch(fn + model, /markDirty\(|durableLocalMutation\(|localStorage|idbSet\(/, 'FORM_VIEW_MODEL_READ_ONLY');
       assert.doesNotMatch(fn, /rrn|주민등록번호 *['"]\s*,/i, 'no rrn field in view');
@@ -395,7 +395,7 @@ let browser, passed = 0, page;
       const dir = path.join(ROOT, 'docs', '문서양식'); assert.equal(fs.readdirSync(path.join(dir, '워드(편집용)')).filter(f => f.endsWith('.docx')).length, 9); assert.equal(fs.readdirSync(path.join(dir, 'PDF(인쇄용)')).filter(f => f.endsWith('.pdf')).length, 9); assert(fs.existsSync(path.join(dir, 'README.md')));
     }
   });
-  console.log(`forms-v570: ${passed}/${passed} PASS; synthetic data; real prints/sends=0; external writes=0`);
+  console.log(`forms-v572: ${passed}/${passed} PASS; synthetic data; real prints/sends=0; external writes=0`);
   await context.close();
-})().catch(async error => { console.error('FAIL forms-v570', error.stack || error); try { console.error('modal:', await page.evaluate(() => (document.querySelector('#modalRoot') || {}).innerText || '').then(t => t.slice(0, 400))); } catch (_) {} process.exitCode = 1; })
+})().catch(async error => { console.error('FAIL forms-v572', error.stack || error); try { console.error('modal:', await page.evaluate(() => (document.querySelector('#modalRoot') || {}).innerText || '').then(t => t.slice(0, 400))); } catch (_) {} process.exitCode = 1; })
   .finally(async () => { if (browser) await browser.close(); });

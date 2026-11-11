@@ -1,4 +1,4 @@
-/* v575 🔒 팀에게 나가는 일정 메모에서 출입 번호 빼기 — v552 '작업자 캘린더로 보내기'만 거르던 것을 나머지 길에도 (AGENTS v552 '후속 후보').
+/* v577 🔒 팀에게 나가는 일정 메모에서 출입 번호 빼기 — v552 '작업자 캘린더로 보내기'만 거르던 것을 나머지 길에도 (AGENTS v552 '후속 후보').
    📤 일정 공유 글·.ics·팀원별 글 · 🔔 작업자 문안 · 🔨 다음 공정 안내(전달 사항)는 메모를 줄·' / '·' · ' 토막으로 나눠 출입 번호처럼 보이는
    토막(hjLooksLikeAccessCode)을 빼고 ' · ' 로 잇는다(hjMemoOut 한 곳). 일정 메모 자체·대표 화면·내 폰 캘린더(알림 .ics)는 그대로.
    합성 자료, 시계 2026-11-05 고정, 바깥 쓰기 0.
@@ -7,7 +7,7 @@
    ③ 🔔 작업자 문안(한 건·전체 묶음)에 번호 없음 · 카드 표시 · 고객 문안 그대로 (NOTIFY)
    ④ 🔨 다음 공정 안내 '전달 사항'에 번호 없음 · 남은 글은 그대로 (HANDOFF)
    ⑤ 작업자 캘린더 보내기(v552) 같은 글 · 내 폰 캘린더(알림 .ics)는 메모 그대로 · 저장본 불변 · 페이지 오류 0 · 외부 쓰기 0 (KEEP)
-   HJ_V575_BASELINE=<commit> 은 ①, HJ_V575_MUTATION=no-scrub(공유 메모를 거르지 않음)은 ② 에서 실패해야 한다. */
+   HJ_V577_BASELINE=<commit> 은 ①, HJ_V577_MUTATION=no-scrub(공유 메모를 거르지 않음)은 ② 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,15 +22,15 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'no-scrub': ['function hjSchShareMemo(s){return hjMemoOut(s&&s.memo).text;}', "function hjSchShareMemo(s){return String(s&&s.memo||'').replace(/\\s+/g,' ').trim();}"]
 };
-let html = process.env.HJ_V575_BASELINE ? execFileSync('git', ['show', process.env.HJ_V575_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
-if (process.env.HJ_V575_MUTATION) {
-  const m = MUT[process.env.HJ_V575_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V575_MUTATION);
+let html = process.env.HJ_V577_BASELINE ? execFileSync('git', ['show', process.env.HJ_V577_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
+if (process.env.HJ_V577_MUTATION) {
+  const m = MUT[process.env.HJ_V577_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V577_MUTATION);
   assert.equal(SRC.split(m[0]).length, 2, 'mutation anchor'); html = SRC.replace(m[0], m[1]);
 }
 const CODES = /1234|5678|0909|4321/;
 let browser, passed = 0;
 const errors = [], network = { writes: 0 };
-async function test(name, fn) { await fn(); passed++; console.log('PASS memoscrub-v575 ' + name); }
+async function test(name, fn) { await fn(); passed++; console.log('PASS memoscrub-v577 ' + name); }
 async function open(width) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block', timezoneId: 'Asia/Seoul' });
   const page = await context.newPage(); page.setDefaultTimeout(20000);
@@ -141,9 +141,9 @@ const SEED = () => {
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '외부 쓰기 0');
     });
-    console.log(`memoscrub-v575: ${passed}/5 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
+    console.log(`memoscrub-v577: ${passed}/5 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
   } catch (error) {
-    console.error('FAIL memoscrub-v575 ' + (error && error.stack || error));
+    console.error('FAIL memoscrub-v577 ' + (error && error.stack || error));
     process.exitCode = 1;
   } finally {
     await browser.close();

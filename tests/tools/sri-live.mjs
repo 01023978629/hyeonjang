@@ -1,4 +1,4 @@
-/* tests/tools/sri-live.mjs — _CDN 표의 주소를 실제로 받아 sha384·바이트를 대조하는 도구 (v572)
+/* tests/tools/sri-live.mjs — _CDN 표의 주소를 실제로 받아 sha384·바이트를 대조하는 도구 (v574)
 
    run-all 이 돌리지 않는다(tests/ 바로 아래 *.check.js·*.unit.js·*.e2e.js 만 집계한다 — 이 파일은 tests/tools/ 의 .mjs).
    네트워크가 필요해서다: 개발 컨테이너는 바깥 DNS 가 막혀 있어 게이트에 넣으면 늘 건너뛰기만 하고 '통과'로 읽힌다.

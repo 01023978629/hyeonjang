@@ -1,12 +1,12 @@
-/* v574 🔄 구글 캘린더 맞추기 덧붙임 — 🤖 제미나이 칩 · 종일 여러 날 일정 (v567 '안 한 것' 두 가지)
+/* v576 🔄 구글 캘린더 맞추기 덧붙임 — 🤖 제미나이 칩 · 종일 여러 날 일정 (v567 '안 한 것' 두 가지)
    대표(2026-11-10) "@표시는 제미나이가 한 거야" — 맞추기 창은 '@' 를 떼고 넣어, 일정표에서는 누가 넣은 일정인지 안 보였다.
    합성 자료(이름은 지어낸 것), 시계 2026-11-10 고정, 바깥 쓰기 0.
    ① .ics 종일 여러 날 — DTEND(끝난 다음 날)에서 하루 뺀 날이 마지막 날 · 하루짜리·시각 있는 일정·60일 넘는 끝은 to 없음 (PARSE)
    ② 계획·미리보기 — 새 일정 줄에 '~ 끝 날짜' · 읽기만 (PLAN)
    ③ 반영 — 메모 머리 '시작~끝 (N일)' → hjSchSpan·이어지는 날(일요일 제외) · '@' 일정은 icsBy gemini · '@' 없는 일정은 없음 · 안전판 1회 (APPLY)
-   ④ 일정표 🤖 제미나이 칩 — 새 일정(icsBy) · v567~v573 이 넣은 옛 일정(메모 글) · 보통 일정엔 없음 · 저장본 왕복 · 폰 390 넘침 없음 (CHIP)
+   ④ 일정표 🤖 제미나이 칩 — 새 일정(icsBy) · v567~v575 이 넣은 옛 일정(메모 글) · 보통 일정엔 없음 · 저장본 왕복 · 폰 390 넘침 없음 (CHIP)
    ⑤ 다시 읽으면 '이미 같음' — 여러 날 일정이 두 번 들어가지 않는다 · 페이지 오류 0 · 외부 쓰기 0 (AGAIN)
-   HJ_V574_BASELINE=<commit> 은 ① 에서, HJ_V574_MUTATION=no-span(메모에 기간을 안 적음)은 ③, no-chip(칩 판정을 늘 거짓)은 ④ 에서 실패해야 한다. */
+   HJ_V576_BASELINE=<commit> 은 ① 에서, HJ_V576_MUTATION=no-span(메모에 기간을 안 적음)은 ③, no-chip(칩 판정을 늘 거짓)은 ④ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,9 +22,9 @@ const MUT = {
   'no-span': ["const span=r.to&&r.to>r.date?r.date+'~'+r.to+' ('+(hjWorkDaysBetween(r.date,r.to)+1)+'일)':'';", "const span='';"],
   'no-chip': ["function hjSchGemini(s){return !!s&&(s.icsBy==='gemini'||HJ_GEMINI_MEMO_RE.test(String(s.memo||'')));}", 'function hjSchGemini(s){return false;}']
 };
-let html = process.env.HJ_V574_BASELINE ? execFileSync('git', ['show', process.env.HJ_V574_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
-if (process.env.HJ_V574_MUTATION) {
-  const m = MUT[process.env.HJ_V574_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V574_MUTATION);
+let html = process.env.HJ_V576_BASELINE ? execFileSync('git', ['show', process.env.HJ_V576_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
+if (process.env.HJ_V576_MUTATION) {
+  const m = MUT[process.env.HJ_V576_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V576_MUTATION);
   assert.equal(SRC.split(m[0]).length, 2, 'mutation anchor'); html = SRC.replace(m[0], m[1]);
 }
 const EV = (uid, lines) => ['BEGIN:VEVENT', 'UID:' + uid].concat(lines, ['END:VEVENT']);
@@ -38,7 +38,7 @@ const ICS = ['BEGIN:VCALENDAR'].concat(
 
 let browser, passed = 0;
 const errors = [], network = { writes: 0 };
-async function test(name, fn) { await fn(); passed++; console.log('PASS calextras-v574 ' + name); }
+async function test(name, fn) { await fn(); passed++; console.log('PASS calextras-v576 ' + name); }
 async function open(width, mobile) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block', timezoneId: 'Asia/Seoul', hasTouch: !!mobile });
   const page = await context.newPage(); page.setDefaultTimeout(20000);
@@ -144,9 +144,9 @@ const SEED = () => {
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '외부 쓰기 0');
     });
-    console.log(`calextras-v574: ${passed}/5 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
+    console.log(`calextras-v576: ${passed}/5 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
   } catch (error) {
-    console.error('FAIL calextras-v574 ' + (error && error.stack || error));
+    console.error('FAIL calextras-v576 ' + (error && error.stack || error));
     process.exitCode = 1;
   } finally {
     await browser.close();

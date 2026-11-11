@@ -1,4 +1,4 @@
-/* sri-loader-v572.e2e.js — 외부 라이브러리 무결성(SRI)이 브라우저에서 실제로 걸리는지 (v572)
+/* sri-loader-v574.e2e.js — 외부 라이브러리 무결성(SRI)이 브라우저에서 실제로 걸리는지 (v574)
 
    tests/sri.check.js 는 글자(표·태그·주소 꼴)만 본다. 이 검사는 실제 브라우저로
      · head 의 exif-js <script integrity> 가 진짜 바이트(tests/fixtures/vendor — npm exif-js@2.3.0 exif.js 그대로)는 통과시키고
@@ -36,7 +36,7 @@ const FAKE = {
 };
 const MUT = {
   'no-integrity': ["if(lib&&lib.sri){s.integrity=lib.sri;s.crossOrigin='anonymous';}", ''],
-  'eval-on': ["getDocument({data:buf,isEvalSupported:false}).promise;   // v572 CVE-2024-4367 완화 — ", "getDocument({data:buf}).promise;   // "],
+  'eval-on': ["getDocument({data:buf,isEvalSupported:false}).promise;   // v574 CVE-2024-4367 완화 — ", "getDocument({data:buf}).promise;   // "],
 };
 for (const [k, [from]] of Object.entries(MUT)) assert(SRC.split(from).length === 2, '변이 앵커가 소스에 정확히 한 번 있어야 한다: ' + k);
 const mutated = (k) => SRC.replace(MUT[k][0], MUT[k][1]);
@@ -154,6 +154,6 @@ const tryLoad = (page, fn) => page.evaluate(async (fn) => {
     assert(p.gd.length === 1 && p.gd[0].isEvalSupported !== false, '변이 eval-on 이 잡히지 않았다 — ④ 가 옵션 없이도 통과한다');
     console.log('PASS ⑤ 변이 2종(no-integrity·eval-on) 검출'); }
 
-  console.log('PASS  sri-loader-v572 — head·지연 로더·오프라인·pdf.js·변이 2');
+  console.log('PASS  sri-loader-v574 — head·지연 로더·오프라인·pdf.js·변이 2');
 })().catch((e) => { console.error('FAIL ', e.stack || e); process.exitCode = 1; })
   .finally(async () => { if (browser) await browser.close(); });

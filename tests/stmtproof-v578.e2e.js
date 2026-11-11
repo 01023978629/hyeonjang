@@ -1,10 +1,10 @@
-/* v576 🧾 내역서 입금 증빙 한 번에 — 협력사는 내역서 한 장에 세금계산서 한 장인데, 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌러야 했다(AGENTS v533 '안 한 것').
+/* v578 🧾 내역서 입금 증빙 한 번에 — 협력사는 내역서 한 장에 세금계산서 한 장인데, 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌러야 했다(AGENTS v533 '안 한 것').
    합성 자료(이름은 지어낸 것), 시계 2026-11-05 고정, 바깥 쓰기 0.
    ① 대상 — 그 내역서 입금 중 증빙 없는 것만 · 증빙 있는 내역서·견적과 이어진 기록은 빠짐 · 장부 줄에 '🧾 증빙 n건 아직' (TARGET)
    ② 장부 → 창 → [n건 한 번에 기록] — 모든 줄 세금계산서 발행·같은 발행일·승인번호 · 안전판 1개 · 첫 화면 증빙 알림에서 빠짐 · 장부 버튼 사라짐 · 다시 열어도 그대로 (SAVE)
    ③ 기타·카드 뜻 · 막음 — 연 뒤 입금 기록이 바뀜 · 오래된 창 · 미래 발행일 · 아무것도 안 바뀜 (GUARD)
    ④ 데모 — 화면에서만 기록 · 폰 390 넘침 없음·44px · 페이지 오류 0 · 외부 쓰기 0 (DEMO)
-   HJ_V576_BASELINE=<commit> 은 ①, HJ_V576_MUTATION=no-recheck(연 뒤 바뀐 기록 확인을 뺌)는 ③ 에서 실패해야 한다. */
+   HJ_V578_BASELINE=<commit> 은 ①, HJ_V578_MUTATION=no-recheck(연 뒤 바뀐 기록 확인을 뺌)는 ③ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -19,14 +19,14 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'no-recheck': ["  if(recs.length!==now.length||recs.some(r=>!now.includes(r)))throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');\n", '']
 };
-let html = process.env.HJ_V576_BASELINE ? execFileSync('git', ['show', process.env.HJ_V576_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
-if (process.env.HJ_V576_MUTATION) {
-  const m = MUT[process.env.HJ_V576_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V576_MUTATION);
+let html = process.env.HJ_V578_BASELINE ? execFileSync('git', ['show', process.env.HJ_V578_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
+if (process.env.HJ_V578_MUTATION) {
+  const m = MUT[process.env.HJ_V578_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V578_MUTATION);
   assert.equal(SRC.split(m[0]).length, 2, 'mutation anchor'); html = SRC.replace(m[0], m[1]);
 }
 let browser, passed = 0;
 const errors = [], network = { writes: 0 };
-async function test(name, fn) { await fn(); passed++; console.log('PASS stmtproof-v576 ' + name); }
+async function test(name, fn) { await fn(); passed++; console.log('PASS stmtproof-v578 ' + name); }
 async function open(width) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block', timezoneId: 'Asia/Seoul' });
   const page = await context.newPage(); page.setDefaultTimeout(20000);
@@ -132,9 +132,9 @@ const SEED = () => {
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '외부 쓰기 0');
     });
-    console.log(`stmtproof-v576: ${passed}/4 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
+    console.log(`stmtproof-v578: ${passed}/4 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
   } catch (error) {
-    console.error('FAIL stmtproof-v576 ' + (error && error.stack || error));
+    console.error('FAIL stmtproof-v578 ' + (error && error.stack || error));
     process.exitCode = 1;
   } finally {
     await browser.close();

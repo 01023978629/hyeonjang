@@ -1,4 +1,4 @@
-/* v571 사진 되살아남·동기화 뒷정리 3건 — v530·v560·v531 절의 '안 한 것'·'백로그'.
+/* v573 사진 되살아남·동기화 뒷정리 3건 — v530·v560·v531 절의 '안 한 것'·'백로그'.
    전제: tests/mock-relay.js(8398) + tests/static-server.js(8299). 합성 자료·가짜 폴더·가짜 Drive 다운로드만, 실제 고객·현장 자료 없음.
    ① 폰 머리 '☁ 서버 자료 HH:MM 받음'(#hjSyncAt) — 값은 __relay.syncAt 만(relayLoadApply 뒤 서버 modifiedAt). 오늘이 아니면 'M/D HH:MM'.
       우선순위: 경고 상태(offline·netfail·conflict·auth·qfail·stale)·오래된 창(__tabStale)이면 숨겨 그쪽 표시가 이긴다. PC 머리에는 안 보인다(사이드바 relayStat 가 있다) (LABEL)
@@ -7,8 +7,8 @@
    ③ 📤 PC 사진 올리기 — 같은 원본을 가리키는 기록 둘(같은 경로·크기·수정 시각 / 같은 handle)은 한 번만 올리고 Drive ID 를 둘 다에 잇는다.
       한 묶음 안(같은 경로)·다음 묶음(같은 handle, 다른 경로) 둘 다. 바이트가 같아도 경로가 다르면 둘 다 올린다(합치지 않음). 진행 글 '같은 원본 연결 2' (TWINS)
    ④ 핀 3곳 서로 같음(v564 이상 — 판 번호는 통합자가 올린다) · 페이지 오류 0 (PINS)
-   HJ_V571_MUTATION: no-label(표시 제거)·no-priority(경고 무시) 는 ①, no-gdskip(대조 한 줄 삭제) 는 ②, dup-upload(묶음 안 중복 올리기 복귀)·no-prior(다음 묶음 중복 올리기 복귀) 는 ③ 에서 실패해야 한다.
-   HJ_V571_BASELINE=<commit>(v564) 은 ① 에서 실패해야 한다. */
+   HJ_V573_MUTATION: no-label(표시 제거)·no-priority(경고 무시) 는 ①, no-gdskip(대조 한 줄 삭제) 는 ②, dup-upload(묶음 안 중복 올리기 복귀)·no-prior(다음 묶음 중복 올리기 복귀) 는 ③ 에서 실패해야 한다.
+   HJ_V573_BASELINE=<commit>(v564) 은 ① 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -21,16 +21,16 @@ const MOCK = 'http://localhost:8398', TOKEN = 'test-token-123', ALT_PORT = 8319;
 const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-let html = process.env.HJ_V571_BASELINE ? execFileSync('git', ['show', process.env.HJ_V571_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
+let html = process.env.HJ_V573_BASELINE ? execFileSync('git', ['show', process.env.HJ_V573_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 const MUT = {
   'no-label': ['  el.textContent=txt;el.hidden=!txt;\n}', "  el.textContent='';el.hidden=true;\n}"],
   'no-priority': ["  const txt=(!warn&&!stale&&relayReady())?relaySyncAtText():'';", "  const txt=relayReady()?relaySyncAtText():'';"],
   'no-gdskip': ['  if(!ph&&__gdTombDrive().has(String(id))){window.__gdTombSkipped=(window.__gdTombSkipped||0)+1;return 0;}', ''],
   'dup-upload': ['        if(lead){twins.push({f,lead});skip.add(fileKey(f));continue;}', ''],
   'no-prior': ['        if(prior){linkTwin(f,prior);linkedNow++;skip.add(fileKey(f));run.done++;continue;}', ''],
-}[process.env.HJ_V571_MUTATION || ''];
-if (process.env.HJ_V571_MUTATION) {
-  assert(MUT && SRC.split(MUT[0]).length === 2, 'mutation anchor ' + process.env.HJ_V571_MUTATION);
+}[process.env.HJ_V573_MUTATION || ''];
+if (process.env.HJ_V573_MUTATION) {
+  assert(MUT && SRC.split(MUT[0]).length === 2, 'mutation anchor ' + process.env.HJ_V573_MUTATION);
   html = SRC.replace(MUT[0], MUT[1]);
 }
 // 기준선·변이 index.html 은 따로 띄운 로컬 서버가 준다 — route.fulfill 문서는 mock relay(localhost) 요청이 로컬 네트워크 규칙에 막힌다(v530 과 같은 이유).
@@ -123,7 +123,7 @@ async function mountFolder(page) {
   await fetch(MOCK + '/__reset');
   if (html) await startAlt();
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
-  async function test(name, fn) { await fn(); passed++; console.log('PASS photosync-v571 ' + name); }
+  async function test(name, fn) { await fn(); passed++; console.log('PASS photosync-v573 ' + name); }
   // PC: 서버 연결 → 현장 하나 저장(rev 1)
   const pc = await device(false);
   await connect(pc.page);
@@ -244,12 +244,12 @@ async function mountFolder(page) {
     assert.deepEqual(errors, [], 'no page errors');
   });
 
-  console.log('photosync-v571: ' + passed + '/4 passed');
+  console.log('photosync-v573: ' + passed + '/4 passed');
   await browser.close();
   if (altServer) altServer.close();
   process.exit(passed === 4 ? 0 : 1);
 })().catch(async e => {
-  console.error('FAIL photosync-v571', e && e.stack || e);
+  console.error('FAIL photosync-v573', e && e.stack || e);
   try { await browser.close(); } catch (_) {}
   if (altServer) altServer.close();
   process.exit(1);
