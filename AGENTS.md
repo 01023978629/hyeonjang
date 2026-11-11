@@ -3,6 +3,31 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-11 v570 🔁 [다시 열기](스캔) 도중 서버 사진 목록 맞추기가 미배정 사본을 만들던 것 고침 + 예전 사본 정리
+
+- 실측(11/11, 대표 PC): 앱을 연 직후 [다시 열기]를 누르자 사진 72장이 '현장사진/' 미배정으로 새로 들어왔다(이미 정리된 사진의 Drive 사본 — 같은 Drive ID·같은 이름, 현장 다섯 곳).
+  원인: 부팅 때 시작한 서버 사진 목록 맞추기(`relayLoadDriveFiles`)는 **시작할 때만** 스캔 중인지 봤다(v557). 서버 응답을 기다리는 사이 스캔이 목록을 비우자, 응답 뒤 '없는' 사진을 미배정 사본으로 들이고
+  반쪽 목록을 기기에 저장했다(검사 ① 기준선에서 그대로 재현 — 사본 D1·D2 두 개씩 + 스캔 도중 저장 1회). 스캔이 원래 기록을 되살린 뒤에도 사본은 남았다:
+  이 기기 부팅은 정확 복원(유상 generation)이라 applyData 의 이름 짝 합치기(`mergeOrganizedPhotoDuplicates`)를 안 거치고, 목록 맞추기는 원래 기록에 이미 Drive ID 가 있어 손대지 않는다.
+  (그날 Claude 가 운영 자료에서 72건을 손으로 뺐다 — 백업 `_현장_백업_클로드_20261111_1553_중복기록정리전.json`. 그때 `durableLocalMutation` 으로 기록을 빼다가
+  `_savedFileCount` 가 어긋나 PC 앱이 잠깐 빈 화면이 됐다 — 정확 복원 경로는 파일 수가 바뀌는 변경을 못 받는다. 파일 기록을 빼는 일은 durable 이 아니라 보통 저장(`guardedPersistCurrentState`)으로.)
+- 고침 ①: `relayLoadDriveFiles` 가 마지막 기다림(전송 영수증 다시 보기) 뒤, 기다림 없이 한 번에 도는 합치기 직전에 스캔 중인지 **다시** 본다 — 스캔 중이면 들이지도 저장하지도 않고
+  `window.__hjRelayFilesDeferred` 를 세운다(시작할 때 막힌 경우도 같이). `scanDir` 이 정상으로 끝나면 미룬 맞추기를 한 번 다시 돈다(멈춘 스캔 뒤엔 다음 스캔까지 미룸, 중계가 꺼져 있으면 안 돎).
+- 고침 ②: `hjDropBareRelayTwins()` — 같은 Drive ID 에 사본 아닌 기록이 있고 이름이 같은 '손대지 않은 미배정 서버 사본'(`hjRelayBareCopy`: '현장사진/' 바로 아래 · 현장·공정·작업명·세대·누수 태그·
+  공유함·원본 증빙·글자·견적·주소·위치 없음 · 이 기기 원본(handle·_file) 없음 · 크기 = 서버 크기)을 목록에서 뺀다. 이름이 다르거나(다른 사진일 수 있음) 모두 사본이면 그대로.
+  목록 맞추기의 합치기 바로 뒤에 돌고, 뺐으면 저장 + 손으로 불렀으면 안내 '· 서버 사본 중복 n장 정리'. 파일·Drive 사진은 그대로. 정리 표시(photoTombs)는 남기지 않는다 —
+  다른 기기도 이 판이면 부팅 때 스스로 정리한다(옛 판 기기가 병합으로 되돌려 놓으면 다음 맞추기에서 다시 빠진다).
+  스캔 끝에는 넣지 않았다 — 저장본에 든 사본은 스캔의 저장본 적용(applyData → 이름 짝 합치기)이 이미 정리본으로 합친다(시험해 봄).
+- 핀3곳 hyeonjang-v570-relayscan. 신규 tests/relayscan-v570.e2e.js 3/3(합성 폴더·가짜 서버 목록: ① 목록을 기다리는 사이 스캔 시작 → 도중 저장 0·사본 0·끝난 뒤 한 번 다시 맞춰 새 사진만 미배정
+  ② 사본 정리 — 이름 다름·모두 사본·작업명 있음·크기가 서버와 다름·이 기기 원본 있음은 남김·안내·기기 저장·두 번째 0 ③ 핀·오류 0·바깥 쓰기 0).
+  기준선 main(30da46b, v569)과 변이 no-recheck 는 ① 에서, no-heal 은 ② 에서 실패 확인.
+  같이 돌림: relay · relaysync-v530 · stalelock-v534 · pcupload-v531 · drivetomb-v560 · scandup-v557 · photodupsync-v556 · phototwins-v556 · photodupclean-v522 · photo-intake-safety · photo-no-recovery ·
+  gd-reingest · folderguard-v532 · casefolder-v525 · healthline-v524 · ai-relay · relay-queue-preservation · media-relay-server · serialized-keys · syntax · version-sync 22/22 통과.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 23분): 462개 중 457 통과. 실패 5 = 기준선 main(30da46b)에서 다시 돌려도 똑같이 떨어지는 내려받기 파일 이름 환경 문제
+  (apartment-projects · bathroom-quality-v410 · document-select · document-upload · team-workboard). instanotel-v415 는 병렬에서 한 번 떨어지고 재시도 통과. tests/*.check.js 19/19. PR CI(verify) 통과.
+- 안 한 것: 스캔 뒤 뜨는 🧹 AI 자동 정리 제안이 그날 일정만 보고 현장을 고른 것(11/11 — 다른 동네 GPS 사진 15장을 그날 일정의 다른 현장으로, 세 현장에서 찍은 36장을 한 현장으로 제안).
+  사진 GPS 와 그 현장의 기존 사진 위치를 맞춰 보는 것은 다음 판 후보.
+
 ## 2026-11-11 v569 🔄 클로드 명령 '구글 캘린더 일정 → 현장웹 맞추기' · 📥 캘린더 파일 가져오기의 …Z(UTC) 시각 고침
 
 - 대표 지시(11/11): "더 개발 진행 — 제미나이는 제미나이에 현장 캘린더 수정을 요청할 거야 · 다른 부분도". 일정은 제미나이가 구글 캘린더에 넣고 고친다 → 그 일정을 현장웹으로 옮기는 길(v567 맞추기 창)을 클로드에게 한 번에 시킬 수 있게.
