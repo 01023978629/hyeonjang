@@ -23,6 +23,8 @@
   기준선 main(30da46b, v569)과 변이 no-recheck 는 ① 에서, no-heal 은 ② 에서 실패 확인.
   같이 돌림: relay · relaysync-v530 · stalelock-v534 · pcupload-v531 · drivetomb-v560 · scandup-v557 · photodupsync-v556 · phototwins-v556 · photodupclean-v522 · photo-intake-safety · photo-no-recovery ·
   gd-reingest · folderguard-v532 · casefolder-v525 · healthline-v524 · ai-relay · relay-queue-preservation · media-relay-server · serialized-keys · syntax · version-sync 22/22 통과.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 23분): 462개 중 457 통과. 실패 5 = 기준선 main(30da46b)에서 다시 돌려도 똑같이 떨어지는 내려받기 파일 이름 환경 문제
+  (apartment-projects · bathroom-quality-v410 · document-select · document-upload · team-workboard). instanotel-v415 는 병렬에서 한 번 떨어지고 재시도 통과. tests/*.check.js 19/19. PR CI(verify) 통과.
 - 안 한 것: 스캔 뒤 뜨는 🧹 AI 자동 정리 제안이 그날 일정만 보고 현장을 고른 것(11/11 — 다른 동네 GPS 사진 15장을 그날 일정의 다른 현장으로, 세 현장에서 찍은 36장을 한 현장으로 제안).
   사진 GPS 와 그 현장의 기존 사진 위치를 맞춰 보는 것은 다음 판 후보.
 
