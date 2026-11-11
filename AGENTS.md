@@ -78,6 +78,60 @@ v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤
 - 🤖 제미나이 칩(`[data-schgemini]`, 일정표 제목 옆): `hjSchGemini(s)` = 레코드 `icsBy:'gemini'`(v574 부터 '@' 일정에) 또는 v567~v573 이 메모에 남긴 '(@ 제미나이 입력)' 글. 읽기만 — 메모에서 그 글을 지우면 옛 일정의 칩도 사라진다.
 
 검사: 묶음 새 검사 6개 + 주변 통과, 정적 `*.check.js` 전부. 전체 run-all·CI 결과는 PR #162 본문.
+## 2026-11-11 v571 📍📅 사진 현장 판단 = 위치 + 그날 일정 — 🧹 AI 자동 정리가 '그날 일정 하나'로 고르던 것 고침, 🧭/👉 추천에 위치 확인
+
+- 대표 질문(11/11): "AI가 위치를 잘못 판단할 가능성은?" → 실자료(11/7 저장본, 위치 있는 사진 1,055장·현장 46곳)를 날짜 순으로 넣어 본 결과를 보고하고 규칙을 정함 → "이어서 진행".
+  같은 현장 사진 90%가 현장 중심 100m 안(95% 200m), 현장끼리 가장 가까운 곳 144m(300m 안 4쌍). 사진의 절반은 그 현장 첫 방문이라 위치로 알 길이 없다(현장 좌표가 없음).
+  위치만 보고 고르면(150m 안 한 곳) 430장 중 17장(4%) 틀림 — 모두 '처음 간 현장이 옛 현장 150m 안'. 위치 없는 사진 36%.
+- 원인(옛 `suggest_photo_organization`): 미배정 사진을 **날짜**로만 묶고 그날 첫 일정(`find`)의 현장으로 그날 사진 전부를 제안, 일정이 없을 때만 그날 사진 GPS **평균**을 현장(평균 중심, 400m)과 비교.
+  힌트도 날짜 범위라 체크하면 그날 미배정 사진이 다 들어갔다. 자동 실행(가져오기 뒤 자동 켬·AI 비서 auto_organize_photos — SAFE_AUTO)은 이것을 묻지 않고 넣었다.
+- 규칙(공통, 읽기만): `hjPlaceRefs` 현장 위치 기준 = 현장 lat/lng → 배정된 위치 있는 사진의 **중앙값** → 주소 좌표 geo, 보관 현장 제외. `hjPlaceSchedNames(날짜)` = 그날 일정 현장(💰·세금 자동·개인 일정 sourceUid 제외, 여러 날 공정 이어지는 날 포함).
+  `hjPlaceJudge(사진)` — 150m(`HJ_PLACE_NEAR_M`) 안 한 곳(둘째가 150m(`HJ_PLACE_GAP_M`) 더 멀어야)이고 그날 일정에 그 현장이 있으면 **agree(유일한 추천)**,
+  일정 없음 gps · 일정이 다른 현장 conflict · 150m 안 여럿 near2 · 일정 현장에 위치 기록 없음 new · 일정 현장에서 150m 넘게 떨어짐 far · 위치 없음+일정 한 곳 sched · 일정 여러 곳 multi · none.
+  `hjPhotoOrgPlan()` = (한국 날짜 × 판단 × 후보) 묶음 + 근거 글(`hjPlaceGroupText`) + 미리 고른 현장(pre: gps·new·sched·near2 의 일정 후보·500m 안 far). 동·호수는 위치로 정하지 않는다.
+- 🧹 창(`aiAutoOrganize`): '✅ 위치·일정 일치 — 체크해 두었어요' / '🔎 확인필요 — 현장을 확인하고 체크하세요' 두 칸. 줄마다 사진 3장·판단·근거·현장 고르기(후보 먼저, 고르면 체크).
+  적용은 **묶음의 사진 id 로만**(`hjOrgHints` → assign_photos `ids`, 500장씩) — 같은 날 다른 묶음은 안 건드린다. 안전판 'AI 자동 정리 전' 1회 그대로. 현장 안 고른 묶음은 그대로(요약에 적음).
+  자동 실행·AI 비서 `auto_organize_photos` 는 agree 묶음만 넣고 결과에 확인필요 수·안내, 요약 창에 [🔎 확인필요 n장 보기]. `suggest_photo_organization` 의 실행힌트도 agree 묶음에만(ids).
+  `aiPickPhotos` 에 `ids`(배열) 거르기, assign_photos 선언에 `ids`(ARRAY of STRING). 도구 수는 그대로(ai-tools-count).
+- 🧭 추측 배정·👉 묶음 추천(`photoSuggestFor`, v523): 'gps'(500m 안 가장 가까운 현장)·'revisit' 가 150m 밖 · 근처에 다른 현장(첫째+150m 안) · 그날 일정이 다른 현장이면 **'gpsck'(참고)** —
+  `hjPlaceSuggestCaution` 의 이유 글을 붙여 미리 체크·일괄 배정(PHOTO_SUGGEST_SURE 그대로)에서 빠진다. 문제없으면 예전 그대로 확실.
+  🧭 창의 참고(gpsck) 줄은 고정 글 대신 현장 고르기 칸(제안 현장을 미리 골라 둠 — 그날 일정 현장으로 바꿀 수 있게), 배정은 고른 칸 값(고르기 칸이 있으면 그 값, 없으면 제안).
+- 실자료 재생(저장소 밖·읽기만 — 11/11 11:54 저장본 + 그날 톡클라우드 사진 51장을 미배정으로): 옛 판은 11/10 사진 36장을 한 현장으로, 11/6 사진 15장을 그날 일정 현장으로.
+  v571 은 11/10 을 세 현장으로 나눠 35장 추천(16·12·7 — 그날 카톡 글로 확인한 배정과 같음) + 1장 확인필요(일정 세 곳·150m 안 현장 없음), 11/6 은 '그날 일정 현장에서 12km 떨어진 곳' 확인필요.
+  ⚠ 그 11/6 사진은 그날 Claude 가 대표 답("글 써있는데로")을 일정 글로 읽고 그 현장에 넣었다 — 위치는 그 현장 사진들에서 12km, 다른 현장 사진들에서 306m. 대표 확인 대기(자료 그대로).
+- 핀3곳 hyeonjang-v571-placejudge. 신규 tests/placejudge-v571.e2e.js 7/7(합성 이름: ① 판단 묶음 13·근거 글 ② 도구 실행힌트·ids ③ 창 체크·고르면 체크·체크한 묶음만·안전판 1회
+  ④ 자동 실행 agree 만·확인필요 보기·AI 비서 ⑤ 🧭/👉 gpsck 3가지·확실 4·🧭 고르기 칸으로 다른 현장 배정 ⑥ 폰 390 넘침 없음·44px ⑦ 핀·오류 0·바깥 쓰기 0).
+  기준선 main(e27c2df, v570)과 변이 sched-first 는 ①, date-hint 는 ③, no-caution 은 ⑤ 에서 실패 확인.
+  같이 돌림: photo-* 37개 · photoassign-v523 · photo-suggest · ai-high-risk-confirm · ai-relay · ai-tools-count · chatphoto-v528 · calsync-v567 · multiday-v354 · estbackfill-v521 · dash-cards · healthline-v524 ·
+  mobile-tap-table · mobile-photo-upload · office-ops-ui · project-scan-order · relayscan-v570 · scandup-v557 · stmtphoto-v568 · serialized-keys · syntax · version-sync — 55/55 통과.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 23분): 463개 중 458 통과. 실패 5 = 기준선 main 에서도 똑같이 떨어지는 내려받기 파일 이름 환경 문제(apartment-projects · bathroom-quality-v410 ·
+  document-select · document-upload · team-workboard — v570 때 기준선으로 확인). tests/*.check.js 19/19.
+- 안 한 것: 현장 주소를 좌표로 저장하는 입력(지도용 `ensureProjGeo` 는 그대로 — 첫 방문 현장을 위치로 확인하려면 다음 판), 사진 점검(`photoAssignmentAuditData`)의 500m 기준, 🧭 의 같은 날·그날 일정 참고 단서.
+
+## 2026-11-11 v570 🔁 [다시 열기](스캔) 도중 서버 사진 목록 맞추기가 미배정 사본을 만들던 것 고침 + 예전 사본 정리
+
+- 실측(11/11, 대표 PC): 앱을 연 직후 [다시 열기]를 누르자 사진 72장이 '현장사진/' 미배정으로 새로 들어왔다(이미 정리된 사진의 Drive 사본 — 같은 Drive ID·같은 이름, 현장 다섯 곳).
+  원인: 부팅 때 시작한 서버 사진 목록 맞추기(`relayLoadDriveFiles`)는 **시작할 때만** 스캔 중인지 봤다(v557). 서버 응답을 기다리는 사이 스캔이 목록을 비우자, 응답 뒤 '없는' 사진을 미배정 사본으로 들이고
+  반쪽 목록을 기기에 저장했다(검사 ① 기준선에서 그대로 재현 — 사본 D1·D2 두 개씩 + 스캔 도중 저장 1회). 스캔이 원래 기록을 되살린 뒤에도 사본은 남았다:
+  이 기기 부팅은 정확 복원(유상 generation)이라 applyData 의 이름 짝 합치기(`mergeOrganizedPhotoDuplicates`)를 안 거치고, 목록 맞추기는 원래 기록에 이미 Drive ID 가 있어 손대지 않는다.
+  (그날 Claude 가 운영 자료에서 72건을 손으로 뺐다 — 백업 `_현장_백업_클로드_20261111_1553_중복기록정리전.json`. 그때 `durableLocalMutation` 으로 기록을 빼다가
+  `_savedFileCount` 가 어긋나 PC 앱이 잠깐 빈 화면이 됐다 — 정확 복원 경로는 파일 수가 바뀌는 변경을 못 받는다. 파일 기록을 빼는 일은 durable 이 아니라 보통 저장(`guardedPersistCurrentState`)으로.)
+- 고침 ①: `relayLoadDriveFiles` 가 마지막 기다림(전송 영수증 다시 보기) 뒤, 기다림 없이 한 번에 도는 합치기 직전에 스캔 중인지 **다시** 본다 — 스캔 중이면 들이지도 저장하지도 않고
+  `window.__hjRelayFilesDeferred` 를 세운다(시작할 때 막힌 경우도 같이). `scanDir` 이 정상으로 끝나면 미룬 맞추기를 한 번 다시 돈다(멈춘 스캔 뒤엔 다음 스캔까지 미룸, 중계가 꺼져 있으면 안 돎).
+- 고침 ②: `hjDropBareRelayTwins()` — 같은 Drive ID 에 사본 아닌 기록이 있고 이름이 같은 '손대지 않은 미배정 서버 사본'(`hjRelayBareCopy`: '현장사진/' 바로 아래 · 현장·공정·작업명·세대·누수 태그·
+  공유함·원본 증빙·글자·견적·주소·위치 없음 · 이 기기 원본(handle·_file) 없음 · 크기 = 서버 크기)을 목록에서 뺀다. 이름이 다르거나(다른 사진일 수 있음) 모두 사본이면 그대로.
+  목록 맞추기의 합치기 바로 뒤에 돌고, 뺐으면 저장 + 손으로 불렀으면 안내 '· 서버 사본 중복 n장 정리'. 파일·Drive 사진은 그대로. 정리 표시(photoTombs)는 남기지 않는다 —
+  다른 기기도 이 판이면 부팅 때 스스로 정리한다(옛 판 기기가 병합으로 되돌려 놓으면 다음 맞추기에서 다시 빠진다).
+  스캔 끝에는 넣지 않았다 — 저장본에 든 사본은 스캔의 저장본 적용(applyData → 이름 짝 합치기)이 이미 정리본으로 합친다(시험해 봄).
+- 핀3곳 hyeonjang-v570-relayscan. 신규 tests/relayscan-v570.e2e.js 3/3(합성 폴더·가짜 서버 목록: ① 목록을 기다리는 사이 스캔 시작 → 도중 저장 0·사본 0·끝난 뒤 한 번 다시 맞춰 새 사진만 미배정
+  ② 사본 정리 — 이름 다름·모두 사본·작업명 있음·크기가 서버와 다름·이 기기 원본 있음은 남김·안내·기기 저장·두 번째 0 ③ 핀·오류 0·바깥 쓰기 0).
+  기준선 main(30da46b, v569)과 변이 no-recheck 는 ① 에서, no-heal 은 ② 에서 실패 확인.
+  같이 돌림: relay · relaysync-v530 · stalelock-v534 · pcupload-v531 · drivetomb-v560 · scandup-v557 · photodupsync-v556 · phototwins-v556 · photodupclean-v522 · photo-intake-safety · photo-no-recovery ·
+  gd-reingest · folderguard-v532 · casefolder-v525 · healthline-v524 · ai-relay · relay-queue-preservation · media-relay-server · serialized-keys · syntax · version-sync 22/22 통과.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 23분): 462개 중 457 통과. 실패 5 = 기준선 main(30da46b)에서 다시 돌려도 똑같이 떨어지는 내려받기 파일 이름 환경 문제
+  (apartment-projects · bathroom-quality-v410 · document-select · document-upload · team-workboard). instanotel-v415 는 병렬에서 한 번 떨어지고 재시도 통과. tests/*.check.js 19/19. PR CI(verify) 통과.
+- 안 한 것: 스캔 뒤 뜨는 🧹 AI 자동 정리 제안이 그날 일정만 보고 현장을 고른 것(11/11 — 다른 동네 GPS 사진 15장을 그날 일정의 다른 현장으로, 세 현장에서 찍은 36장을 한 현장으로 제안).
+  사진 GPS 와 그 현장의 기존 사진 위치를 맞춰 보는 것은 다음 판 후보.
 
 ## 2026-11-11 v569 🔄 클로드 명령 '구글 캘린더 일정 → 현장웹 맞추기' · 📥 캘린더 파일 가져오기의 …Z(UTC) 시각 고침
 
