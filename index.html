@@ -3992,7 +3992,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v574-fieldpack';
+const APP_BUILD='hyeonjang-v575-memoscrub';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -15227,11 +15227,11 @@ function notifyDrafts(ymd){
     const cust=p.customer||{};
     const addr=(cust.addr||'').trim();
     const title=c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim()+' ('+c.day+'/'+c.days+'일째)':s.title;
-    const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+title+(s.memo?'\n메모: '+s.memo:'')+(s.crew?'\n담당: '+hjCrewText(s.crew):'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
+    const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+title+(hjSchShareMemo(s)?'\n메모: '+hjSchShareMemo(s):'')+(s.crew?'\n담당: '+hjCrewText(s.crew):'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
     const customer=c
       ?['안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',hjKD(ymd)+'에도 '+(s.project?s.project+' ':'')+title+' 작업이 이어집니다.','참고 부탁드리며, 문의는 '+COMPANY.tel+'로 연락 주세요. 감사합니다.'].join('\n')
       :['안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',hjKD(ymd)+' '+(s.time||'')+'에 '+(s.project?s.project+' ':'')+s.title+' 작업으로 방문 예정입니다.','참고 부탁드리며, 문의는 '+COMPANY.tel+'로 연락 주세요. 감사합니다.'].join('\n');
-    return {id:s.id,time:s.time||'',title,project:s.project||'',custName:cust.name||'',custPhone:cust.phone||'',worker,customer,cont:c?c.day+'/'+c.days:''};
+    return {id:s.id,time:s.time||'',title,project:s.project||'',custName:cust.name||'',custPhone:cust.phone||'',worker,customer,cont:c?c.day+'/'+c.days:'',cut:c?0:hjMemoOut(s.memo).cut};
   });
 }
 function scheduleNotify(ymd){
@@ -15243,6 +15243,7 @@ function scheduleNotify(ymd){
     '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px">'+
       '<div style="font-size:13.5px;font-weight:700">'+escapeHtml((it.time?it.time+' · ':'')+it.title)+(it.project?' <span style="color:var(--muted);font-weight:500">@'+escapeHtml(it.project)+'</span>':'')+'</div>'+
       (it.custName?'<div style="font-size:11.5px;color:var(--muted);margin-top:2px">고객 '+escapeHtml(it.custName)+(it.custPhone?' · '+escapeHtml(it.custPhone):'')+'</div>':'')+
+      (it.cut?'<div data-sn-cut="'+it.cut+'" style="font-size:11.5px;color:var(--muted);margin-top:2px">🔒 출입 번호처럼 보이는 메모 '+it.cut+'곳은 작업자 문안에서 뺐어요</div>':'')+
       '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
         '<button class="blue tiny snW" data-i="'+i+'" style="padding:8px 12px">👷 작업자 문안 복사</button>'+
         '<button class="clay tiny snC" data-i="'+i+'" style="padding:8px 12px">🏠 고객 '+(it.custPhone?'문자':'문안 복사')+'</button>'+
@@ -15311,7 +15312,15 @@ function hjSchShareTitle(s,c){
   const base=String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'작업',sp=hjSchSpan(s);
   return c?base+' ('+c.day+'/'+c.days+'일째)':(sp.days>1?base+' ('+sp.days+'일 · ~'+hjMdDow(sp.to)+')':base);
 }
-function hjSchShareMemo(s){return String(s.memo||'').replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'').replace(/\s+/g,' ').trim();}
+/* v575 팀에게 나가는 메모는 출입 번호처럼 보이는 토막을 뺀다(v552 작업자 캘린더 보내기와 같은 규칙 hjAccessScrub) — 📤 일정 공유 글·.ics · 🔔 작업자 문안 · 🔨 다음 공정 안내.
+   일정 메모 자체는 그대로 둔다(대표 화면·내 캘린더는 손대지 않음). 남은 토막은 ' · ' 로 잇고, 첫 토막의 공정표 기간 '시작~끝 (N일)' 은 뗀다(제목에 있다). */
+function hjMemoOut(t){
+  const sc=hjAccessScrub(t);
+  return {text:sc.parts.map((x,i)=>(i?x:x.replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'')).replace(/\s+/g,' ').trim()).filter(Boolean).join(' · '),cut:sc.cut};
+}
+function hjSchShareMemo(s){return hjMemoOut(s&&s.memo).text;}
+// 그 공유 글에서 뺀 메모 토막 수(이어지는 날은 메모를 싣지 않으므로 시작일 것만 센다)
+function hjSchShareCut(days){let n=0;(days||[]).forEach(d=>(d.rows||[]).forEach(({s,c})=>{if(!c)n+=hjMemoOut(s&&s.memo).cut;}));return n;}
 function hjSchShareAddr(s){const p=s.project?(state.projects||[]).find(x=>x&&x.name===s.project):null;return p&&p.customer?String(p.customer.addr||'').trim():'';}
 function hjSchShareText(days,label,span){
   const L=['['+COMPANY.name+'] 작업 일정'+(label?' — '+label:'')+(span&&span!==label?' '+span:'')];
@@ -15406,7 +15415,7 @@ function hjSchShareView(opts){
   const label=one?String(one.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim():rg.label+(project?' · '+project:'')+(crew?' · '+crew:'');
   const phonePre=crew?hjCrewPhone(crew):(one&&hjCrewList(one.crew).length===1?hjCrewPhone(hjCrewList(one.crew)[0]):'');
   const span=one?'':(rg.from===rg.to?hjMdDow(rg.from):hjMdDow(rg.from)+'~'+hjMdDow(rg.to));
-  const n=days.reduce((a,d)=>a+d.rows.length,0),text=hjSchShareText(days,label,span);
+  const n=days.reduce((a,d)=>a+d.rows.length,0),text=hjSchShareText(days,label,span),cutN=hjSchShareCut(days);
   /* v360 팀원별로 보내기 — 담당을 하나씩 고르지 않아도 각자 자기 일정 글을 받는다(번호가 있으면 문자, 없으면 카톡 공유 시트).
      각 글은 그 사람 담당 일정으로 새로 만든다(위 글상자에서 고친 내용은 들어가지 않는다). 담당 없는 일정은 어느 팀원 글에도 없다. */
   const perCrew=(one||crew)?[]:crews.map(name=>{const dd=hjSchShareDays(rg.from,rg.to,project,null,name);
@@ -15419,6 +15428,7 @@ function hjSchShareView(opts){
       (names.length>1||project?'<label style="display:block;font-size:12.5px;margin-bottom:8px">현장<select id="shProj" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 현장</option>'+names.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===project?' selected':'')+'>'+escapeHtml(nm)+'</option>').join('')+'</select></label>':'')+
       (crews.length?'<label style="display:block;font-size:12.5px;margin-bottom:8px">담당<select id="shCrew" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 팀원</option>'+crews.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===crew?' selected':'')+'>👤 '+escapeHtml(nm)+'</option>').join('')+'</select></label>':''))+
     '<div id="shCount" style="font-size:13px;margin:4px 0 6px"><b>일정 '+n+'건</b>'+(span?' · '+escapeHtml(span):'')+'</div>'+
+    (cutN?'<div data-sh-cut="'+cutN+'" class="hint" style="margin:0 0 6px">🔒 출입 번호처럼 보이는 메모 '+cutN+'곳은 글·캘린더 파일에서 뺐어요 — 출입 번호는 전화로 알려 주세요.</div>':'')+
     '<textarea id="shText" rows="10" style="display:block;width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;line-height:1.5;padding:10px">'+escapeHtml(text)+'</textarea>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+
       '<button type="button" class="clay" id="shKakao" style="flex:1 1 140px;min-height:48px">💬 카톡으로 공유</button>'+
@@ -15484,9 +15494,8 @@ function hjAccessScrub(t){
 function hjSchCalSendItems(ids){
   let cut=0;const items=[];
   hjSchShareDays(null,null,'',ids).forEach(day=>day.rows.forEach(({s,c})=>{
-    const sc=hjAccessScrub(s.memo);if(!c)cut+=sc.cut;
-    // 남은 토막은 ' · ' 로 잇는다(줄바꿈을 빈칸으로 뭉개면 '거실 욕실 자재는…' 처럼 붙는다). 첫 토막의 공정표 기간 '시작~끝 (N일)' 은 뗀다(제목에 있다).
-    const memo=sc.parts.map((x,i)=>(i?x:x.replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'')).replace(/\s+/g,' ').trim()).filter(Boolean).join(' · '),addr=hjSchShareAddr(s);
+    const mo=hjMemoOut(s.memo);if(!c)cut+=mo.cut;   // 남은 토막은 ' · ' 로 잇는다(v575 hjMemoOut 으로 공유 글과 같은 규칙)
+    const memo=mo.text,addr=hjSchShareAddr(s);
     items.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
       project:s.project||'',workers:s.workers||'',crew:s.crew||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
   return {items,cut};
@@ -16397,7 +16406,7 @@ function hjHandoffText(s,n){
   const nm=x=>String(x.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim(),addr=hjSchShareAddr(n),r=s.report||{};
   return ['['+COMPANY.name+'] 다음 공정 안내',s.project+' '+nm(s)+' 작업이 끝났습니다.',
     '다음: '+hjMdDow(n.date)+(n.time?' '+n.time:'')+' '+nm(n)+' — 예정대로 진행 부탁드립니다.',
-    addr?'주소: '+addr:'',String(r.issue||'').trim()?'전달 사항: '+String(r.issue).trim():'',
+    addr?'주소: '+addr:'',hjMemoOut(r.issue).text?'전달 사항: '+hjMemoOut(r.issue).text:'',
     '- '+COMPANY.owner+' '+COMPANY.tel].filter(Boolean).join('\n');
 }
 /* v384 상담·실측 끝 → 견적 — 상담·실측 일정을 '완료'로 보고하면, 아직 상담·실측 단계인 현장이면 다음 할 일(견적)을 바로 잇는다.
