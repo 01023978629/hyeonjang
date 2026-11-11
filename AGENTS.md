@@ -3,6 +3,36 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-11 v571 📍📅 사진 현장 판단 = 위치 + 그날 일정 — 🧹 AI 자동 정리가 '그날 일정 하나'로 고르던 것 고침, 🧭/👉 추천에 위치 확인
+
+- 대표 질문(11/11): "AI가 위치를 잘못 판단할 가능성은?" → 실자료(11/7 저장본, 위치 있는 사진 1,055장·현장 46곳)를 날짜 순으로 넣어 본 결과를 보고하고 규칙을 정함 → "이어서 진행".
+  같은 현장 사진 90%가 현장 중심 100m 안(95% 200m), 현장끼리 가장 가까운 곳 144m(300m 안 4쌍). 사진의 절반은 그 현장 첫 방문이라 위치로 알 길이 없다(현장 좌표가 없음).
+  위치만 보고 고르면(150m 안 한 곳) 430장 중 17장(4%) 틀림 — 모두 '처음 간 현장이 옛 현장 150m 안'. 위치 없는 사진 36%.
+- 원인(옛 `suggest_photo_organization`): 미배정 사진을 **날짜**로만 묶고 그날 첫 일정(`find`)의 현장으로 그날 사진 전부를 제안, 일정이 없을 때만 그날 사진 GPS **평균**을 현장(평균 중심, 400m)과 비교.
+  힌트도 날짜 범위라 체크하면 그날 미배정 사진이 다 들어갔다. 자동 실행(가져오기 뒤 자동 켬·AI 비서 auto_organize_photos — SAFE_AUTO)은 이것을 묻지 않고 넣었다.
+- 규칙(공통, 읽기만): `hjPlaceRefs` 현장 위치 기준 = 현장 lat/lng → 배정된 위치 있는 사진의 **중앙값** → 주소 좌표 geo, 보관 현장 제외. `hjPlaceSchedNames(날짜)` = 그날 일정 현장(💰·세금 자동·개인 일정 sourceUid 제외, 여러 날 공정 이어지는 날 포함).
+  `hjPlaceJudge(사진)` — 150m(`HJ_PLACE_NEAR_M`) 안 한 곳(둘째가 150m(`HJ_PLACE_GAP_M`) 더 멀어야)이고 그날 일정에 그 현장이 있으면 **agree(유일한 추천)**,
+  일정 없음 gps · 일정이 다른 현장 conflict · 150m 안 여럿 near2 · 일정 현장에 위치 기록 없음 new · 일정 현장에서 150m 넘게 떨어짐 far · 위치 없음+일정 한 곳 sched · 일정 여러 곳 multi · none.
+  `hjPhotoOrgPlan()` = (한국 날짜 × 판단 × 후보) 묶음 + 근거 글(`hjPlaceGroupText`) + 미리 고른 현장(pre: gps·new·sched·near2 의 일정 후보·500m 안 far). 동·호수는 위치로 정하지 않는다.
+- 🧹 창(`aiAutoOrganize`): '✅ 위치·일정 일치 — 체크해 두었어요' / '🔎 확인필요 — 현장을 확인하고 체크하세요' 두 칸. 줄마다 사진 3장·판단·근거·현장 고르기(후보 먼저, 고르면 체크).
+  적용은 **묶음의 사진 id 로만**(`hjOrgHints` → assign_photos `ids`, 500장씩) — 같은 날 다른 묶음은 안 건드린다. 안전판 'AI 자동 정리 전' 1회 그대로. 현장 안 고른 묶음은 그대로(요약에 적음).
+  자동 실행·AI 비서 `auto_organize_photos` 는 agree 묶음만 넣고 결과에 확인필요 수·안내, 요약 창에 [🔎 확인필요 n장 보기]. `suggest_photo_organization` 의 실행힌트도 agree 묶음에만(ids).
+  `aiPickPhotos` 에 `ids`(배열) 거르기, assign_photos 선언에 `ids`(ARRAY of STRING). 도구 수는 그대로(ai-tools-count).
+- 🧭 추측 배정·👉 묶음 추천(`photoSuggestFor`, v523): 'gps'(500m 안 가장 가까운 현장)·'revisit' 가 150m 밖 · 근처에 다른 현장(첫째+150m 안) · 그날 일정이 다른 현장이면 **'gpsck'(참고)** —
+  `hjPlaceSuggestCaution` 의 이유 글을 붙여 미리 체크·일괄 배정(PHOTO_SUGGEST_SURE 그대로)에서 빠진다. 문제없으면 예전 그대로 확실.
+  🧭 창의 참고(gpsck) 줄은 고정 글 대신 현장 고르기 칸(제안 현장을 미리 골라 둠 — 그날 일정 현장으로 바꿀 수 있게), 배정은 고른 칸 값(고르기 칸이 있으면 그 값, 없으면 제안).
+- 실자료 재생(저장소 밖·읽기만 — 11/11 11:54 저장본 + 그날 톡클라우드 사진 51장을 미배정으로): 옛 판은 11/10 사진 36장을 한 현장으로, 11/6 사진 15장을 그날 일정 현장으로.
+  v571 은 11/10 을 세 현장으로 나눠 35장 추천(16·12·7 — 그날 카톡 글로 확인한 배정과 같음) + 1장 확인필요(일정 세 곳·150m 안 현장 없음), 11/6 은 '그날 일정 현장에서 12km 떨어진 곳' 확인필요.
+  ⚠ 그 11/6 사진은 그날 Claude 가 대표 답("글 써있는데로")을 일정 글로 읽고 그 현장에 넣었다 — 위치는 그 현장 사진들에서 12km, 다른 현장 사진들에서 306m. 대표 확인 대기(자료 그대로).
+- 핀3곳 hyeonjang-v571-placejudge. 신규 tests/placejudge-v571.e2e.js 7/7(합성 이름: ① 판단 묶음 13·근거 글 ② 도구 실행힌트·ids ③ 창 체크·고르면 체크·체크한 묶음만·안전판 1회
+  ④ 자동 실행 agree 만·확인필요 보기·AI 비서 ⑤ 🧭/👉 gpsck 3가지·확실 4·🧭 고르기 칸으로 다른 현장 배정 ⑥ 폰 390 넘침 없음·44px ⑦ 핀·오류 0·바깥 쓰기 0).
+  기준선 main(e27c2df, v570)과 변이 sched-first 는 ①, date-hint 는 ③, no-caution 은 ⑤ 에서 실패 확인.
+  같이 돌림: photo-* 37개 · photoassign-v523 · photo-suggest · ai-high-risk-confirm · ai-relay · ai-tools-count · chatphoto-v528 · calsync-v567 · multiday-v354 · estbackfill-v521 · dash-cards · healthline-v524 ·
+  mobile-tap-table · mobile-photo-upload · office-ops-ui · project-scan-order · relayscan-v570 · scandup-v557 · stmtphoto-v568 · serialized-keys · syntax · version-sync — 55/55 통과.
+- 전체 검사(run-all, 이 컨테이너 · 동시 2 · 23분): 463개 중 458 통과. 실패 5 = 기준선 main 에서도 똑같이 떨어지는 내려받기 파일 이름 환경 문제(apartment-projects · bathroom-quality-v410 ·
+  document-select · document-upload · team-workboard — v570 때 기준선으로 확인). tests/*.check.js 19/19.
+- 안 한 것: 현장 주소를 좌표로 저장하는 입력(지도용 `ensureProjGeo` 는 그대로 — 첫 방문 현장을 위치로 확인하려면 다음 판), 사진 점검(`photoAssignmentAuditData`)의 500m 기준, 🧭 의 같은 날·그날 일정 참고 단서.
+
 ## 2026-11-11 v570 🔁 [다시 열기](스캔) 도중 서버 사진 목록 맞추기가 미배정 사본을 만들던 것 고침 + 예전 사본 정리
 
 - 실측(11/11, 대표 PC): 앱을 연 직후 [다시 열기]를 누르자 사진 72장이 '현장사진/' 미배정으로 새로 들어왔다(이미 정리된 사진의 Drive 사본 — 같은 Drive ID·같은 이름, 현장 다섯 곳).
