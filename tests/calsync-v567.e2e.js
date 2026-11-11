@@ -146,7 +146,9 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
       await page.selectOption('#csBody .csSel[data-i="4"]', '가온아파트');
       const snaps = await page.evaluate(() => { window.__snaps = []; const o = hjSnapshot; hjSnapshot = async (...a) => { window.__snaps.push(a[0]); return o(...a); }; return 0; });
       await page.click('#csApply');
-      await page.waitForFunction(() => !document.querySelector('#modalRoot .modal'));
+      // v581 부터 반영 뒤 '바뀐 일정 알리기' 창이 뜬다(맞추기 창은 닫힘) — 그 창을 닫고 본다
+      await page.waitForSelector('#modalRoot #hjCalSyncDone');
+      assert.equal(await page.evaluate(() => { const n = document.querySelectorAll('#hjCalSyncDone [data-csd-row]').length; closeModal(true); return n; }), 7, '알릴 일정 7건(새 5 · 시간 1 · 옮김 1)');
       const r = await page.evaluate(() => ({ snaps: window.__snaps, n: state.schedule.length, by: Object.fromEntries(state.schedule.map(s => [s.id, [s.date, s.time, s.project]])),
         added: state.schedule.filter(s => s.icsUid).map(s => [s.date, s.time, s.title, s.project, s.hours]).sort((a, b) => (a[0] + a[1]).localeCompare(b[0] + b[1])), memo: state.schedule.find(s => /세면대/.test(s.title)).memo }));
       assert.ok(r.snaps[0] === '구글 캘린더 맞추기 전' && r.snaps.filter(x => x === '구글 캘린더 맞추기 전').length === 1, '반영 전 안전판 1회(먼저) — ' + JSON.stringify(r.snaps));

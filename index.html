@@ -15600,29 +15600,32 @@ function hjCrewWeekView(kind,back){
 function hjSchShareView(opts){
   opts=opts||{};
   const ids=Array.isArray(opts.ids)?opts.ids.filter(Boolean):[];
-  const one=ids.length?(state.schedule||[]).find(s=>s&&s.id===ids[0]):null;
-  if(ids.length&&!one){toast('일정을 찾을 수 없어요');return;}
+  // v581 일정 여러 개(맞추기 '바뀐 일정 n건')도 그 일정만 — 예전에는 ids[0] 하나만 썼다. 하나면 예전 그대로(제목이 그 일정 이름).
+  const picked=ids.map(id=>(state.schedule||[]).find(s=>s&&s.id===id)).filter(Boolean);
+  if(ids.length&&!picked.length){toast('일정을 찾을 수 없어요');return;}
+  const one=picked.length===1?picked[0]:null,fixed=picked.length>0;
   const dayDate=HJ_YMD_RE.test(String(opts.date||''))?opts.date:(__calSelDate||'');
-  const rg=one?null:hjSchShareRange(opts.kind||(dayDate?'day':'today'),dayDate);
-  const all=one?null:hjSchShareDays(rg.from,rg.to,'');
-  const names=one?[]:[...new Set(all.flatMap(d=>d.rows.map(r=>r.s.project).filter(Boolean)))];
-  const project=one?'':(names.includes(opts.project)?opts.project:'');
-  const crews=one?[]:[...new Set(all.flatMap(d=>d.rows.flatMap(r=>hjCrewList(r.s.crew))))];   // v357 담당별
-  const crew=one?'':(crews.includes(opts.crew)?opts.crew:'');
-  const days=one?hjSchShareDays(null,null,'',[one.id]):(project||crew?hjSchShareDays(rg.from,rg.to,project,null,crew):all);
-  const label=one?String(one.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim():rg.label+(project?' · '+project:'')+(crew?' · '+crew:'');
-  const phonePre=crew?hjCrewPhone(crew):(one&&hjCrewList(one.crew).length===1?hjCrewPhone(hjCrewList(one.crew)[0]):'');
-  const span=one?'':(rg.from===rg.to?hjMdDow(rg.from):hjMdDow(rg.from)+'~'+hjMdDow(rg.to));
+  const rg=fixed?null:hjSchShareRange(opts.kind||(dayDate?'day':'today'),dayDate);
+  const all=fixed?null:hjSchShareDays(rg.from,rg.to,'');
+  const names=fixed?[]:[...new Set(all.flatMap(d=>d.rows.map(r=>r.s.project).filter(Boolean)))];
+  const project=fixed?'':(names.includes(opts.project)?opts.project:'');
+  const crews=fixed?[]:[...new Set(all.flatMap(d=>d.rows.flatMap(r=>hjCrewList(r.s.crew))))];   // v357 담당별
+  const crew=fixed?'':(crews.includes(opts.crew)?opts.crew:'');
+  const days=fixed?hjSchShareDays(null,null,'',picked.map(s=>s.id)):(project||crew?hjSchShareDays(rg.from,rg.to,project,null,crew):all);
+  const label=one?String(one.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim():fixed?String(opts.label||'고른 일정 '+picked.length+'건'):rg.label+(project?' · '+project:'')+(crew?' · '+crew:'');
+  const fixedCrew=fixed?[...new Set(picked.flatMap(s=>hjCrewList(s.crew)))]:[];   // 고른 일정의 담당이 한 사람이면 그 번호
+  const phonePre=crew?hjCrewPhone(crew):(fixedCrew.length===1?hjCrewPhone(fixedCrew[0]):'');
+  const span=fixed?'':(rg.from===rg.to?hjMdDow(rg.from):hjMdDow(rg.from)+'~'+hjMdDow(rg.to));
   const n=days.reduce((a,d)=>a+d.rows.length,0),text=hjSchShareText(days,label,span),cutN=hjSchShareCut(days);
   /* v360 팀원별로 보내기 — 담당을 하나씩 고르지 않아도 각자 자기 일정 글을 받는다(번호가 있으면 문자, 없으면 카톡 공유 시트).
      각 글은 그 사람 담당 일정으로 새로 만든다(위 글상자에서 고친 내용은 들어가지 않는다). 담당 없는 일정은 어느 팀원 글에도 없다. */
-  const perCrew=(one||crew)?[]:crews.map(name=>{const dd=hjSchShareDays(rg.from,rg.to,project,null,name);
+  const perCrew=(fixed||crew)?[]:crews.map(name=>{const dd=hjSchShareDays(rg.from,rg.to,project,null,name);
     return {name,n:dd.reduce((a,d)=>a+d.rows.length,0),phone:hjCrewPhone(name),text:hjSchShareText(dd,rg.label+(project?' · '+project:'')+' · '+name,span)};}).filter(x=>x.n);
   const noCrewN=perCrew.length?days.reduce((a,d)=>a+d.rows.filter(r=>!hjCrewList(r.s.crew).length).length,0):0;
   const chip=(k,lb)=>'<button type="button" class="'+(rg&&rg.kind===k?'blue':'ghost')+' shRange" data-k="'+k+'" aria-pressed="'+(rg&&rg.kind===k?'true':'false')+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px">'+escapeHtml(lb)+'</button>';
   const contacts=(state.contacts||[]).filter(c=>c&&telHref(c.phone));
   const body='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:8px">팀원에게 보낼 일정 글입니다. 보내기 전에 고칠 수 있어요. 고객 이름·전화번호는 넣지 않고, 자동으로 보내지 않습니다.</div>'+
-    (one?'':'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+chip('today','오늘')+chip('tomorrow','내일')+chip('week','이번 주')+chip('nextweek','다음 주')+(dayDate?chip('day',hjMdDow(dayDate)):'')+'</div>'+
+    (fixed?'':'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+chip('today','오늘')+chip('tomorrow','내일')+chip('week','이번 주')+chip('nextweek','다음 주')+(dayDate?chip('day',hjMdDow(dayDate)):'')+'</div>'+
       (names.length>1||project?'<label style="display:block;font-size:12.5px;margin-bottom:8px">현장<select id="shProj" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 현장</option>'+names.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===project?' selected':'')+'>'+escapeHtml(nm)+'</option>').join('')+'</select></label>':'')+
       (crews.length?'<label style="display:block;font-size:12.5px;margin-bottom:8px">담당<select id="shCrew" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 팀원</option>'+crews.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===crew?' selected':'')+'>👤 '+escapeHtml(nm)+'</option>').join('')+'</select></label>':''))+
     '<div id="shCount" style="font-size:13px;margin:4px 0 6px"><b>일정 '+n+'건</b>'+(span?' · '+escapeHtml(span):'')+'</div>'+
@@ -15632,7 +15635,7 @@ function hjSchShareView(opts){
       '<button type="button" class="clay" id="shKakao" style="flex:1 1 140px;min-height:48px">💬 카톡으로 공유</button>'+
       '<button type="button" class="ghost" id="shCal" style="flex:1 1 140px;min-height:48px">📅 캘린더 파일(.ics)</button>'+
       '<button type="button" class="ghost" id="shCopy" style="flex:1 1 100px;min-height:48px">📋 복사</button></div>'+
-    (one?'':'<button type="button" class="ghost" id="shMonth" style="width:100%;min-height:44px;margin-top:6px">📅 한 달 일정 골라서 작업자 캘린더로</button>')+   // v552
+    (fixed?'':'<button type="button" class="ghost" id="shMonth" style="width:100%;min-height:44px;margin-top:6px">📅 한 달 일정 골라서 작업자 캘린더로</button>')+   // v552
     '<label for="shPhone" style="display:block;font-size:13px;font-weight:700;margin-top:12px">✉️ 문자로 보내기 <span style="font-weight:400;color:var(--muted);font-size:12px">받는 번호 — 여러 명은 쉼표(,)로</span></label>'+
     '<div style="display:flex;gap:6px;margin-top:4px"><input type="tel" id="shPhone" list="shContacts" autocomplete="off" value="'+escapeAttr(phonePre)+'" placeholder="010-0000-0000, 010-…" style="flex:1;min-width:0;min-height:44px;font-size:16px;padding:8px">'+
       '<button type="button" class="blue" id="shSms" style="min-height:44px;padding:0 14px">문자 열기</button></div>'+
@@ -15641,9 +15644,9 @@ function hjSchShareView(opts){
       perCrew.map((x,i)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:10px;padding:6px 10px;margin-bottom:6px"><span style="flex:1 1 120px;min-width:0;font-size:13px">👤 <b>'+escapeHtml(x.name)+'</b> · '+x.n+'건'+(x.phone?'':' <span style="color:var(--muted);font-size:12px">(번호 없음)</span>')+'</span>'+
         (x.phone?'<button type="button" class="blue shPcSms" data-i="'+i+'" style="min-height:44px;padding:0 10px;font-size:12.5px">✉️ 문자</button>':'')+'<button type="button" class="ghost shPcKakao" data-i="'+i+'" style="min-height:44px;padding:0 10px;font-size:12.5px">💬 카톡</button></div>').join('')+
       (noCrewN?'<div class="hint" style="margin-top:2px">담당 없는 일정 '+noCrewN+'건은 팀원별 글에 들어가지 않아요.</div>':'')+'</div>':'')+
-    (project&&!one?'<button type="button" class="ghost" id="shCust" style="width:100%;min-height:44px;margin-top:10px">🏠 '+escapeHtml(hjCut(project,14))+' 고객용 일정 글</button>':'')+
+    (project&&!fixed?'<button type="button" class="ghost" id="shCust" style="width:100%;min-height:44px;margin-top:10px">🏠 '+escapeHtml(hjCut(project,14))+' 고객용 일정 글</button>':'')+
     '<div class="hint" style="margin-top:8px">캘린더 파일을 카톡방에 올리면 팀원이 눌러 자기 폰 캘린더에 넣을 수 있어요. 여러 날 공정은 날마다 하나씩 들어갑니다.</div>';
-  openModal('📤 일정 공유'+(one?' — '+hjCut(label,20):''),body,[...(opts.back?[{label:'‹ 뒤로',cls:'ghost',fn:opts.back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  openModal('📤 일정 공유'+(fixed?' — '+hjCut(label,20):''),body,[...(opts.back?[{label:'‹ 뒤로',cls:'ghost',fn:opts.back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot'),cur=()=>String(root.querySelector('#shText').value||'').trim();
   const again=o=>hjSchShareView(Object.assign({},opts,o));
   root.querySelectorAll('.shRange').forEach(b=>b.onclick=()=>again({kind:b.dataset.k,date:dayDate,project,crew}));
@@ -15652,7 +15655,7 @@ function hjSchShareView(opts){
   const none=()=>{if(n)return false;toast('공유할 일정이 없습니다 — 범위를 바꿔 보세요');return true;};
   root.querySelector('#shKakao').onclick=()=>{if(none())return;kakaoShareText(cur(),COMPANY.name+' 작업 일정');};
   root.querySelector('#shCopy').onclick=()=>{if(none())return;coworkCopy(cur(),'일정 공유 글');};
-  root.querySelector('#shCal').onclick=()=>{if(none())return;saveICSToPhone(hjSchShareIcsItems(days),safeName(COMPANY.name+'_일정_'+(one?label:rg.label+(project?'_'+project:'')+(crew?'_'+crew:''))+'_'+(days[0]?days[0].date:''))+'.ics');};
+  root.querySelector('#shCal').onclick=()=>{if(none())return;saveICSToPhone(hjSchShareIcsItems(days),safeName(COMPANY.name+'_일정_'+(fixed?label:rg.label+(project?'_'+project:'')+(crew?'_'+crew:''))+'_'+(days[0]?days[0].date:''))+'.ics');};
   root.querySelector('#shSms').onclick=()=>{if(none())return;const inp=root.querySelector('#shPhone');
     const url=hjSmsUrl(String(inp.value||'').split(HJ_SMS_SPLIT_RE),cur());
     if(!url){toast('받는 번호를 적어 주세요');hjFieldIssue(inp,'받는 번호를 적어 주세요 (여러 명은 쉼표로)');return;}
@@ -40351,12 +40354,15 @@ function hjCascadeCands(s,prevDate){
     .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||'')));
 }
 // 고객 안내 글 — 사유를 지어내지 않는다. 바뀐 날짜만. 자동 발송 없음.
+// v581 m.fromTime·toTime(시각)·fromEnd·toEnd(여러 날 끝)는 있을 때만 붙고, m.from 이 없으면 새 일정('(새 일정)'). 그 칸들이 없으면 v353 글 그대로.
 function hjScheduleChangeText(p,moves){
   const cust=(p&&p.customer)||{};
   const L=['['+COMPANY.name+'] '+((p&&p.name)||'공사')+' 공사 일정 변경 안내'];
   L.push('안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.');
   L.push('공사 일정이 아래와 같이 조정되었습니다.');
-  (moves||[]).forEach(m=>L.push('· '+hjCut(String(m.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'작업',30)+': '+hjMdDow(m.from)+' → '+hjMdDow(m.to)));
+  const side=(d,t,e)=>hjMdDow(d)+(e&&e>d?'~'+hjMdDow(e):'')+(t?' '+t:'');
+  (moves||[]).forEach(m=>L.push('· '+hjCut(String(m.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'작업',30)+': '+
+    (m.from?side(m.from,m.fromTime,m.fromEnd)+' → '+side(m.to,m.toTime,m.toEnd):side(m.to,m.toTime,m.toEnd)+' (새 일정)')));
   L.push('불편을 드려 죄송합니다. 궁금하신 점은 편하게 연락 주세요.');
   L.push('- '+COMPANY.owner+' '+COMPANY.tel);
   return L.join('\n');
@@ -40850,7 +40856,8 @@ function hjCalSyncPlan(events,opts){
   rows.sort((a,b)=>rank[a.status]-rank[b.status]||a.date.localeCompare(b.date)||String(a.time).localeCompare(String(b.time))||a.key.localeCompare(b.key));
   return {rows,stats,from,lo,hi,stamp:hjCalSyncStamp()};
 }
-// picks=[{i,project}] — 미리보기에서 체크한 줄만. {added,changed,removed}
+// picks=[{i,project}] — 미리보기에서 체크한 줄만. {added,changed,removed,ids,list} — v581 ids·list = 새로 넣거나 바꾼 일정(지운 것 빼고), list 는 바뀌기 전·뒤
+function hjCalSyncSnap(s){const sp=hjSchSpan(s);return {date:String(s.date||''),time:String(s.time||''),to:sp.days>1?sp.to:''};}
 async function hjCalSyncApply(plan,picks){
   if(window.__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(!plan||plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
@@ -40859,7 +40866,8 @@ async function hjCalSyncApply(plan,picks){
   let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}
   if(!snapped)throw new Error('안전판을 만들지 못해 반영하지 않았습니다. 잠시 후 다시 시도하세요.');
   if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
-  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0};
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,ids:[],list:[]};
+  const note=(s,kind,from)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);out.list.push({id:s.id,kind,title:String(s.title||''),project:String(s.project||''),from,to:hjCalSyncSnap(s)});};
   sel.forEach(({r,project})=>{
     if(r.status==='new'){
       // v576 여러 날 일정은 메모 머리를 공정표 꼴 '시작~끝 (N일)' 로 — hjSchSpan 이 읽어 이어지는 날(v354)·달력 막대가 생긴다. '@' 는 레코드에 icsBy 로도 남긴다(🤖 칩).
@@ -40868,8 +40876,9 @@ async function hjCalSyncApply(plan,picks){
         memo:[span,r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||('gcal:'+r.date+'|'+r.key)});
       if(r.marks.includes('@'))rec.icsBy='gemini';
       state.schedule.push(rec);
-      out.added++;return;}
+      out.added++;note(rec,'new',null);return;}
     const s=state.schedule.find(x=>x&&x.id===r.app.id);if(!s)return;
+    const before=hjCalSyncSnap(s),changed0=out.changed;
     if(r.status==='time'){s.time=r.time;if(r.span&&hjCalSyncMemoOwn(s))s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
     else if(r.status==='span'){if(!hjCalSyncMemoOwn(s))return;s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
     else if(r.status==='move'){
@@ -40880,6 +40889,7 @@ async function hjCalSyncApply(plan,picks){
           if(!m||m[1]!==r.date)nm=hjCalSyncSpanMemo(s.memo,r.date,hjShiftWorkDays(r.date,sp.days-1));s.memo=nm;}}
       out.changed++;}
     else if(r.status==='apponly'){state.schedule.splice(state.schedule.indexOf(s),1);out.removed++;}
+    if(out.changed>changed0)note(s,r.status,before);
   });
   markDirty();render();
   return out;
@@ -40892,6 +40902,42 @@ function hjCalSyncRowText(r){
   if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date)+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'');
   if(r.status==='apponly')return when+' '+r.title+' — 구글 캘린더에 없음(체크하면 앱에서 지움)';
   return when+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'')+' '+r.title+(r.location?' · '+r.location:'');
+}
+/* v581 🔄 맞추기 반영 뒤 '바뀐 일정 알리기' — 반영하고 나면 토스트만 떠서, 팀·고객에게 알리려면 📤 일정 공유에서 범위를 다시 골라야 했다
+   (v353 뒤 일정 같이 옮기기에는 알림 창이 있는데 맞추기엔 없었다). 새로 넣거나 바꾼 일정(지운 것 빼고)을 현장별로 옛 → 새로 보여 준다.
+   · [📤 바뀐 일정 팀에 공유] — v356 공유 창에 그 일정만(여러 날 공정은 날마다, 출입 번호는 v577 처럼 뺌, 담당이 한 명이면 그 번호).
+   · 현장마다 [✉️ 고객 일정 안내] — v353 안내 글(바뀐 날짜·시각만, 사유를 짓지 않음). 고객 번호가 있으면 문자 앱, 없으면 글 복사.
+   자동 발송 없음. 이 창은 아무것도 저장하지 않는다. */
+function hjCalSyncWhen(x){return x?hjMdDow(x.date)+(x.to&&x.to>x.date?'~'+hjMdDow(x.to):'')+' '+(x.time||'종일'):'';}
+function hjCalSyncDoneMoves(rows){return rows.map(x=>({title:x.title,from:x.from?x.from.date:'',fromTime:x.from?x.from.time:'',fromEnd:x.from?x.from.to:'',to:x.to.date,toTime:x.to.time,toEnd:x.to.to}));}
+function hjCalSyncDone(res){
+  const live=new Set((state.schedule||[]).map(s=>s&&s.id));
+  const list=((res&&res.list)||[]).filter(x=>x&&live.has(x.id));
+  if(!list.length)return null;
+  const groups=[];
+  list.forEach(x=>{const k=x.project||'';let g=groups.find(y=>y.project===k);if(!g){g={project:k,rows:[]};groups.push(g);}g.rows.push(x);});
+  groups.sort((a,b)=>(a.project?0:1)-(b.project?0:1)||a.project.localeCompare(b.project,'ko'));
+  groups.forEach(g=>g.rows.sort((a,b)=>(a.to.date+(a.to.time||'')).localeCompare(b.to.date+(b.to.time||''))));   // 현장 안에서는 새 날짜 순
+  const K={new:'🆕',time:'⏰',span:'⏳',move:'📆'},proj=name=>name?(state.projects||[]).find(p=>p&&p.name===name):null;
+  const nm=x=>hjCut(String(x.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'일정',30);
+  const hasTel=p=>!!hjSmsUrl([((p&&p.customer)||{}).phone],'');
+  const body='<div id="hjCalSyncDone" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="font-size:13px;margin-bottom:8px">구글 캘린더에서 <b>'+list.length+'건</b>을 넣거나 바꿨어요'+(res.removed?' · 지운 일정 '+res.removed+'건은 알릴 목록에 넣지 않았어요':'')+'.</div>'+
+    groups.map((g,gi)=>{const p=proj(g.project);
+      return '<div data-csd-group="'+escapeAttr(g.project)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+(g.project?'🏗 '+escapeHtml(g.project):'현장 없이')+' · '+g.rows.length+'건</div>'+
+        g.rows.map(x=>'<div data-csd-row="'+escapeAttr(x.kind)+'" data-id="'+escapeAttr(x.id)+'" style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line-soft)">'+K[x.kind]+' '+escapeHtml(nm(x))+' · '+
+          (x.from?escapeHtml(hjCalSyncWhen(x.from))+' → ':'새 일정 ')+'<b>'+escapeHtml(hjCalSyncWhen(x.to))+'</b></div>').join('')+
+        (p?'<button type="button" class="ghost csdCust" data-g="'+gi+'" style="width:100%;min-height:44px;margin-top:6px">✉️ 고객 일정 안내'+(hasTel(p)?'':' (번호 없음 — 글 복사)')+'</button>':'')+'</div>';}).join('')+
+    '<div class="hint" style="margin-top:4px">팀·고객에게는 자동으로 보내지 않아요. 공유 창·문자 앱에서 확인한 뒤 보내세요. 되돌리려면 🛡 안전판.</div></div>';
+  openModal('🔄 바뀐 일정 알리기',body,[
+    {label:'📤 바뀐 일정 팀에 공유',cls:'clay',fn:()=>hjSchShareView({ids:list.map(x=>x.id),label:'바뀐 일정 '+list.length+'건',back:()=>hjCalSyncDone(res)})},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('hjCalSyncDone');
+  if(root)root.querySelectorAll('.csdCust').forEach(b=>b.onclick=()=>{const g=groups[+b.dataset.g],p=g&&proj(g.project);if(!p)return;
+    const t=hjScheduleChangeText(p,hjCalSyncDoneMoves(g.rows)),url=hjSmsUrl([(p.customer||{}).phone],t);
+    if(url){hjSmsGo(url);toast('문자 앱을 열었어요 — 확인하고 보내세요');}else coworkCopy(t,'일정 변경 안내 글');});
+  return {건수:list.length,현장:groups.length};
 }
 /* v576 🤖 제미나이 칩 — 대표(2026-11-10) "@표시는 제미나이가 한 거야". 맞추기 창은 '@' 를 떼고 넣으므로 일정표에서는 누가 넣은 일정인지 안 보였다.
    레코드의 icsBy:'gemini'(v576 부터) 또는 v567~v575 이 메모에 남긴 '(@ 제미나이 입력)' 글로 알아본다. 읽기만 — 메모를 지우면 옛 일정의 칩도 사라진다. */
@@ -40928,7 +40974,8 @@ function hjCalSyncView(){
       if(!picks.length){toast('반영할 줄을 체크하세요');return;}
       const del=picks.filter(p=>plan.rows[p.i]&&plan.rows[p.i].status==='apponly').length;
       if(del&&!confirm('앱에만 있는 일정 '+del+'건을 앱 일정표에서 지웁니다. 계속할까요?\n(🛡 안전판에서 되돌릴 수 있어요)'))return;
-      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+' — 되돌리려면 🛡 안전판');}
+      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+' — 되돌리려면 🛡 안전판');
+        if(r.list.length)hjCalSyncDone(r);}   // v581 바뀐 일정 팀·고객에게 알리기
       catch(e){toast(String(e&&e.message||e));}
     }}],true);
   const root=document.getElementById('hjCalSync');if(!root)return;
