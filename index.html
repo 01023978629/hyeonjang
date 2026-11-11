@@ -8543,10 +8543,34 @@ async function photoSuggestApplyAll(){
   return n;
 }
 
+/* ---------- v584 사진 확인 창의 썸네일 → 사진 크게 보기 ----------
+   🧹 AI 자동 정리 창('🔎 확인필요 — 현장을 확인하고 체크하세요')·🧭 추측 배정 창의 묶음 미리보기 3장은 그림뿐이라 커지지 않았고,
+   🧭 창은 '사진 탭의 묶음에서 보세요'라 창을 나가면 체크·고른 현장을 잃었다. '내역서에 아직 없는 작업' 줄(v566)은 '사진 n장' 숫자뿐이었다.
+   · 썸네일은 단추(44px 이상) — 체크 칸(label) 밖에 있어 눌러도 체크·고른 현장이 안 바뀐다(v319·v486 교훈).
+   · 누르면 사진 크게 보기(openLightbox)가 창 위에 겹쳐 열리고, 그 묶음 사진만 넘겨 본다. '+n' 칸은 묶음 첫 장부터.
+   · 닫으면(✕·Esc·뒤로) 창·체크·고르기 값 그대로. 저장하는 것 없음. */
+function hjThumbOpen(id,ids){
+  const have=new Set((state.files||[]).map(f=>f&&f.id));
+  if(!id||!have.has(id)){toast('사진을 찾을 수 없어요 — 창을 닫고 다시 열어 주세요');return false;}
+  const list=(Array.isArray(ids)?ids:[]).filter(x=>x&&have.has(x));
+  openLightbox(id,list.length?list:[id]);
+  return true;
+}
+function hjThumbBind(root,sel,attr,idsOf){
+  if(!root)return 0;let n=0;
+  root.querySelectorAll(sel).forEach(btn=>{n++;btn.onclick=e=>{e.preventDefault();e.stopPropagation();hjThumbOpen(btn.getAttribute(attr),idsOf(btn));};});
+  return n;
+}
+// 묶음 미리보기 — 앞 3장 + '+n'(묶음 첫 장부터). cls 는 칸 모양(.hjorg-th/.psr-th), attr 은 단추 표시(data-org-photo/data-psr-photo).
+function hjThumbStrip(files,attr,wrapCls,cls,moreCls){
+  const all=(files||[]).filter(f=>f&&f.id),ps=all.slice(0,3);
+  return '<span class="'+wrapCls+'">'+ps.map((f,i)=>'<button type="button" class="'+cls+'" '+attr+'="'+escapeAttr(String(f.id))+'" aria-label="'+escapeAttr('사진 크게 보기 '+(i+1)+'/'+all.length)+'">'+photoImg(f,160)+'</button>').join('')+
+    (all.length>3?'<button type="button" class="'+cls+' '+moreCls+'" '+attr+'="'+escapeAttr(String(all[0].id))+'" aria-label="'+escapeAttr('사진 크게 보기 — '+(all.length-3)+'장 더, 첫 장부터')+'">+'+(all.length-3)+'</button>':'')+'</span>';
+}
 /* ---------- v523 🧭 추측 배정 보기: 현장 없는 사진 묶음을 한 창에서 훑고 체크한 것만 배정 ----------
    사진 탭 요약 줄 [🧭 추측 배정 보기]·첫 화면 점검 줄 '미배정 사진 n장'에서 연다. 묶음(clusterPhotos)과 추천(photoSuggestFor —
    GPS·재방문·나머지·같은 날·그날 일정)은 사진 탭과 같은 것을 쓴다. 확실한 추천(PHOTO_SUGGEST_SURE)은 체크된 채, 참고는 체크 해제로,
-   단서 없는 묶음은 현장 고르기 칸으로 나온다. 묶음마다 사진 3장 미리보기. 배정 전 안전판 1회(못 만들면 아무것도 바꾸지 않는다).
+   단서 없는 묶음은 현장 고르기 칸으로 나온다. 묶음마다 사진 3장 미리보기(v584: 누르면 창 위에서 크게 보기). 배정 전 안전판 1회(못 만들면 아무것도 바꾸지 않는다).
    AI 키 없이 동작한다 — AI 자동 정리(aiAutoOrganize)는 가져오기 뒤 제안·공정 태깅용으로 그대로 둔다. */
 function hjPhotoSuggestReviewData(){
   const all=(state.files||[]).filter(f=>f&&f.kind==='photo');
@@ -8564,7 +8588,7 @@ function hjPhotoSuggestReview(opts){
   const unN=rows.reduce((a,r)=>a+r.open.length,0),sureN=rows.filter(r=>r.sure).length,noneN=rows.filter(r=>!r.sg).length;
   const popt=selectableProjects('').map(p=>`<option value="${escapeAttr(p.name)}">${escapeHtml(p.name)}</option>`).join('');
   const poptSel=name=>selectableProjects('').map(p=>`<option value="${escapeAttr(p.name)}"${p.name===name?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
-  const thumbs=r=>{const ps=r.open.slice(0,3);return '<span class="psr-thumbs">'+ps.map(p=>'<span class="psr-th">'+photoImg(p,160)+'</span>').join('')+(r.open.length>3?'<span class="psr-th psr-more">+'+(r.open.length-3)+'</span>':'')+'</span>';};
+  const thumbs=r=>hjThumbStrip(r.open,'data-psr-photo','psr-thumbs','psr-th','psr-more');   // v584 썸네일 = 크게 보기 단추
   const list=rows.map((r,i)=>{
     const c=r.c,w=c.items.find(p=>p.when)?.when;
     const place=hjPhotoHasGps(c)?(c.address?hjPlaceShort(c.address):(c.place||'GPS 있음')):'위치 미확인';
@@ -8576,15 +8600,16 @@ function hjPhotoSuggestReview(opts){
         (r.sg?' <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>':'');
     return '<div class="psr-row" data-psr="'+i+'"><label class="psr-chk"><input type="checkbox" class="psrChk" data-i="'+i+'"'+(r.sure?' checked':'')+' aria-label="'+escapeAttr(fmtDay(w))+' 묶음 배정"></label>'+thumbs(r)+'<div class="psr-txt">'+head+'<div class="psr-target">'+target+'</div></div></div>';
   }).join('');
-  const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}.psr-th img{width:100%;height:100%;object-fit:cover;display:block}.psr-th div{font-size:10px}.psr-txt{flex:1;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.psr-target{margin-top:2px}@media (max-width:480px){.psr-th{width:40px;height:40px}.psr-row{gap:6px}}</style>'+
+  const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th,.psr-th:hover{width:48px;height:48px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);flex:0 0 auto;cursor:zoom-in;transform:none;box-shadow:none}.psr-th img{width:100%;height:100%;object-fit:cover;display:block}.psr-th div{font-size:10px}.psr-txt{flex:1 1 150px;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.psr-target{margin-top:2px}@media (max-width:480px){.psr-th,.psr-th:hover{width:44px;height:44px}.psr-row{gap:6px;flex-wrap:wrap}}</style>'+
     '<div class="hint" style="margin:0 0 6px">현장 없는 사진 <b>'+unN+'장</b> · '+rows.length+'묶음. 확실한 추천 '+sureN+'묶음은 체크돼 있고, 참고(같은 날·그날 일정·위치 확인)는 체크를 풀어 두었습니다'+(noneN?'. 단서 없는 '+noneN+'묶음은 현장을 고르면 함께 배정됩니다':'')+'. 배정 전 안전판을 한 번 만듭니다.</div>'+
     '<div id="psrList" style="max-height:56vh;overflow:auto">'+list+'</div>'+
-    '<div class="hint" style="margin:8px 0 0">되돌리기: 더보기 → 🛡 안전판(스냅샷) → "추측 배정 전". 사진을 눌러 확인하려면 사진 탭의 묶음에서 보세요.</div>'+
+    '<div class="hint" style="margin:8px 0 0">되돌리기: 더보기 → 🛡 안전판(스냅샷) → "추측 배정 전". 사진을 누르면 이 창 위에서 크게 볼 수 있어요 — 닫으면 체크·고른 현장은 그대로예요.</div>'+
     '<div class="hint" style="margin:6px 0 0"><button type="button" class="ghost tiny" id="psrChat" style="min-height:44px">💬 카톡 대화 파일로 찾기</button> 협력사 톡방에 보낸 \'사진 N장 + 현장 이름\' 보고로 현장을 찾습니다(v528).</div>';
   openModal('🧭 추측 배정 보기 — 현장 없는 사진 '+unN+'장',body,
     [{label:'체크한 묶음 배정',cls:'clay',fn:()=>hjPhotoSuggestReviewApply(rows)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   if(root)root.querySelectorAll('.psrSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.psrChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;});
+  hjThumbBind(root,'[data-psr-photo]','data-psr-photo',btn=>{const row=btn.closest('[data-psr]'),r=row&&rows[+row.dataset.psr];return r?r.open.map(p=>p.id):[];});   // v584
   {const cb=root&&root.querySelector('#psrChat');if(cb)cb.onclick=()=>hjChatPick();}   // v528
   return rows.length;
 }
@@ -14029,7 +14054,7 @@ async function aiAutoOrganize(opts){
       return '<option value="">'+(g.pre?'현장 고르기':'현장 고르기 — 확인필요')+'</option>'+top.map(n=>opt(n,n===g.pre)).join('')+
         (top.length?'<option value="" disabled>──────</option>':'')+popt.filter(n=>!top.includes(n)).map(n=>opt(n,false)).join('');
     };
-    const thumbs=g=>'<span class="hjorg-thumbs">'+g.files.slice(0,3).map(f=>'<span class="hjorg-th">'+photoImg(f,160)+'</span>').join('')+(g.files.length>3?'<span class="hjorg-th hjorg-more">+'+(g.files.length-3)+'</span>':'')+'</span>';
+    const thumbs=g=>hjThumbStrip(g.files,'data-org-photo','hjorg-thumbs','hjorg-th','hjorg-more');   // v584 썸네일 = 크게 보기 단추
     const row=(g,i)=>'<div class="hjorg-row" data-org="'+i+'" data-org-k="'+g.k+'">'+
       '<label class="hjorg-chk"><input type="checkbox" class="orgChk" data-i="'+i+'"'+(g.ok?' checked':'')+' aria-label="'+escapeAttr(dayT(g)+' 사진 '+g.ids.length+'장 배정')+'"></label>'+thumbs(g)+
       '<div class="hjorg-txt"><b>'+escapeHtml(dayT(g))+'</b> · '+g.ids.length+'장 · <span class="hjorg-k">'+escapeHtml(g.label)+'</span>'+
@@ -14042,9 +14067,9 @@ async function aiAutoOrganize(opts){
     openModal('🧹 AI 자동 정리 — 미배정 '+plan.un+'장',
       '<style>.hjorg-sec{font-weight:700;font-size:13px;margin:10px 0 2px;padding:6px 8px;border-radius:8px;background:var(--paper-2)}.hjorg-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}'+
       '.hjorg-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.hjorg-chk input{width:20px;height:20px;margin:0}.hjorg-thumbs{display:flex;gap:3px;flex:0 0 auto}'+
-      '.hjorg-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}.hjorg-th img{width:100%;height:100%;object-fit:cover;display:block}.hjorg-th div{font-size:10px}'+
-      '.hjorg-txt{flex:1;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.hjorg-k{font-weight:600}.hjorg-why{color:var(--muted);font-size:12.5px}.orgSel{min-height:44px;max-width:100%;margin-top:4px;font-size:16px}'+
-      '@media (max-width:480px){.hjorg-th{width:40px;height:40px}.hjorg-row{gap:6px}}</style>'+
+      '.hjorg-th,.hjorg-th:hover{width:48px;height:48px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);flex:0 0 auto;cursor:zoom-in;transform:none;box-shadow:none}.hjorg-th img{width:100%;height:100%;object-fit:cover;display:block}.hjorg-th div{font-size:10px}'+
+      '.hjorg-txt{flex:1 1 150px;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.hjorg-k{font-weight:600}.hjorg-why{color:var(--muted);font-size:12.5px}.orgSel{min-height:44px;max-width:100%;margin-top:4px;font-size:16px}'+
+      '@media (max-width:480px){.hjorg-th,.hjorg-th:hover{width:44px;height:44px}.hjorg-row{gap:6px;flex-wrap:wrap}}</style>'+
       '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">사진마다 <b>위치</b>와 <b>그날 일정</b>을 함께 봤어요. 둘이 같은 현장을 가리킨 묶음만 체크해 두었고, 엇갈리거나 위치·일정이 부족한 묶음은 <b>확인필요</b>로 체크를 풀어 두었어요(현장을 고르면 체크돼요). 동·호수는 위치로 정하지 않아요. 배정 전 안전판을 한 번 만들고, Gemini 키가 있으면 공정까지 자동 인식합니다.</div>'+
       '<div id="orgList" style="max-height:52vh;overflow:auto">'+list+'</div>'+
       '<div id="orgProgWrap" style="display:none;margin-top:10px"><div class="progress"><i id="orgBar"></i></div><small id="orgStat" style="color:var(--clay)"></small></div>'+
@@ -14079,6 +14104,7 @@ async function aiAutoOrganize(opts){
        {label:'나중에',cls:'ghost',fn:closeModal}],true);
     const root=document.getElementById('modalRoot');
     if(root)root.querySelectorAll('.orgSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.orgChk[data-i="'+sel.dataset.i+'"]');if(chk&&sel.value)chk.checked=true;});
+    hjThumbBind(root,'[data-org-photo]','data-org-photo',btn=>{const row=btn.closest('[data-org]'),g=row&&rows[+row.dataset.org];return g?g.files.map(f=>f.id):[];});   // v584
     const c=root&&root.querySelector('#orgAutoChk');
     if(c)c.onchange=e=>{localStorage.setItem('hj_auto_org',e.target.checked?'1':'0');toast(e.target.checked?'다음부터 자동 실행합니다(위치·일정이 맞는 묶음만)':'끔 — 매번 이 제안 창을 띄웁니다');};
     return {열림:'제안 모달',추천:okG.length,확인필요:ckG.length};
