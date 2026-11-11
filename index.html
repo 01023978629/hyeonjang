@@ -3976,7 +3976,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v570-relayscan';
+const APP_BUILD='hyeonjang-v571-placejudge';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8211,6 +8211,131 @@ async function photoAssignmentApply(picks){
   return n;
 }
 
+/* ---------- v571 📍📅 사진 위치 + 그날 일정으로 현장 판단 (🧹 AI 자동 정리 · 🧭/👉 추천의 위치 확인 공통) ----------
+   11/11 실측: 🧹 AI 자동 정리가 날짜마다 '그날 일정 하나'로만 현장을 골라, 다른 동네 사진 15장과 세 현장에서 찍은 36장을 한 현장으로 제안했다.
+   대표 실자료(11/7 저장본 — 위치 있는 사진 1,055장·현장 46곳)를 날짜 순으로 넣어 본 결과: 같은 현장 사진 90%가 현장 중심 100m 안 · 현장끼리는 가장 가까운 곳이 144m.
+   위치만 보고 고르면 430장 중 17장(4%)이 틀렸고, 모두 '처음 간 현장이 옛 현장 150m 안' 이었다(그날 일정과 견주면 엇갈림으로 걸린다).
+   규칙(대표 승인 11/11): 위치와 그날 일정이 같은 현장을 가리킬 때만 추천(체크·자동 실행) — 엇갈림·근처 현장 여럿·위치 없음·일정 없음은 '확인필요'(체크 해제).
+   위치 기준 = 현장 좌표(lat/lng) → 그 현장에 배정된 위치 있는 사진의 중앙값(튀는 사진에 덜 흔들린다) → 주소 좌표(geo). 보관 현장은 후보에서 뺀다.
+   동·호수는 위치로 정하지 않는다(같은 단지 안은 위치로 못 가린다). 모두 읽기만. */
+const HJ_PLACE_NEAR_M=150;   // 이 안이면 그 현장 자리로 본다
+const HJ_PLACE_GAP_M=150;    // 둘째로 가까운 현장이 첫째보다 이만큼은 더 멀어야 '한 곳'
+function hjPlaceMedian(a){const s=(a||[]).slice().sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null;}
+function hjPlaceLL(f){if(!hjPhotoHasGps(f))return null;const la=Number(f.lat),ln=Number(f.lng);return (la||ln)?[la,ln]:null;}
+function hjPlaceFmtM(m){m=Math.round(Number(m)||0);return m<1000?m+'m':(m/1000).toFixed(m<10000?1:0)+'km';}
+function hjPlaceRefs(files){
+  files=files||state.files||[];
+  const by=new Map();
+  files.forEach(f=>{
+    if(!f||f.kind!=='photo'||!f.project)return;
+    const ll=hjPlaceLL(f);if(!ll)return;
+    let b=by.get(f.project);if(!b){b={la:[],ln:[]};by.set(f.project,b);}
+    b.la.push(ll[0]);b.ln.push(ll[1]);
+  });
+  const refs=[];
+  (state.projects||[]).forEach(p=>{
+    if(!p||!p.name||p.archived)return;
+    const b=by.get(p.name);
+    if(num(p.lat)&&num(p.lng))refs.push({name:p.name,lat:num(p.lat),lng:num(p.lng),src:'project'});
+    else if(b&&b.la.length)refs.push({name:p.name,lat:hjPlaceMedian(b.la),lng:hjPlaceMedian(b.ln),src:'photos',n:b.la.length});
+    else if(p.geo&&num(p.geo.lat)&&num(p.geo.lng))refs.push({name:p.name,lat:num(p.geo.lat),lng:num(p.geo.lng),src:'geo'});
+  });
+  return refs;
+}
+/* 그날(한국 날짜) 일정이 가리키는 현장 — 💰·세금 자동·앱이 넣은 개인 일정 제외, 보관·없는 현장 제외, 여러 날 공정의 이어지는 날 포함 */
+function hjPlaceSchedNames(ymd){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd||'')))return [];
+  const live=new Set((state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name));
+  const out=[];
+  (state.schedule||[]).forEach(s=>{
+    if(!s||!s.project||!live.has(s.project)||out.includes(s.project))return;
+    if(/^💰/.test(String(s.title||'').trim())||s._taxAuto||s.sourceUid)return;
+    let on=s.date===ymd;
+    if(!on&&s.date&&s.date<ymd){try{on=hjSchContDates(s).includes(ymd);}catch(e){}}
+    if(on)out.push(s.project);
+  });
+  return out;
+}
+function hjPlaceDist(ll,refs){return (refs||[]).map(r=>({name:r.name,m:Math.round(geoDist(ll[0],ll[1],r.lat,r.lng)*1000)})).sort((a,b)=>a.m-b.m||String(a.name).localeCompare(String(b.name)));}
+/* 사진 한 장 판단: k = agree(위치·일정 같은 현장 — 유일한 추천) · gps(위치만, 그날 일정 없음) · conflict(위치 ≠ 일정) · near2(150m 안 현장 여럿)
+   · new(일정 현장에 위치 기록이 없음 — 처음 가는 현장) · far(일정 현장에서 150m 넘게 떨어짐) · sched(사진에 위치 없음, 일정 한 곳) · multi(일정 여러 곳) · none */
+function hjPlaceJudge(f,sch,refs){
+  sch=sch||[];
+  const ll=hjPlaceLL(f);
+  if(!ll){
+    if(sch.length===1)return {k:'sched',site:sch[0]};
+    return {k:sch.length?'multi':'none',site:''};
+  }
+  const ds=hjPlaceDist(ll,refs),d1=ds[0],d2=ds[1];
+  if(d1&&d1.m<=HJ_PLACE_NEAR_M){
+    if(!d2||d2.m>=d1.m+HJ_PLACE_GAP_M){
+      if(sch.includes(d1.name))return {k:'agree',site:d1.name,m:d1.m,ll:1};
+      if(!sch.length)return {k:'gps',site:d1.name,m:d1.m,ll:1};
+      return {k:'conflict',site:'',gps:d1.name,m:d1.m,ll:1};
+    }
+    const cands=ds.filter(x=>x.m<d1.m+HJ_PLACE_GAP_M).slice(0,3);
+    const pick=cands.filter(x=>sch.includes(x.name));
+    return {k:'near2',site:pick.length===1?pick[0].name:'',cands,ll:1};
+  }
+  const noRef=sch.filter(n=>!(refs||[]).some(r=>r.name===n));
+  if(sch.length===1){
+    if(noRef.length)return {k:'new',site:sch[0],nearest:d1||null,ll:1};
+    return {k:'far',site:sch[0],m:(ds.find(x=>x.name===sch[0])||{}).m,ll:1};
+  }
+  if(sch.length>1)return {k:'multi',site:noRef.length===1?noRef[0]:'',ll:1};
+  return {k:'none',site:'',nearest:d1||null,ll:1};
+}
+const HJ_PLACE_ORDER={agree:0,gps:1,new:2,sched:3,near2:4,conflict:5,far:6,multi:7,none:8};
+function hjPlaceGroupText(g){
+  const q=s=>'"'+s+'"',m=g.ms.length?Math.round(hjPlaceMedian(g.ms)):null,schT=g.sch.map(q).join(' · ');
+  const nearOf=()=>{let b=null;g.near.forEach((ms,name)=>{const v=hjPlaceMedian(ms);if(!b||ms.length>b.n||(ms.length===b.n&&v<b.m))b={name,m:v,n:ms.length};});return b;};
+  let label='',why='',pre='',top=[];
+  if(g.k==='agree'){label='📍📅 위치·일정 일치';why='사진 위치가 '+q(g.site)+'에서 '+hjPlaceFmtM(m)+' · 그날 일정도 '+q(g.site);pre=g.site;top=[g.site];}
+  else if(g.k==='gps'){label='📍 위치만 — 그날 일정 없음';why='사진 위치가 '+q(g.site)+'에서 '+hjPlaceFmtM(m)+' — 그날 일정이 없어 확인 후 체크하세요';pre=g.site;top=[g.site];}
+  else if(g.k==='conflict'){label='⚠ 위치·일정 엇갈림';why='위치는 '+q(g.gps)+' 근처('+hjPlaceFmtM(m)+')인데 그날 일정은 '+schT+' — 처음 가는 현장이 옛 현장 옆일 수 있어요';top=[g.gps].concat(g.sch);}
+  else if(g.k==='near2'){const cs=[...g.cand.entries()].map(([name,ms])=>({name,m:hjPlaceMedian(ms)})).sort((a,b)=>a.m-b.m);
+    label='⚠ 근처 현장 여럿';why=cs.map(x=>q(x.name)+' '+hjPlaceFmtM(x.m)).join(' · ')+' — 위치로는 못 가려요'+(g.sch.length?' · 그날 일정은 '+schT:'');pre=g.site;top=cs.map(x=>x.name).concat(g.sch);}
+  else if(g.k==='far'){label='⚠ 일정 현장과 떨어진 곳';why='그날 일정은 '+q(g.site)+'인데 사진은 그 현장에서 '+hjPlaceFmtM(m)+' 떨어진 곳이에요';pre=(m!=null&&m<=500)?g.site:'';top=[g.site];}
+  else if(g.k==='new'){const nb=nearOf();label='📅 일정 기준 — 위치 기록 없는 현장';why='그날 일정은 '+q(g.site)+' — 이 현장은 위치 있는 사진이 아직 없어 위치로 확인하지 못했어요'+(nb&&nb.m<=1000?' (가장 가까운 다른 현장 '+q(nb.name)+' '+hjPlaceFmtM(nb.m)+')':'');pre=g.site;top=[g.site];}
+  else if(g.k==='sched'){label='📅 일정 기준 — 사진에 위치 없음';why='사진에 위치 정보가 없어 그날 일정('+q(g.site)+')으로만 짐작했어요';pre=g.site;top=[g.site];}
+  else if(g.k==='multi'){label='❔ 그날 일정 여러 곳';why='그날 일정: '+schT+' — '+(g.ll?'위치로도 못 가려요':'사진에 위치가 없어요')+(g.site?' · 위치 기록 없는 '+q(g.site)+'일 수 있어요':'');pre=g.site;top=g.sch.slice();}
+  else {const nb=nearOf();label='❔ 단서 없음';why='그날 일정 없음 · '+(!g.ll?'사진에 위치 없음':(nb?'알려진 현장과 먼 곳(가장 가까운 '+q(nb.name)+' '+hjPlaceFmtM(nb.m)+')':'위치를 견줄 현장이 없어요'));}
+  return Object.assign(g,{m,label,why,pre,top:[...new Set(top.filter(Boolean))],ok:g.k==='agree'});
+}
+/* 미배정 사진 전부를 (한국 날짜 × 판단 × 후보) 묶음으로 — 🧹 AI 자동 정리 창·자동 실행·AI 비서 도구가 같이 쓴다(읽기만) */
+function hjPhotoOrgPlan(){
+  const un=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.project);
+  const refs=hjPlaceRefs();
+  const schC=new Map(),schOf=d=>{if(!schC.has(d))schC.set(d,hjPlaceSchedNames(d));return schC.get(d);};
+  const map=new Map();
+  un.forEach(f=>{
+    const day=hjKDayFast(f)||'',s=schOf(day),j=hjPlaceJudge(f,s,refs);
+    const key=[day,j.k,j.site||'',j.gps||'',(j.cands||[]).map(x=>x.name).sort().join('+'),s.join('+'),(j.k==='none'||j.k==='multi')?(j.ll?'L':'N'):''].join('|');
+    let g=map.get(key);
+    if(!g){g={day,k:j.k,site:j.site||'',gps:j.gps||'',sch:s.slice(),files:[],ids:[],ms:[],cand:new Map(),near:new Map(),ll:!!j.ll};map.set(key,g);}
+    g.files.push(f);g.ids.push(f.id);
+    if(j.m!=null)g.ms.push(j.m);
+    (j.cands||[]).forEach(x=>{if(!g.cand.has(x.name))g.cand.set(x.name,[]);g.cand.get(x.name).push(x.m);});
+    if(j.nearest){if(!g.near.has(j.nearest.name))g.near.set(j.nearest.name,[]);g.near.get(j.nearest.name).push(j.nearest.m);}
+  });
+  const groups=[...map.values()].map(hjPlaceGroupText)
+    .sort((a,b)=>String(b.day).localeCompare(String(a.day))||HJ_PLACE_ORDER[a.k]-HJ_PLACE_ORDER[b.k]||b.ids.length-a.ids.length);
+  return {un:un.length,refs:refs.length,groups};
+}
+/* 👉·🧭 추천(photoSuggestFor)의 위치 확인 — 위치로 고른 현장이 150m 밖이거나, 근처에 다른 현장이 있거나, 그날 일정이 다른 현장이면 이유 글(→ '참고')로 */
+function hjPlaceSuggestCaution(name,m,lat,lng,ctx,ymd){
+  const q2=s=>'"'+s+'"';
+  if(m!=null&&m>HJ_PLACE_NEAR_M)return q2(name)+'에서 '+hjPlaceFmtM(m)+' — 조금 멀어요';
+  if(m!=null&&Number.isFinite(lat)&&Number.isFinite(lng)&&ctx&&ctx.coords){
+    const other=(ctx.projects||[]).filter(p=>p.name!==name&&ctx.coords[p.name]).map(p=>({name:p.name,m:Math.round(geoDist(lat,lng,ctx.coords[p.name].lat,ctx.coords[p.name].lng)*1000)}))
+      .filter(x=>x.m<m+HJ_PLACE_GAP_M).sort((a,b)=>a.m-b.m)[0];
+    if(other)return '근처 현장 여럿('+q2(name)+' '+hjPlaceFmtM(m)+' · '+q2(other.name)+' '+hjPlaceFmtM(other.m)+')';
+  }
+  const sch=hjPlaceSchedNames(ymd);
+  if(sch.length&&!sch.includes(name))return '위치는 '+q2(name)+' 근처인데 그날 일정은 '+sch.map(q2).join(' · ');
+  return '';
+}
+
 /* ---------- 추천 배정: 새로 들어온 묶음에 현장을 알아서 제안 ----------
    대표 요청(9/4): "사진 분류를 더 편하게". 지금은 묶음마다 셀렉트에서 현장을 찾아야 한다.
    묶음에 현장 없는 사진이 있으면 근거 순으로 현장을 하나 제안한다:
@@ -8249,11 +8374,19 @@ function photoSuggestFor(c,ctx,clusters){
       const d=geoDist(num(c.lat),num(c.lng),ref.lat,ref.lng);
       if(d<=PHOTO_AUDIT_NEAR_KM&&(!best||d<best.km))best={name:p.name,km:d};
     });
-    if(best)return {name:best.name,why:'gps',km:Math.round(best.km*1000),ids:open.map(p=>p.id)};
+    // v571: 150m 밖 · 근처에 다른 현장 · 그날 일정이 다른 현장이면 '참고'(gpsck) — 미리 체크·일괄 배정(PHOTO_SUGGEST_SURE)에 안 들어간다
+    const dk571=hjKDayFast({when:c.items.find(p=>p.when)?.when});
+    if(best){
+      const km=Math.round(best.km*1000),ck=hjPlaceSuggestCaution(best.name,km,num(c.lat),num(c.lng),ctx,dk571);
+      return ck?{name:best.name,why:'gpsck',km,ck,ids:open.map(p=>p.id)}:{name:best.name,why:'gps',km,ids:open.map(p=>p.id)};
+    }
     if(c._site&&c._site.visits){
       const names=[];c._site.visits.forEach(v=>{if(v===c)return;v.items.forEach(p=>{if(p.project)names.push(p.project);});});
       const hit=mostCommon(names);
-      if(hit&&ctx.coords[hit]!==undefined)return {name:hit,why:'revisit',km:null,ids:open.map(p=>p.id)};
+      if(hit&&ctx.coords[hit]!==undefined){
+        const ck=hjPlaceSuggestCaution(hit,null,NaN,NaN,ctx,dk571);
+        return ck?{name:hit,why:'gpsck',km:null,ck,ids:open.map(p=>p.id)}:{name:hit,why:'revisit',km:null,ids:open.map(p=>p.id)};
+      }
     }
     return sched(day(c.items.find(p=>p.when)?.when));
   }
@@ -8271,6 +8404,7 @@ function photoSuggestLabel(sg,short){
   if(sg.why==='revisit')return short?'재방문':'같은 자리 재방문';
   if(sg.why==='partial')return short?'나머지':'이 묶음의 나머지 사진과 같은 현장';
   if(sg.why==='schedule')return short?'참고: 그날 일정':'참고: 그날 일정표에 이 현장만 있음 (확인 후 누르세요)';
+  if(sg.why==='gpsck')return short?'참고: 위치 확인':'참고: '+(sg.ck||'위치 확인 필요')+' (확인 후 누르세요)';
   return short?'참고: 같은 날':'참고: 같은 날 배정한 현장 (확인 후 누르세요)';
 }
 function photoSuggestApply(i){
@@ -8320,17 +8454,21 @@ function hjPhotoSuggestReview(opts){
   if(!rows.length){toast('현장 없는 사진이 없습니다 👏');return 0;}
   const unN=rows.reduce((a,r)=>a+r.open.length,0),sureN=rows.filter(r=>r.sure).length,noneN=rows.filter(r=>!r.sg).length;
   const popt=selectableProjects('').map(p=>`<option value="${escapeAttr(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+  const poptSel=name=>selectableProjects('').map(p=>`<option value="${escapeAttr(p.name)}"${p.name===name?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
   const thumbs=r=>{const ps=r.open.slice(0,3);return '<span class="psr-thumbs">'+ps.map(p=>'<span class="psr-th">'+photoImg(p,160)+'</span>').join('')+(r.open.length>3?'<span class="psr-th psr-more">+'+(r.open.length-3)+'</span>':'')+'</span>';};
   const list=rows.map((r,i)=>{
     const c=r.c,w=c.items.find(p=>p.when)?.when;
     const place=hjPhotoHasGps(c)?(c.address?hjPlaceShort(c.address):(c.place||'GPS 있음')):'위치 미확인';
     const head='<b>'+escapeHtml(fmtDay(w))+'</b> · 미배정 '+r.open.length+'장'+(c.items.length>r.open.length?' / '+c.items.length+'장':'')+' · <span style="color:var(--muted)">'+escapeHtml(place)+'</span>';
-    const target=r.sg?'→ <b>"'+escapeHtml(r.sg.name)+'"</b> <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>'
-      :'<select class="psrSel" data-i="'+i+'" aria-label="'+escapeAttr(fmtDay(w))+' 묶음 현장 고르기" style="min-height:44px;max-width:100%"><option value="">현장 고르기 — 단서 없음</option>'+popt+'</select>';
+    // v571 위치 확인 참고(gpsck)는 현장을 바꿀 수 있게 고르기 칸(제안 현장을 미리 골라 둠) + 이유 글
+    const fixed=r.sg&&r.sg.why!=='gpsck';
+    const target=fixed?'→ <b>"'+escapeHtml(r.sg.name)+'"</b> <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>'
+      :'<select class="psrSel" data-i="'+i+'" aria-label="'+escapeAttr(fmtDay(w))+' 묶음 현장 고르기" style="min-height:44px;max-width:100%"><option value="">'+(r.sg?'현장 고르기':'현장 고르기 — 단서 없음')+'</option>'+(r.sg?poptSel(r.sg.name):popt)+'</select>'+
+        (r.sg?' <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>':'');
     return '<div class="psr-row" data-psr="'+i+'"><label class="psr-chk"><input type="checkbox" class="psrChk" data-i="'+i+'"'+(r.sure?' checked':'')+' aria-label="'+escapeAttr(fmtDay(w))+' 묶음 배정"></label>'+thumbs(r)+'<div class="psr-txt">'+head+'<div class="psr-target">'+target+'</div></div></div>';
   }).join('');
   const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}.psr-th img{width:100%;height:100%;object-fit:cover;display:block}.psr-th div{font-size:10px}.psr-txt{flex:1;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.psr-target{margin-top:2px}@media (max-width:480px){.psr-th{width:40px;height:40px}.psr-row{gap:6px}}</style>'+
-    '<div class="hint" style="margin:0 0 6px">현장 없는 사진 <b>'+unN+'장</b> · '+rows.length+'묶음. 확실한 추천 '+sureN+'묶음은 체크돼 있고, 참고(같은 날·그날 일정)는 체크를 풀어 두었습니다'+(noneN?'. 단서 없는 '+noneN+'묶음은 현장을 고르면 함께 배정됩니다':'')+'. 배정 전 안전판을 한 번 만듭니다.</div>'+
+    '<div class="hint" style="margin:0 0 6px">현장 없는 사진 <b>'+unN+'장</b> · '+rows.length+'묶음. 확실한 추천 '+sureN+'묶음은 체크돼 있고, 참고(같은 날·그날 일정·위치 확인)는 체크를 풀어 두었습니다'+(noneN?'. 단서 없는 '+noneN+'묶음은 현장을 고르면 함께 배정됩니다':'')+'. 배정 전 안전판을 한 번 만듭니다.</div>'+
     '<div id="psrList" style="max-height:56vh;overflow:auto">'+list+'</div>'+
     '<div class="hint" style="margin:8px 0 0">되돌리기: 더보기 → 🛡 안전판(스냅샷) → "추측 배정 전". 사진을 눌러 확인하려면 사진 탭의 묶음에서 보세요.</div>'+
     '<div class="hint" style="margin:6px 0 0"><button type="button" class="ghost tiny" id="psrChat" style="min-height:44px">💬 카톡 대화 파일로 찾기</button> 협력사 톡방에 보낸 \'사진 N장 + 현장 이름\' 보고로 현장을 찾습니다(v528).</div>';
@@ -8347,7 +8485,7 @@ async function hjPhotoSuggestReviewApply(rows){
   root.querySelectorAll('.psrChk:checked').forEach(el=>{
     const r=rows[+el.dataset.i];if(!r)return;
     const sel=root.querySelector('.psrSel[data-i="'+el.dataset.i+'"]');
-    const to=r.sg?r.sg.name:String((sel&&sel.value)||'');
+    const to=sel?String(sel.value||''):(r.sg?r.sg.name:'');
     if(!to){noTarget++;return;}
     picks.push({r,to});
   });
@@ -12365,15 +12503,15 @@ const AI_TOOLS = [
  {name:'list_quotes',description:'앱에서 작성한 견적서 목록(번호·제목·현장·합계금액). "견적 목록/뭐 썼지"면 호출. 새 견적 작성은 create_quote_draft, 발주는 material_order.',parameters:{type:'OBJECT',properties:{limit:{type:'INTEGER'}}}},
  {name:'list_schedule',description:'일정 조회(기간·현장별). "이번주/오늘/다음주 일정", 특정 현장 일정이 궁금하면 호출. 날짜 범위나 project로 거를 수 있음. 알림 문안이 필요하면 schedule_notify를 대신 쓸 것.',parameters:{type:'OBJECT',properties:{date_from:{type:'STRING'},date_to:{type:'STRING'},project:{type:'STRING'}}}},
  {name:'list_contacts',description:'저장된 연락처(사람) 검색: 이름·전화·회사·메모로 조회. "~번호 뭐야/연락처 찾아"면 호출. 자재 거래처는 material_order, 전체 자료 검색은 search_all이 더 적합.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
- {name:'suggest_photo_organization',description:'미배정 "사진"을 촬영일·GPS·일정과 대조해 어느 현장 것인지 추측(사진 전용 — 매출/돈 정리와 무관). "사진 정리해줘"면 먼저 호출해 제안을 보여주고, 사용자가 동의하면 assign_photos의 실행힌트로 배정.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'suggest_photo_organization',description:'미배정 "사진"을 사진마다 위치(GPS)와 그날 일정으로 대조해 어느 현장 것인지 추측(사진 전용 — 매출/돈 정리와 무관). 위치·일정이 같은 현장을 가리킨 묶음만 실행힌트가 있고, 나머지는 확인필요(사용자에게 현장을 물어볼 것). "사진 정리해줘"면 먼저 호출해 제안을 보여주고, 사용자가 동의하면 assign_photos의 실행힌트로 배정.',parameters:{type:'OBJECT',properties:{}}},
  {name:'add_project',description:'[변경] 새 현장(공사 건)을 만든다. name 필수(정확한 현장/고객 명칭). 이미 있으면 중복 생성하지 말 것 — 먼저 list_projects로 확인. 사진·견적을 붙이기 전 현장부터 생성.',parameters:{type:'OBJECT',properties:{name:{type:'STRING'}},required:['name']}},
- {name:'assign_photos',description:'[변경] 조건에 맞는 사진들을 지정 현장에 배정. 조건 없이 to_project만 주면 미배정 전체가 대상이 되므로 반드시 조건을 명확히.',parameters:{type:'OBJECT',properties:{to_project:{type:'STRING'},unassigned:{type:'BOOLEAN'},from_project:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},limit:{type:'INTEGER'}},required:['to_project']}},
+ {name:'assign_photos',description:'[변경] 조건에 맞는 사진들을 지정 현장에 배정. 조건 없이 to_project만 주면 미배정 전체가 대상이 되므로 반드시 조건을 명확히. 제안(suggest_photo_organization)의 실행힌트는 ids(사진 id 목록)까지 그대로 넘길 것.',parameters:{type:'OBJECT',properties:{to_project:{type:'STRING'},unassigned:{type:'BOOLEAN'},ids:{type:'ARRAY',items:{type:'STRING'},description:'이 사진들만(제안 실행힌트의 ids)'},from_project:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},limit:{type:'INTEGER'}},required:['to_project']}},
  {name:'set_phase',description:'[변경] 현장 사진에 공정 이름을 붙임(예: 철거, 방수, 타일, 완료). 조건으로 대상 한정 가능.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},phase:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},only_unphased:{type:'BOOLEAN'}},required:['project','phase']}},
  {name:'add_schedule',description:'[변경] 일정을 추가한다. title·date(YYYY-MM-DD) 필수, time(HH:MM)·project·workers·memo 선택. 수금 예정일이 아니라 방문·작업 일정용. 캘린더 자동이 켜져 있으면 구글 캘린더도 함께 열림.',parameters:{type:'OBJECT',properties:{title:{type:'STRING'},date:{type:'STRING',description:'YYYY-MM-DD'},time:{type:'STRING',description:'HH:MM (기본 09:00)'},project:{type:'STRING'},workers:{type:'STRING'},memo:{type:'STRING'}},required:['title','date']}},
  {name:'set_stage',description:'[변경] 현장 진행 단계 변경. stage는 상담/실측/시공/완료 중 하나.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},stage:{type:'STRING'}},required:['project','stage']}},
  {name:'set_received',description:'[변경] 현장의 누적 수금액(원)을 이 값으로 설정. 먼저 list_projects로 현재 금액 확인 권장.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},amount:{type:'NUMBER'}},required:['project','amount']}},
  {name:'create_quote_draft',description:'[변경] 견적서 초안을 만들고 견적 작성 화면을 엶. items의 price는 원 단위 숫자(부가세 전 단가).',parameters:{type:'OBJECT',properties:{title:{type:'STRING'},place:{type:'STRING'},project:{type:'STRING'},vat_included:{type:'BOOLEAN'},items:{type:'ARRAY',items:{type:'OBJECT',properties:{name:{type:'STRING'},spec:{type:'STRING'},qty:{type:'NUMBER'},price:{type:'NUMBER'}},required:['name','price']}}},required:['title','items']}},
- {name:'auto_organize_photos',description:'[변경] 미배정 사진 자동 정리 파이프라인: GPS·촬영일·일정 단서로 현장에 일괄 배정하고, Gemini 키가 있으면 공정(비전)까지 자동 태깅. "사진 정리해줘" 요청이면 개별 assign_photos보다 이 도구가 빠름.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'auto_organize_photos',description:'[변경] 미배정 사진 자동 정리 파이프라인: 사진 위치(GPS)와 그날 일정이 같은 현장을 가리킨 묶음만 일괄 배정하고(엇갈리거나 단서가 부족한 확인필요 묶음은 넣지 않음), Gemini 키가 있으면 공정(비전)까지 자동 태깅. "사진 정리해줘" 요청이면 개별 assign_photos보다 이 도구가 빠름.',parameters:{type:'OBJECT',properties:{}}},
  {name:'weekly_report',description:'주간 리포트 화면을 열고 요약 수치를 반환(이번 주 수금·새 견적·다음 주 일정). week=last면 지난주.',parameters:{type:'OBJECT',properties:{week:{type:'STRING',description:"'this'(기본) 또는 'last'"}}}},
  {name:'review_quote',description:'현재 편집 중인 견적서를 검토(누락 항목·단가 이상·수량 점검)하고 검토 화면을 엶. 사용자가 "견적 검토/봐줘/빠진 거 없나" 하면 호출. 먼저 견적 작성 화면에 견적이 열려 있어야 함.',parameters:{type:'OBJECT',properties:{}}},
  {name:'monthly_closing',description:'월말 결산: "이번 달/지난달 매출 정리, N월 결산, 부가세"면 호출. 그 달 요약(매출·공급가·부가세·수금·완료 현장 마진)을 반환. month는 YYYY-MM(생략 시 최근 달).',parameters:{type:'OBJECT',properties:{month:{type:'STRING',description:'YYYY-MM (예: 2026-06). 생략하면 가장 최근 달.'}}}},
@@ -12543,6 +12681,7 @@ function aiYmdOf(w){ if(!w)return null; const t=new Date(w); if(isNaN(t))return 
 function aiPickPhotos(a){
   a=a||{};
   let fs=state.files.filter(f=>f.kind==='photo');
+  if(Array.isArray(a.ids)){const want=new Set(a.ids.map(String));fs=fs.filter(f=>want.has(String(f.id)));}   // v571 제안 묶음의 사진만
   if(a.unassigned)fs=fs.filter(f=>!f.project);
   if(a.from_project)fs=fs.filter(f=>f.project===a.from_project);
   if(a.project)fs=fs.filter(f=>f.project===a.project);
@@ -12604,28 +12743,12 @@ async function aiToolRun(name,a){
       return {개수:cs.length,연락처:cs.slice(0,30).map(c=>({이름:c.name,전화:hjBriefMaskPhone(c.phone),소속:c.company||'',메모:cut(c.memo,50)}))};   // 외부 LLM 전송 — 전화 뒷4자리 마스킹
     }
     case 'suggest_photo_organization':{
-      const un=state.files.filter(f=>f.kind==='photo'&&!f.project);
-      if(!un.length)return {미배정:0,제안:[],메모:'미배정 사진이 없습니다.'};
-      const groups={};un.forEach(f=>{const d=aiYmdOf(f.when)||'날짜없음';(groups[d]=groups[d]||[]).push(f);});
-      const centers=state.projects.filter(p=>!p.archived).map(p=>({name:p.name,c:projCenterFromGps(p.name)||p.geo||null})).filter(x=>x.c&&x.c.lat!=null&&x.c.lng!=null);
-      const dist=(p1,p2)=>{const R=6371e3,r=x=>x*Math.PI/180,dp=r(p2.lat-p1.lat),dl=r(p2.lng-p1.lng),h=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(r(p1.lat))*Math.cos(r(p2.lat))*Math.sin(dl/2)*Math.sin(dl/2);return 2*R*Math.asin(Math.sqrt(h));};
-      const props=Object.keys(groups).sort().map(d=>{
-        const g=groups[d];let match='',how='';
-        const sch=(state.schedule||[]).find(s=>s.date===d&&s.project);
-        if(sch){match=sch.project;how='그 날짜에 "'+sch.project+'" 일정이 있음';}
-        if(!match){
-          const gg=g.filter(f=>f.lat!=null&&f.lng!=null);
-          if(gg.length&&centers.length){
-            const lat=gg.reduce((x,f)=>x+f.lat,0)/gg.length,lng=gg.reduce((x,f)=>x+f.lng,0)/gg.length;
-            let best=null,bd=1e12;centers.forEach(c2=>{const dd=dist({lat,lng},c2.c);if(dd<bd){bd=dd;best=c2.name;}});
-            if(best&&bd<400){match=best;how='사진 GPS가 현장 위치와 약 '+Math.round(bd)+'m 거리';}
-          }
-        }
-        const hint=match?{to_project:match,unassigned:true}:null;
-        if(hint&&d!=='날짜없음'){hint.date_from=d;hint.date_to=d;}
-        return {날짜:d,장수:g.length,추정현장:match||'(모름)',근거:how||'단서 없음',예시:g.slice(0,3).map(f=>cut(f.name,30)),실행힌트:hint};
-      });
-      return {미배정:un.length,제안:props,안내:'추정현장이 있는 묶음은 assign_photos(실행힌트 그대로)로 배정. (모름) 묶음은 사용자에게 물어볼 것.'};
+      // v571: 날짜마다 '그날 일정 하나'로 고르던 것을 사진마다 위치 + 그날 일정으로(hjPhotoOrgPlan). 실행힌트는 위치·일정이 같은 현장을 가리킨 묶음에만, 그 묶음의 사진 id 로.
+      const plan=hjPhotoOrgPlan();
+      if(!plan.un)return {미배정:0,제안:[],메모:'미배정 사진이 없습니다.'};
+      const props=plan.groups.map(g=>({날짜:g.day||'날짜없음',장수:g.ids.length,판단:g.label,추정현장:g.ok?g.site:(g.pre?g.pre+' (확인필요)':'(모름)'),근거:g.why,확인필요:!g.ok,
+        예시:g.files.slice(0,3).map(f=>cut(f.name,30)),실행힌트:g.ok?{to_project:g.site,unassigned:true,ids:g.ids.slice(0,500)}:null}));
+      return {미배정:plan.un,제안:props,안내:'확인필요가 false 인 묶음(위치·일정이 같은 현장)만 실행힌트가 있다 — 사용자가 동의하면 assign_photos 에 실행힌트를 ids 까지 그대로. 확인필요 묶음은 근거를 보여 주고 사용자에게 현장을 물어볼 것(추측으로 배정 금지). 동·호수는 위치로 정하지 않는다.'};
     }
     /* ─── 변경 도구 ─── */
     case 'add_project':{
@@ -13734,28 +13857,37 @@ async function aiVisionPhaseAll(onProg){
   if(left)o.남음=left+'장(한 번에 48장까지 — 다시 실행하면 이어서)';
   return o;
 }
-/* 완료 요약 + "가져올 때마다 자동" 스위치 */
-function __orgSummaryModal(title,lines){
+/* 완료 요약 + "가져올 때마다 자동" 스위치 (v571: extra 단추 하나 — 확인필요 묶음 다시 보기) */
+function __orgSummaryModal(title,lines,extra){
   const auto=localStorage.getItem('hj_auto_org')==='1';
   openModal(title,
     '<div style="font-size:13.5px;line-height:1.8">'+lines.map(escapeHtml).join('<br>')+'</div>'+
     '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;background:var(--paper-2);border-radius:10px;padding:10px">'+
-    '<input type="checkbox" id="orgAutoChk"'+(auto?' checked':'')+'><span>📥 사진을 가져오면 <b>자동으로</b> 이 정리를 실행</span></label>',
-    [{label:'닫기',cls:'ghost',fn:closeModal}]);
+    '<input type="checkbox" id="orgAutoChk"'+(auto?' checked':'')+'><span>📥 사진을 가져오면 <b>자동으로</b> 이 정리를 실행 — 위치·일정이 맞는 묶음만</span></label>',
+    (extra?[extra]:[]).concat([{label:'닫기',cls:'ghost',fn:closeModal}]));
   const c=document.getElementById('modalRoot')?.querySelector('#orgAutoChk');
   if(c)c.onchange=e=>{localStorage.setItem('hj_auto_org',e.target.checked?'1':'0');toast(e.target.checked?'가져오기 후 자동 정리: 켬':'가져오기 후 자동 정리: 끔 — 대신 제안 창을 띄웁니다');};
 }
-/* 메인: opts={auto, from} — auto면 바로 적용, 아니면 제안 모달 */
+/* v571 묶음 → assign_photos 힌트(그 묶음의 사진 id 로만, 500장씩) */
+function hjOrgHints(picks){
+  const out=[];
+  (picks||[]).forEach(({g,to})=>{if(!g||!to)return;for(let i=0;i<g.ids.length;i+=500)out.push({to_project:to,unassigned:true,ids:g.ids.slice(i,i+500)});});
+  return out;
+}
+/* 메인: opts={auto, from} — auto면 바로 적용, 아니면 제안 모달
+   v571: 날짜마다 '그날 일정 하나'로 그날 미배정 사진 전부를 고르던 것을 사진마다 위치 + 그날 일정으로(hjPhotoOrgPlan).
+   위치·일정이 같은 현장을 가리킨 묶음만 체크(자동 실행도 이것만), 나머지는 '확인필요' — 현장을 고르고 체크해야 들어간다.
+   배정은 묶음의 사진 id 로만 한다(같은 날 다른 묶음 사진은 건드리지 않는다). */
 async function aiAutoOrganize(opts){
   opts=opts||{};
   if(__aiOrgBusy){toast('이미 정리 중입니다…');return {오류:'실행 중'};}
   __aiOrgBusy=true;
   try{
-    const sg=await aiToolRun('suggest_photo_organization',{});
-    const hints=(sg.제안||[]).filter(x=>x.실행힌트).map(x=>x.실행힌트);
-    const unknown=(sg.제안||[]).filter(x=>!x.실행힌트);
+    const plan=hjPhotoOrgPlan();
+    const okG=plan.groups.filter(g=>g.ok),ckG=plan.groups.filter(g=>!g.ok);
+    const okN=okG.reduce((a,g)=>a+g.ids.length,0),ckN=ckG.reduce((a,g)=>a+g.ids.length,0);
     if(opts.auto){
-      const {assigned,per}=await __orgApplyHints(hints);
+      const {assigned,per}=await __orgApplyHints(hjOrgHints(okG.map(g=>({g,to:g.site}))));
       let vis={공정태깅:0};
       if(assigned||state.files.some(f=>f.kind==='photo'&&f.project&&!f._phase)){
         toast('🤖 공정 자동 인식 중…');
@@ -13763,32 +13895,62 @@ async function aiAutoOrganize(opts){
       }
       render();
       const leftUn=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
-      const res={배정:assigned,공정태깅:vis.공정태깅||0,남은미배정:leftUn};
+      const res={배정:assigned,공정태깅:vis.공정태깅||0,남은미배정:leftUn,확인필요:ckN,확인필요묶음:ckG.length};
       if(vis.생략)res.공정태깅생략=vis.생략; if(vis.중단)res.중단=vis.중단; if(vis.남음)res.공정남음=vis.남음;
-      if(opts.from==='agent'){toast('🧹 배정 '+assigned+'장 · 공정 '+(vis.공정태깅||0)+'장');return res;}
+      if(ckN)res.안내='확인필요 '+ckG.length+'묶음 '+ckN+'장은 위치·일정이 엇갈리거나 단서가 부족해 넣지 않았다 — 사용자에게 현장을 물어볼 것';
+      if(opts.from==='agent'){toast('🧹 배정 '+assigned+'장 · 공정 '+(vis.공정태깅||0)+'장'+(ckN?' · 확인필요 '+ckN+'장':''));return res;}
+      const more=ckN?{label:'🔎 확인필요 '+ckN+'장 보기',cls:'clay',fn:()=>{closeModal();setTimeout(()=>aiAutoOrganize({auto:false,from:'review'}),0);}}:null;
       if(assigned||res.공정태깅){
-        const lines=['🧹 자동 정리 완료','• 현장 배정: '+assigned+'장'+(per.length?' ('+per.join(', ')+')':''),'• 공정 태깅: '+(res.공정태깅)+'장'+(vis.생략?' — '+vis.생략:'')];
-        if(leftUn)lines.push('• 남은 미배정: '+leftUn+'장 — 비서에게 "사진 정리해줘"로 물어보며 배정 가능');
-        __orgSummaryModal('🧹 AI 자동 정리',lines);
-      }else if(leftUn){toast('미배정 '+leftUn+'장 — 자동 배정 단서(GPS·일정)를 못 찾았어요. 🤖 비서에게 물어보세요.');}
+        const lines=['🧹 자동 정리 완료','• 현장 배정: '+assigned+'장 (위치·일정이 같은 현장을 가리킨 묶음만)'+(per.length?' ('+per.join(', ')+')':''),'• 공정 태깅: '+(res.공정태깅)+'장'+(vis.생략?' — '+vis.생략:'')];
+        if(ckN)lines.push('• 확인필요: '+ckG.length+'묶음 '+ckN+'장 — 위치·일정이 엇갈리거나 단서가 부족해 자동으로 넣지 않았어요');
+        else if(leftUn)lines.push('• 남은 미배정: '+leftUn+'장 — 비서에게 "사진 정리해줘"로 물어보며 배정 가능');
+        __orgSummaryModal('🧹 AI 자동 정리',lines,more);
+      }else if(ckN){toast('미배정 '+leftUn+'장 — 위치·일정이 같은 현장을 가리킨 묶음이 없어 자동으로 넣지 않았어요. 사진 탭 🧭 추측 배정에서 확인하세요.');}
+      else if(leftUn){toast('미배정 '+leftUn+'장 — 자동 배정 단서(GPS·일정)를 못 찾았어요. 🤖 비서에게 물어보세요.');}
       return res;
     }
     /* ── 제안 모달 ── */
-    if(!hints.length&&!unknown.length){toast('정리할 미배정 사진이 없습니다.');return {배정:0};}
-    const rows=(sg.제안||[]).map((x,i)=>{
-      if(x.실행힌트)return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 2px;border-bottom:1px dashed var(--line-soft);font-size:13.5px"><input type="checkbox" class="orgChk" data-i="'+i+'" checked style="margin-top:3px"><span><b>'+escapeHtml(x.날짜)+'</b> · '+x.장수+'장 → <b>"'+escapeHtml(x.추정현장)+'"</b><br><small style="color:var(--muted)">'+escapeHtml(x.근거)+'</small></span></label>';
-      return '<div style="padding:8px 2px;border-bottom:1px dashed var(--line-soft);font-size:13.5px;color:var(--muted)">❔ '+escapeHtml(x.날짜)+' · '+x.장수+'장 — 단서 없음 (비서에게 물어보거나 직접 배정)</div>';
-    }).join('');
+    if(!plan.groups.length){toast('정리할 미배정 사진이 없습니다.');return {배정:0};}
+    const rows=okG.concat(ckG);
+    const popt=selectableProjects('').map(p=>p.name);
+    const dayT=g=>g.day?hjMdDow(g.day):'날짜 없음';
+    const opt=(n,sel)=>'<option value="'+escapeAttr(n)+'"'+(sel?' selected':'')+'>'+escapeHtml(n)+'</option>';
+    const optHtml=g=>{
+      const top=g.top.filter(n=>popt.includes(n));
+      return '<option value="">'+(g.pre?'현장 고르기':'현장 고르기 — 확인필요')+'</option>'+top.map(n=>opt(n,n===g.pre)).join('')+
+        (top.length?'<option value="" disabled>──────</option>':'')+popt.filter(n=>!top.includes(n)).map(n=>opt(n,false)).join('');
+    };
+    const thumbs=g=>'<span class="hjorg-thumbs">'+g.files.slice(0,3).map(f=>'<span class="hjorg-th">'+photoImg(f,160)+'</span>').join('')+(g.files.length>3?'<span class="hjorg-th hjorg-more">+'+(g.files.length-3)+'</span>':'')+'</span>';
+    const row=(g,i)=>'<div class="hjorg-row" data-org="'+i+'" data-org-k="'+g.k+'">'+
+      '<label class="hjorg-chk"><input type="checkbox" class="orgChk" data-i="'+i+'"'+(g.ok?' checked':'')+' aria-label="'+escapeAttr(dayT(g)+' 사진 '+g.ids.length+'장 배정')+'"></label>'+thumbs(g)+
+      '<div class="hjorg-txt"><b>'+escapeHtml(dayT(g))+'</b> · '+g.ids.length+'장 · <span class="hjorg-k">'+escapeHtml(g.label)+'</span>'+
+      '<div class="hjorg-why">'+escapeHtml(g.why)+'</div>'+
+      '<select class="orgSel" data-i="'+i+'" aria-label="'+escapeAttr(dayT(g)+' 사진 '+g.ids.length+'장 현장')+'">'+optHtml(g)+'</select></div></div>';
+    const sec=(k,t)=>'<div class="hjorg-sec" data-org-sec="'+k+'">'+t+'</div>';
+    const list=(okG.length?sec('ok','✅ 위치·일정 일치 — 체크해 두었어요 · '+okG.length+'묶음 '+okN+'장')+okG.map((g,i)=>row(g,i)).join(''):'')+
+      (ckG.length?sec('check','🔎 확인필요 — 현장을 확인하고 체크하세요 · '+ckG.length+'묶음 '+ckN+'장')+ckG.map((g,i)=>row(g,okG.length+i)).join(''):'');
     const auto=localStorage.getItem('hj_auto_org')==='1';
-    openModal('🧹 AI 자동 정리 — 미배정 '+sg.미배정+'장',
-      '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">사진의 GPS·촬영일을 일정표·현장 위치와 대조했습니다. 체크된 묶음을 배정하고, Gemini 키가 있으면 공정까지 자동 인식합니다.</div>'+
-      '<div style="max-height:44vh;overflow:auto">'+rows+'</div>'+
+    openModal('🧹 AI 자동 정리 — 미배정 '+plan.un+'장',
+      '<style>.hjorg-sec{font-weight:700;font-size:13px;margin:10px 0 2px;padding:6px 8px;border-radius:8px;background:var(--paper-2)}.hjorg-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}'+
+      '.hjorg-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.hjorg-chk input{width:20px;height:20px;margin:0}.hjorg-thumbs{display:flex;gap:3px;flex:0 0 auto}'+
+      '.hjorg-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}.hjorg-th img{width:100%;height:100%;object-fit:cover;display:block}.hjorg-th div{font-size:10px}'+
+      '.hjorg-txt{flex:1;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.hjorg-k{font-weight:600}.hjorg-why{color:var(--muted);font-size:12.5px}.orgSel{min-height:44px;max-width:100%;margin-top:4px;font-size:16px}'+
+      '@media (max-width:480px){.hjorg-th{width:40px;height:40px}.hjorg-row{gap:6px}}</style>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">사진마다 <b>위치</b>와 <b>그날 일정</b>을 함께 봤어요. 둘이 같은 현장을 가리킨 묶음만 체크해 두었고, 엇갈리거나 위치·일정이 부족한 묶음은 <b>확인필요</b>로 체크를 풀어 두었어요(현장을 고르면 체크돼요). 동·호수는 위치로 정하지 않아요. 배정 전 안전판을 한 번 만들고, Gemini 키가 있으면 공정까지 자동 인식합니다.</div>'+
+      '<div id="orgList" style="max-height:52vh;overflow:auto">'+list+'</div>'+
       '<div id="orgProgWrap" style="display:none;margin-top:10px"><div class="progress"><i id="orgBar"></i></div><small id="orgStat" style="color:var(--clay)"></small></div>'+
-      '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px"><input type="checkbox" id="orgAutoChk"'+(auto?' checked':'')+'><span>📥 다음부터 사진 가져오면 묻지 않고 자동 실행</span></label>',
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;min-height:44px"><input type="checkbox" id="orgAutoChk"'+(auto?' checked':'')+'><span>📥 다음부터 사진 가져오면 묻지 않고 자동 실행 — 위치·일정이 맞는 묶음만</span></label>',
       [{label:'✅ 선택 적용 + 공정 태깅',cls:'clay',fn:async()=>{
           const root=document.getElementById('modalRoot');if(!root)return;
-          const sel=[...root.querySelectorAll('.orgChk:checked')].map(el=>+el.dataset.i);
-          const chosen=sel.map(i=>(sg.제안[i]||{}).실행힌트).filter(Boolean);
+          const picks=[];let noTarget=0;
+          root.querySelectorAll('.orgChk:checked').forEach(el=>{
+            const g=rows[+el.dataset.i];if(!g)return;
+            const s=root.querySelector('.orgSel[data-i="'+el.dataset.i+'"]'),to=String((s&&s.value)||'');
+            if(!to){noTarget++;return;}
+            picks.push({g,to});
+          });
+          const chosen=hjOrgHints(picks);
+          if(!chosen.length){toast(noTarget?'체크한 묶음의 현장을 먼저 골라 주세요':'배정할 묶음을 체크하세요');return;}
           root.querySelectorAll('button').forEach(b=>b.disabled=true);
           const pw=root.querySelector('#orgProgWrap'),bar=root.querySelector('#orgBar'),st=root.querySelector('#orgStat');
           if(pw)pw.style.display='block';if(st)st.textContent='현장 배정 중…';
@@ -13796,17 +13958,21 @@ async function aiAutoOrganize(opts){
           if(chosen.length){let snapped=false;try{snapped=await hjSnapshot('AI 자동 정리 전',true,true);}catch(e){snapped=false;}
             if(!snapped){root.querySelectorAll('button').forEach(b=>b.disabled=false);if(pw)pw.style.display='none';toast('안전판을 만들지 못해 배정하지 않았습니다. 잠시 후 다시 시도하세요.');return;}}
           const {assigned}=await __orgApplyHints(chosen);
+          [...new Set(picks.map(x=>x.to))].forEach(to=>{try{portalAutoSync(to);}catch(e){}});
           const vis=await aiVisionPhaseAll((d,t,lab)=>{if(bar)bar.style.width=Math.round(d/Math.max(1,t)*100)+'%';if(st&&lab)st.textContent=lab;});
           render();closeModal();
           const leftUn=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
           const lines=['🧹 정리 완료','• 현장 배정: '+assigned+'장','• 공정 태깅: '+(vis.공정태깅||0)+'장'+(vis.생략?' — '+vis.생략:'')+(vis.중단?' · '+vis.중단:'')+(vis.남음?' · 남음 '+vis.남음:'')];
+          if(noTarget)lines.push('• 현장을 안 고른 '+noTarget+'묶음은 그대로');
           if(leftUn)lines.push('• 남은 미배정: '+leftUn+'장');
           __orgSummaryModal('🧹 AI 자동 정리',lines);
         }},
-       {label:'나중에',cls:'ghost',fn:closeModal}]);
-    const c=document.getElementById('modalRoot')?.querySelector('#orgAutoChk');
-    if(c)c.onchange=e=>{localStorage.setItem('hj_auto_org',e.target.checked?'1':'0');toast(e.target.checked?'다음부터 자동 실행합니다':'끔 — 매번 이 제안 창을 띄웁니다');};
-    return {열림:'제안 모달'};
+       {label:'나중에',cls:'ghost',fn:closeModal}],true);
+    const root=document.getElementById('modalRoot');
+    if(root)root.querySelectorAll('.orgSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.orgChk[data-i="'+sel.dataset.i+'"]');if(chk&&sel.value)chk.checked=true;});
+    const c=root&&root.querySelector('#orgAutoChk');
+    if(c)c.onchange=e=>{localStorage.setItem('hj_auto_org',e.target.checked?'1':'0');toast(e.target.checked?'다음부터 자동 실행합니다(위치·일정이 맞는 묶음만)':'끔 — 매번 이 제안 창을 띄웁니다');};
+    return {열림:'제안 모달',추천:okG.length,확인필요:ckG.length};
   }finally{__aiOrgBusy=false;}
 }
 
