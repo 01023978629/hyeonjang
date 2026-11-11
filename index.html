@@ -32343,7 +32343,7 @@ ${CW_SAFE}`},
 [할 일]
 1. PC 크롬에서 구글 캘린더 월 보기를 열어 이번 달(필요하면 다음 달) 일정 글을 읽는다.
 2. 현장웹 📅 일정표 → [🔄 구글 캘린더 맞추기]에 그 글을 붙여 넣고 [읽기]로 미리보기를 연다.
-3. 새 일정·시간 다름·날짜 옮김 줄과 추천 현장을 표로 보여 주고, 내가 좋다고 한 줄만 체크해 [반영]한다.
+3. 새 일정·시간 다름·기간 다름·날짜 옮김 줄과 추천 현장을 표로 보여 주고, 내가 좋다고 한 줄만 체크해 [반영]한다.
 4. '앱에만 있음' 줄과 구글에 두 번 들어 있는 일정('@제목'과 '[현장명] 제목')은 고치지 말고 목록으로만 알려 준다.
 
 [주의]
@@ -40742,27 +40742,61 @@ function hjCalSyncParseIcs(text){
   return out;
 }
 // 구글 캘린더 화면 글 한 줄: '오전 9시~오후 5시, 제목, 캘린더(주인), 위치: …|위치 없음, 2026년 11월 6일' · '종일, …' · '2026년 11월 2일 오후 7:20~…, 제목, …, 위치: …,'
+/* v580 여러 날 종일 일정 — 두 날짜 '2026년 11월 16일~2026년 11월 18일'(끝의 연도·월은 빠질 수 있다: '~11월 18일'·'~18일').
+   '종일, …, 시작~끝' 은 줄 끝에서, '시작~끝, 제목, …' 은 줄 머리에서 읽는다. 예전에는 앞 꼴의 끝 날짜를 시작일로 읽었고 뒤 꼴은 아예 안 읽었다.
+   화면 글의 끝 날짜는 그날까지 포함한다(.ics DTEND 는 끝난 다음 날이라 하루를 뺀다). 끝은 종일 일정만, 60일 넘으면 하루짜리(.ics 와 같은 규칙).
+   시각이 있는 여러 날 줄('…오후 7:20~2026년 11월 8일 오후 9:30')은 .ics 처럼 시작일 하루로 둔다. 못 읽는 꼴은 지금처럼 건너뛴다. */
+const HJ_CALSYNC_LINE_RE=/^(?:(?:\d{4}년 \d{1,2}월 \d{1,2}일 )?(?:종일|오전|오후)|\d{4}년 \d{1,2}월 \d{1,2}일\s*[~–])/;
+const HJ_CALSYNC_RANGE_HEAD_RE=/^(\d{4})년 (\d{1,2})월 (\d{1,2})일\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일/;
+const HJ_CALSYNC_RANGE_TAIL_RE=/(\d{4})년 (\d{1,2})월 (\d{1,2})일\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일,?\s*$/;
+const HJ_CALSYNC_AMPM_RE=/오전|오후/;
+// 두 날짜 정규식 결과 → {date,end} — 끝 연도가 없고 끝이 앞서면 다음 해, 끝 월이 없고 날이 앞서면 다음 달. 없는 날짜면 null(끝만 이상하면 end '')
+function hjCalSyncRangeOf(m){
+  const p2=n=>String(n).padStart(2,'0'),y=+m[1],mo=+m[2],d=+m[3],ed=+m[6];
+  let ey=m[4]?+m[4]:y,emo=m[5]?+m[5]:mo;
+  if(!m[5]&&ed<d){emo++;if(emo>12){emo=1;ey++;}}
+  else if(!m[4]&&(emo<mo||(emo===mo&&ed<d)))ey++;
+  const date=y+'-'+p2(mo)+'-'+p2(d),end=ey+'-'+p2(emo)+'-'+p2(ed);
+  return isRealIsoDate(date)?{date,end:isRealIsoDate(end)?end:''}:null;
+}
 function hjCalSyncParseText(text){
   const out=[],seen=new Set(),DATE=/(\d{4})년 (\d{1,2})월 (\d{1,2})일/g,p2=n=>String(n).padStart(2,'0');
   const clock=s=>{const m=String(s||'').match(/(오전|오후) (\d{1,2})(?::(\d{2}))?시?/);if(!m)return '';let h=(+m[2])%12;if(m[1]==='오후')h+=12;return p2(h)+':'+(m[3]||'00');};
   String(text||'').split(/\r?\n/).forEach(line=>{
     line=line.trim();
-    if(!/^(?:\d{4}년 \d{1,2}월 \d{1,2}일 )?(?:종일|오전|오후)/.test(line))return;
+    if(!HJ_CALSYNC_LINE_RE.test(line))return;
     const li=Math.max(line.lastIndexOf(', 위치: '),line.lastIndexOf(', 위치 없음'));if(li<0)return;
     const c1=line.indexOf(', ');if(c1<0||c1>=li)return;
-    const head=line.slice(0,c1),mid=line.slice(c1+2,li),tail=line.slice(li+2);
-    const ds=[...line.matchAll(DATE)];if(!ds.length)return;
-    const d=/^\d{4}년/.test(line)?ds[0]:ds[ds.length-1],date=d[1]+'-'+p2(d[2])+'-'+p2(d[3]);
+    const head=line.slice(0,c1),mid=line.slice(c1+2,li),tail=line.slice(li+2),dateStart=/^\d{4}년/.test(line);
+    const rg=dateStart?head.match(HJ_CALSYNC_RANGE_HEAD_RE):tail.match(HJ_CALSYNC_RANGE_TAIL_RE);
+    let date='',end='';
+    if(rg){const r=hjCalSyncRangeOf(rg);if(!r)return;date=r.date;end=r.end;}
+    else{const ds=[...line.matchAll(DATE)];if(!ds.length)return;
+      const d=dateStart?ds[0]:ds[ds.length-1];date=d[1]+'-'+p2(d[2])+'-'+p2(d[3]);}
     const oc=mid.lastIndexOf(', '),raw=(oc>0?mid.slice(0,oc):mid).trim();if(!raw)return;
-    const allDay=/^종일/.test(head),times=head.replace(DATE,'').split('~'),time=allDay?'':clock(times[0]);
+    const allDay=!HJ_CALSYNC_AMPM_RE.test(head),times=head.replace(DATE,'').split('~'),time=allDay?'':clock(times[0]);
+    const to=allDay&&end>date&&hjDaysBetween(date,end)<=60?end:'';
     const lm=tail.match(/^위치: (.*?)(?:, \d{4}년 \d{1,2}월 \d{1,2}일.*|,)?$/);
-    const k=date+'|'+time+'|'+raw;if(seen.has(k))return;seen.add(k);
-    out.push({uid:'',date,time,hours:allDay?8:(/^\d{4}년/.test(line)?1:hjCalSyncHours(time,clock(times[1]))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
+    const k=date+'|'+time+'|'+raw+'|'+to;if(seen.has(k))return;seen.add(k);
+    out.push({uid:'',date,time,to,hours:allDay?8:(dateStart?1:hjCalSyncHours(time,clock(times[1]))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
   });
   return out;
 }
 function hjCalSyncParse(text){return /BEGIN:VEVENT/i.test(String(text||''))?hjCalSyncParseIcs(text):hjCalSyncParseText(text);}
-function hjCalSyncStamp(){return (state.schedule||[]).map(s=>s?[s.id,s.date,s.time||'',s.title||''].join('\u0001'):'').join('\u0002');}
+// v580 메모 머리 기간도 견준다 — 기간 다름·날짜 옮김 반영이 메모 머리를 다시 쓰므로, 미리보기 뒤 사람이 고친 기간을 덮지 않게
+function hjCalSyncStamp(){return (state.schedule||[]).map(s=>s?[s.id,s.date,s.time||'',s.title||'',(String(s.memo||'').match(HJ_RANGE_MEMO_RE)||[''])[0]].join('\u0001'):'').join('\u0002');}
+/* v580 여러 날 일정의 기간 지키기 — 맞추기의 '날짜 옮김'은 s.date 만 바꿔 메모 머리 '시작~끝 (N일)'(HJ_RANGE_MEMO_RE)이 남의 날짜가 됐고,
+   hjSchSpan 이 3일 공정을 하루로 봤다(둘째·셋째 날이 대시보드·내 업무·달력·지연 점검에서 사라짐). 일정 창(v353)처럼 머리도 같이 옮긴다.
+   · 머리가 그 일정 것(시작 = 일정 날짜)이거나 없을 때만 쓴다. 사람이 다른 날짜로 고친 머리는 건드리지 않는다.
+   · 구글이 끝 날짜를 줄 때만(여러 날 종일 일정) 그 끝으로 다시 쓴다 — 구글에 하루로만 올라간 공정을 하루로 줄이지 않게. */
+const HJ_RANGE_HEAD_RE=/^\d{4}-\d{2}-\d{2}~\d{4}-\d{2}-\d{2}(?:[ \t]*\(\d+일\))?/;
+function hjCalSyncMemoOwn(s){const m=String((s&&s.memo)||'').match(HJ_RANGE_MEMO_RE);return !m||m[1]===String((s&&s.date)||'');}
+// 메모 머리를 from~to 로 바꾼 새 메모(머리가 없으면 맨 앞에 한 줄, to 가 하루짜리면 머리를 뗀다). 나머지 메모는 그대로.
+function hjCalSyncSpanMemo(memo,from,to){
+  const t=String(memo||''),head=to&&to>from&&hjDaysBetween(from,to)<=60?from+'~'+to+' ('+(hjWorkDaysBetween(from,to)+1)+'일)':'';
+  if(HJ_RANGE_HEAD_RE.test(t))return head?t.replace(HJ_RANGE_HEAD_RE,head):t.replace(HJ_RANGE_HEAD_RE,'').replace(/^[ \t]*\r?\n/,'');
+  return head?head+(t?'\n'+t:''):t;
+}
 function hjCalSyncPlan(events,opts){
   const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
   const stats={read:0,same:0,skipped:0,old:0,gdup:0};
@@ -40789,7 +40823,11 @@ function hjCalSyncPlan(events,opts){
     const base={date:g.date,time:rep.time,to:(g.list.find(x=>x.to)||{}).to||'',hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
     const same=apps.find(a=>!a.used&&a.s.date===g.date&&a.key===g.key);
     if(same){same.used=true;
-      if(rep.time&&String(same.s.time||'')!==rep.time)rows.push(Object.assign(base,{status:'time',check:true,app:{id:same.s.id,date:same.s.date,time:same.s.time||''}}));
+      // v580 같은 날·같은 제목이어도 구글의 끝 날짜가 앱 기간과 다르면 '⏳ 기간 다름'(구글이 끝 날짜를 줄 때만, 사람이 고친 메모 머리면 안 봄)
+      const sp=hjSchSpan(same.s),app={id:same.s.id,date:same.s.date,time:same.s.time||'',to:sp.days>1?sp.to:''};
+      const span=!!(base.to&&base.to>g.date&&base.to!==sp.to&&hjCalSyncMemoOwn(same.s));
+      if(rep.time&&String(same.s.time||'')!==rep.time)rows.push(Object.assign(base,{status:'time',check:true,span,app}));
+      else if(span)rows.push(Object.assign(base,{status:'span',check:true,span,app}));
       else stats.same++;
       return;}
     g._base=base;
@@ -40797,7 +40835,7 @@ function hjCalSyncPlan(events,opts){
   gs.forEach(g=>{
     const base=g._base;if(!base)return;
     const moved=apps.filter(a=>!a.used&&a.key===g.key&&Math.abs(hjDaysBetween(a.s.date,g.date))<=HJ_CALSYNC_MOVE&&!hjSchReported(a.s)).sort((a,b)=>Math.abs(hjDaysBetween(a.s.date,g.date))-Math.abs(hjDaysBetween(b.s.date,g.date)))[0];
-    if(moved){moved.used=true;rows.push(Object.assign(base,{status:'move',check:true,app:{id:moved.s.id,date:moved.s.date,time:moved.s.time||''}}));return;}
+    if(moved){moved.used=true;const sp=hjSchSpan(moved.s);rows.push(Object.assign(base,{status:'move',check:true,app:{id:moved.s.id,date:moved.s.date,time:moved.s.time||'',to:sp.days>1?sp.to:''}}));return;}
     let project='',cands=[];
     const tag=(g.list.find(x=>x.tag)||{}).tag||'';
     if(tag&&live.includes(tag))project=tag;
@@ -40808,7 +40846,7 @@ function hjCalSyncPlan(events,opts){
   if(lo){const a0=lo>from?lo:from;
     apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
       rows.push({status:'apponly',check:false,date:a.s.date,time:a.s.time||'',title:String(a.s.title||''),key:a.key,dupN:0,marks:[],location:'',memo:'',app:{id:a.s.id,date:a.s.date,time:a.s.time||''},project:a.s.project||''});});}
-  const rank={new:0,time:1,move:2,apponly:3};
+  const rank={new:0,time:1,span:2,move:3,apponly:4};
   rows.sort((a,b)=>rank[a.status]-rank[b.status]||a.date.localeCompare(b.date)||String(a.time).localeCompare(String(b.time))||a.key.localeCompare(b.key));
   return {rows,stats,from,lo,hi,stamp:hjCalSyncStamp()};
 }
@@ -40832,8 +40870,15 @@ async function hjCalSyncApply(plan,picks){
       state.schedule.push(rec);
       out.added++;return;}
     const s=state.schedule.find(x=>x&&x.id===r.app.id);if(!s)return;
-    if(r.status==='time'){s.time=r.time;out.changed++;}
-    else if(r.status==='move'){s.date=r.date;if(r.time)s.time=r.time;out.changed++;}
+    if(r.status==='time'){s.time=r.time;if(r.span&&hjCalSyncMemoOwn(s))s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
+    else if(r.status==='span'){if(!hjCalSyncMemoOwn(s))return;s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
+    else if(r.status==='move'){
+      const old=s.date,sp=hjSchSpan(s),own=hjCalSyncMemoOwn(s);s.date=r.date;if(r.time)s.time=r.time;
+      // v580 기간 머리도 같이: 구글 끝 날짜가 있으면 그 끝으로, 없으면 v353 처럼 작업일 수만큼(일요일로 옮겨 어긋나면 같은 작업일 수로 다시 쓴다)
+      if(own){if(r.to&&r.to>r.date)s.memo=hjCalSyncSpanMemo(s.memo,r.date,r.to);
+        else if(sp.days>1){let nm=hjShiftRangeMemo(s.memo,old,hjWorkDaysBetween(old,r.date));const m=nm&&nm.match(HJ_RANGE_MEMO_RE);
+          if(!m||m[1]!==r.date)nm=hjCalSyncSpanMemo(s.memo,r.date,hjShiftWorkDays(r.date,sp.days-1));s.memo=nm;}}
+      out.changed++;}
     else if(r.status==='apponly'){state.schedule.splice(state.schedule.indexOf(s),1);out.removed++;}
   });
   markDirty();render();
@@ -40841,8 +40886,10 @@ async function hjCalSyncApply(plan,picks){
 }
 function hjCalSyncRowText(r){
   const when=hjMdDow(r.date)+' '+(r.time||'종일');
-  if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time;
-  if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date);
+  const spanTxt=()=>' 기간 '+(r.app.to?'~'+hjMdDow(r.app.to):'하루')+' → ~'+hjMdDow(r.to);
+  if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time+(r.span?' ·'+spanTxt():'');
+  if(r.status==='span')return when+' '+r.title+' —'+spanTxt();
+  if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date)+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'');
   if(r.status==='apponly')return when+' '+r.title+' — 구글 캘린더에 없음(체크하면 앱에서 지움)';
   return when+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'')+' '+r.title+(r.location?' · '+r.location:'');
 }
@@ -40853,11 +40900,11 @@ function hjSchGemini(s){return !!s&&(s.icsBy==='gemini'||HJ_GEMINI_MEMO_RE.test(
 function hjCalSyncRender(plan){
   const box=document.getElementById('csBody');if(!box)return;
   window.__hjCalSyncPlan=plan;
-  const L={new:'🆕 새 일정',time:'⏰ 시간 다름',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
+  const L={new:'🆕 새 일정',time:'⏰ 시간 다름',span:'⏳ 기간 다름',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
   const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
   const sel=(r,i)=>'<select class="csSel" data-i="'+i+'" aria-label="'+escapeAttr(r.title)+' 현장" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 없이</option>'+
     [...new Set((r.project?[r.project]:[]).concat(r.cands||[],live))].map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===r.project?' selected':'')+'>'+escapeHtml(nm)+((r.cands||[]).includes(nm)||nm===r.project?' (추천)':'')+'</option>').join('')+'</select>';
-  box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+' · 앱에만 '+n('apponly')+
+  box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+(n('span')?' · 기간 다름 '+n('span'):'')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+' · 앱에만 '+n('apponly')+
       (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(파수꾼·💰·생일·'+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+'</p>'+
     (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
       :'<div data-cs-clean class="empty" style="margin-top:8px"><b>✓ 앱 일정표가 구글 캘린더와 같아요</b>넣거나 바꿀 일정이 없습니다.</div>')+
