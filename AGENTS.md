@@ -3,6 +3,33 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-11 v575~v577 — 🔒 팀에게 나가는 메모의 출입 번호 · 🧾 내역서 입금 증빙 한 번에 · 📝 다음 작업내역서 초안(엑셀)
+
+대표 지시(11/11 "개발 진행"·"이어서 진행"). v570~v574 위에 같은 PR(#162)로 얹었다. **핀은 묶음 끝 번호 하나** `hyeonjang-v577-stmtdraft`(v575·v576 번호는 검사 파일 이름에 남는다).
+셋 다 결정 없이 할 수 있는 빈칸(AGENTS 의 '안 한 것'·'후속 후보')이고, 새 저장 키·서버·고객 발송 변경이 없다.
+
+**v575 🔒 팀에게 나가는 일정 메모에서 출입 번호 빼기** (`tests/memoscrub-v575.e2e.js` 5/5 · 변이 no-scrub)
+- v552 는 '작업자 캘린더로 보내기'만 걸렀다. 이제 📤 일정 공유 글·.ics·팀원별 글(v356·v360), 🔔 작업자 문안(`notifyDrafts`, 한 건·전체 묶음), 🔨 다음 공정 안내의 '전달 사항'(`hjHandoffText`)도 같은 규칙.
+- 규칙은 `hjMemoOut(t)` 한 곳 → `{text,cut}`: 줄·' / '·' · ' 토막 중 `hjLooksLikeAccessCode` 인 것을 빼고 ' · ' 로 잇고, 첫 토막의 공정표 기간을 뗀다. `hjSchShareMemo`·`hjSchCalSendItems` 가 이것을 쓴다.
+  공유 창 `[data-sh-cut]`·알림 카드 `[data-sn-cut]` 에 '🔒 … n곳은 뺐어요'.
+- **일정 메모 자체·대표 화면·내 폰 캘린더(🔔 알림 .ics `hjAlertIcsItems`)·구글 캘린더 추가 링크는 그대로** — 대표 본인 것이라 거르지 않았다(검사 ⑤가 고정). 이것도 거를지는 대표 결정.
+
+**v576 🧾 내역서 입금 증빙 한 번에** (`tests/stmtproof-v576.e2e.js` 4/4 · 변이 no-recheck)
+- 협력사는 내역서 한 장에 세금계산서 한 장인데 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌렀다(AGENTS v533 '안 한 것'). 📑 장부 줄 `[data-stmtproof]` '🧾 증빙 n건 아직' → `hjStmtProofView(src)`.
+- 대상 `hjStmtProofTargets(src)` = 그 내역서 입금 중 증빙 없음 · 견적 받은 돈과 이어진 기록(v543 `paid.payLogId`) 제외. 뜻은 `hjProofSet` 과 같게 `hjStmtProofInput` → `hjTaxIssueNormalize`·`hjTaxIssueApply`.
+- 저장 `hjStmtProofSave` 는 **한 번의 `durableLocalMutation`(안전판 1개)** — 줄마다 `hjTaxIssueSave` 를 부르면 안전판이 줄 수만큼 생겨 12칸을 밀어낸다. 연 뒤 입금 기록이 바뀌면(목록·stamp) 아무것도 적지 않는다. 데모는 화면에서만.
+- 위임 셀렉터의 `[data-stmtproof]` 는 `[data-stmtunit]` **뒤**에 둔다 — stmtpay-v527·bankstmt-v533·stmtdun-v535 가 `#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun]` 순서를 정규식으로 고정한다.
+
+**v577 📝 다음 작업내역서 초안(엑셀)** (`tests/stmtdraft-v577.e2e.js` 4/4 · 변이 amount-filled)
+- v566 '내역서에 아직 없는 작업' 칸 `[data-unbilled-draft]` → `hjStmtDraftView()` → `hjStmtDraftDownload(rows,to,date)`. 격자는 `hjStmtDraftGrid` — **[📑 작업내역서 반영](`hjStmtParse`)이 읽는 꼴 그대로**:
+  위에 '받는 분'·'작성일'·안내 한 줄, 머리글 '작업 날짜 | 위치 | 작업명 | 작업비용', 끝에 합계(D 칸 SUM 수식). 머리글 아래에 글을 넣지 마라(금액 없는 줄은 위 줄 작업명에 붙는다).
+- 작업비용은 비운다(금액은 사람이). 위치 = 그 현장의 지난 내역서 줄 위치(`hjStmtDraftLoc`), 없으면 현장 이름. 작업명 = 일정 제목(없으면 사진 작업명), 여러 날이면 '(11/5~11/6)'.
+- 파일 이름 `작업내역서초안_YYYYMMDD_거래처.xlsx`(`hjStmtDraftName` — 반영 때 이름에서도 거래처를 읽는다). 받는 분 기본값은 가장 최근 내역서 거래처(`hjStmtDraftPartners`). 읽기만, 고객 이름·전화 없음.
+- 검사 ②가 '금액을 채운 격자 → hjStmtParse → 같은 줄·거래처·작성일·합계', '안 채우면 매출 줄 0' 을 고정한다. 엑셀 라이브러리는 검사에서 가짜(실제 SheetJS 출력은 PR 검사·실기기에서 확인).
+- 알아둘 것: 초안 파일을 만물 폴더에 두면 `hjStmtFiles` 가 '아직 안 넣음'으로 보인다(이름에 '작업내역서'). 채운 뒤 [📑 반영]하면 되고, 안 채운 채 반영하면 0건이다.
+
+검사: 새 검사 3개 + 주변(schshare-v356·crew-v357·percrew-v360·calsend-v552·handoff-v374·multiday-v354·mwmat-v370·mobilealert-v443·stmtpay-v527·bankstmt-v533·bankmulti-v538·stmtdun-v535·stmtunit-v537·payproof-v348·vatproof-v349·taxmerge-v543·stmttab-v565·stmtphoto-v568·unbilled-v566·stmtimport-v526·healthline-v524) 통과, 정적 `*.check.js` 전부. 기준선 3305d36 은 세 검사 모두 ① 에서 실패. 전체 결과는 PR #162 본문.
+
 ## 2026-11-11 v570~v574 한 묶음 — 📑 계약·확인 양식 9종 · 사진 뒷정리 3건 · 외부 스크립트 무결성·설치 QR 확인 · 리뷰 링크 기본값 · 캘린더 맞추기 덧붙임
 
 대표 지시(11/9 "문서 양식도 넣어주고 위내용 개발 진행" — 11/8 운영 분석 보고의 권장 순서, 11/10 "최종본을 확인하여 개발 진행"). 클라우드 세션이 갈래 다섯을
