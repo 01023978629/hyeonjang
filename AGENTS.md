@@ -12,7 +12,7 @@
 - v552 는 '작업자 캘린더로 보내기'만 걸렀다. 이제 📤 일정 공유 글·.ics·팀원별 글(v356·v360), 🔔 작업자 문안(`notifyDrafts`, 한 건·전체 묶음), 🔨 다음 공정 안내의 '전달 사항'(`hjHandoffText`)도 같은 규칙.
 - 규칙은 `hjMemoOut(t)` 한 곳 → `{text,cut}`: 줄·' / '·' · ' 토막 중 `hjLooksLikeAccessCode` 인 것을 빼고 ' · ' 로 잇고, 첫 토막의 공정표 기간을 뗀다. `hjSchShareMemo`·`hjSchCalSendItems` 가 이것을 쓴다.
   공유 창 `[data-sh-cut]`·알림 카드 `[data-sn-cut]` 에 '🔒 … n곳은 뺐어요'.
-- **일정 메모 자체·대표 화면·내 폰 캘린더(🔔 알림 .ics `hjAlertIcsItems`)·구글 캘린더 추가 링크는 그대로** — 대표 본인 것이라 거르지 않았다(검사 ⑤가 고정). 이것도 거를지는 대표 결정.
+- **일정 메모 자체·대표 화면·내 폰 캘린더(🔔 알림 .ics `hjAlertIcsItems`)·구글 캘린더 추가 링크는 그대로** — 대표 본인 것이라 거르지 않는다(대표 결정 11/11 "그대로 둬", 검사 ⑤가 고정).
 
 **v576 🧾 내역서 입금 증빙 한 번에** (`tests/stmtproof-v576.e2e.js` 4/4 · 변이 no-recheck)
 - 협력사는 내역서 한 장에 세금계산서 한 장인데 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌렀다(AGENTS v533 '안 한 것'). 📑 장부 줄 `[data-stmtproof]` '🧾 증빙 n건 아직' → `hjStmtProofView(src)`.
@@ -25,7 +25,9 @@
   위에 '받는 분'·'작성일'·안내 한 줄, 머리글 '작업 날짜 | 위치 | 작업명 | 작업비용', 끝에 합계(D 칸 SUM 수식). 머리글 아래에 글을 넣지 마라(금액 없는 줄은 위 줄 작업명에 붙는다).
 - 작업비용은 비운다(금액은 사람이). 위치 = 그 현장의 지난 내역서 줄 위치(`hjStmtDraftLoc`), 없으면 현장 이름. 작업명 = 일정 제목(없으면 사진 작업명), 여러 날이면 '(11/5~11/6)'.
 - 파일 이름 `작업내역서초안_YYYYMMDD_거래처.xlsx`(`hjStmtDraftName` — 반영 때 이름에서도 거래처를 읽는다). 받는 분 기본값은 가장 최근 내역서 거래처(`hjStmtDraftPartners`). 읽기만, 고객 이름·전화 없음.
-- 검사 ②가 '금액을 채운 격자 → hjStmtParse → 같은 줄·거래처·작성일·합계', '안 채우면 매출 줄 0' 을 고정한다. 엑셀 라이브러리는 검사에서 가짜(실제 SheetJS 출력은 PR 검사·실기기에서 확인).
+- 검사 ②가 '금액을 채운 격자 → hjStmtParse → 같은 줄·거래처·작성일·합계', '안 채우면 매출 줄 0' 을 고정한다. 엑셀 라이브러리는 검사에서 가짜다.
+  실제 SheetJS(npm xlsx@0.18.5 = `_CDN.xlsx` 바이트)로 앱에서 한 번 만들어 확인(11/11): 시트 '작업내역서', 열 너비, D 합계 칸 `SUM(D6:D8)` 수식, 금액을 채운 파일을 `hjStmtReadFile` 로 읽으면 줄·거래처·작성일·합계(990,000) 일치.
+  그때 찾은 것: 빈칸 '' 을 그대로 넣으면 '빈 글자' 칸(t="str")이 된다 → aoa_to_sheet 전에 '' 를 null 로 바꿔 진짜 빈 칸으로 쓴다.
 - 알아둘 것: 초안 파일을 만물 폴더에 두면 `hjStmtFiles` 가 '아직 안 넣음'으로 보인다(이름에 '작업내역서'). 채운 뒤 [📑 반영]하면 되고, 안 채운 채 반영하면 0건이다.
 
 검사: 새 검사 3개 + 주변(schshare-v356·crew-v357·percrew-v360·calsend-v552·handoff-v374·multiday-v354·mwmat-v370·mobilealert-v443·stmtpay-v527·bankstmt-v533·bankmulti-v538·stmtdun-v535·stmtunit-v537·payproof-v348·vatproof-v349·taxmerge-v543·stmttab-v565·stmtphoto-v568·unbilled-v566·stmtimport-v526·healthline-v524) 통과, 정적 `*.check.js` 전부. 기준선 3305d36 은 세 검사 모두 ① 에서 실패. 전체 결과는 PR #162 본문.

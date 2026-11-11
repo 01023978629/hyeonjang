@@ -110,7 +110,7 @@ const SEED = () => {
       const x = await page.evaluate(() => window.__xlsx[0]);
       assert.equal(x.name, '작업내역서초안_20261110_가상협력.xlsx');
       assert.equal(x.sheets.length, 1); assert.equal(x.sheets[0].name, '작업내역서');
-      assert.deepEqual(x.sheets[0].aoa.slice(5, 7).map(r => [r[0], r[2], r[3]]), [['2026-11-05', '욕조 방수 · 타일 (11/5~11/6)', ''], ['2026-11-08', '실리콘', '']], '체크 푼 줄(나래 11/3)은 빠짐: ' + JSON.stringify(x.sheets[0].aoa));
+      assert.deepEqual(x.sheets[0].aoa.slice(5, 7).map(r => [r[0], r[2], r[3]]), [['2026-11-05', '욕조 방수 · 타일 (11/5~11/6)', null], ['2026-11-08', '실리콘', null]], '체크 푼 줄(나래 11/3)은 빠짐: ' + JSON.stringify(x.sheets[0].aoa));
       assert.equal(x.sheets[0].aoa.length, 8, '머리 5 + 줄 2 + 합계 1');
       assert.deepEqual(x.sheets[0].sum, { t: 'n', f: 'SUM(D6:D7)' });
       assert.match(await page.textContent('#toast'), /작업 2건/);

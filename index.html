@@ -37412,7 +37412,7 @@ async function hjStmtDraftDownload(rows,to,date){
   if(!rows.length)throw new Error('넣을 작업을 하나 이상 고르세요');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||'')))throw new Error('작성일을 확인하세요');
   await ensureXLSX();
-  const grid=hjStmtDraftGrid(rows,to,date),ws=XLSX.utils.aoa_to_sheet(grid),last=grid.length,first=6;
+  const grid=hjStmtDraftGrid(rows,to,date),ws=XLSX.utils.aoa_to_sheet(grid.map(r=>r.map(v=>v===''?null:v))),last=grid.length,first=6;   // 빈칸은 진짜 빈 칸으로 — '' 를 넣으면 '빈 글자' 칸이 되어 협력사가 금액을 넣을 때 글자 칸으로 남을 수 있다
   if(last-1>=first)ws['D'+last]={t:'n',f:'SUM(D'+first+':D'+(last-1)+')'};   // 합계 칸 — 금액을 채우면 엑셀이 더한다(반영할 때 줄 합과 대조)
   ws['!cols']=[{wch:12},{wch:30},{wch:36},{wch:12}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'작업내역서');
