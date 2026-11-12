@@ -189,8 +189,9 @@ async function report({page}){
 
 async function mobile({page}){
  const before=await snap(page);await selectProject(page,LEAK_OFFICE);
- const buttons=['[data-leakintake="'+LEAK_OFFICE+'"]','[data-leakdispatch="'+LEAK_OFFICE+'"]','[data-leaksms="'+LEAK_OFFICE+'"]','[data-leakquote="'+LEAK_OFFICE+'"]','[data-leakfunding="'+LEAK_OFFICE+'"]','[data-leakreport="'+LEAK_OFFICE+'"]'];
- assert.equal(await page.locator('[data-leak-card] button').count(),7,'LEAK_FUNDING_CARD_SEVEN_BUTTONS');   // v442 🧾 보험 서류(hjInsClaimButton) + v427 📋 비용·서류 — 둘 다 누수 카드에await geometry(page,buttons);await screenshot(page,'v427-card-390','[data-leak-card]');
+ const buttons=['[data-leakintake="'+LEAK_OFFICE+'"]','[data-leakdispatch="'+LEAK_OFFICE+'"]','[data-leaksms="'+LEAK_OFFICE+'"]','[data-leakquote="'+LEAK_OFFICE+'"]','[data-leakfunding="'+LEAK_OFFICE+'"]','[data-leakreport="'+LEAK_OFFICE+'"]','[data-insclaim="'+LEAK_OFFICE+'"]'];
+ assert.equal(await page.locator('[data-leak-card] button').count(),7,'LEAK_FUNDING_CARD_SEVEN_BUTTONS');   // v442 🧾 보험 서류(hjInsClaimButton) + v427 📋 비용·서류 — 둘 다 누수 카드에
+ await geometry(page,buttons);await screenshot(page,'v427-card-390','[data-leak-card]');
  await page.locator(buttons[0]).click();await page.locator('#hjLeakIntake').waitFor();await geometry(page,['#hjLeakFunding']);await modalFits(page,'intake');await closeModal(page);
  await page.locator(buttons[4]).click();await page.locator('#hjLeakFundingModal').waitFor();await geometry(page,['#hjLeakFundingSource','#hjLeakFundingDocs label >> nth=0']);await modalFits(page,'funding');await closeModal(page);
  await page.locator(buttons[5]).click();await page.locator('#hjLeakReportForm').waitFor();await modalFits(page,'report');await closeModal(page);

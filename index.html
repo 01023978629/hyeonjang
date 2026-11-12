@@ -7352,7 +7352,7 @@ function hjLeakIntakeView(name,resume){
   // v423 이전 기록/AS 왕복의 초안은 메모리에만 보존하며 저장본 변경 시 덮어쓰기를 막는다.
   const expected=resume?resume.expected:hjLeakIntakeStamp(p),d=resume?hjLeakIntakeData({leak:{intake:resume.input}}):hjLeakIntakeData(p);
   // v427 resume.input 은 hjLeakIntakeData 로 재정규화되어 funding 이 빠지므로 초안 최상위 funding 에서 따로 읽는다.
-  const fundingSel=resume?(Object.prototype.hasOwnProperty.call(HJ_LEAK_FUNDING_SOURCES,resume.funding)?resume.funding:''):hjLeakFundingData(p).source;
+  const fundingSel=resume&&Object.prototype.hasOwnProperty.call(resume,'funding')?(Object.prototype.hasOwnProperty.call(HJ_LEAK_FUNDING_SOURCES,resume.funding)?resume.funding:''):hjLeakFundingData(p).source;   // funding 키가 없는 초안(다른 입구)은 저장된 출처를 유지
   let selectedPhotos=resume&&Array.isArray(resume.photos)?resume.photos.slice():[],busy=false;
   const field=(key,id,label)=>'<label for="'+id+'" style="display:block;font-size:13px;margin:10px 0 4px">'+label+'</label><select id="'+id+'" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">선택 안 함</option>'+HJ_LEAK_INTAKE_CHOICES[key].map(v=>'<option value="'+escapeAttr(v)+'"'+(d[key]===v?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select>';
   const body='<div id="hjLeakIntake" style="min-width:0;overflow-wrap:anywhere">'+hjLeakRepeatBanner(p)+'<p style="margin:0 0 10px;font-size:14px"><b>'+escapeHtml(name)+'</b> · 통화하며 확인한 내용만 골라 주세요.</p>'+
@@ -45895,7 +45895,7 @@ function hjLeakWebIntakeView(prefill){
     const d={kind:'leak',service:'leak-pipe',name,phone,area,text,src:'web'};
     const pj=hjInquiryCreate(d);
     closeModal();render();toast('📥 '+pj+' — 웹 접수 문의를 등록했어요');
-    if(r.ok){const p=hjLeakProject(pj);if(p){hjLeakIntakeView(pj,{expected:JSON.stringify(p.leak&&p.leak.intake||null),input:r.fields});return;}}
+    if(r.ok){const p=hjLeakProject(pj);if(p){hjLeakIntakeView(pj,{expected:hjLeakIntakeStamp(p),funding:hjLeakFundingData(p).source,input:r.fields});return;}}
     hjInquiryNext(pj);
   };
   refresh();

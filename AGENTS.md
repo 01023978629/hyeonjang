@@ -18,17 +18,22 @@
   누수 카드 버튼은 **7개** — 그 사이 main 에 v442 `🧾 보험 서류`(`hjInsClaimButton`) 가 들어와 `📋 비용·서류` 는 ⚡ 즉시 견적 뒤·보고서 앞에 두고 검사 ⑦ 의 6→7.
   위임 선택자는 #162 가 늘린 `closest()` 목록에 `[data-leakfunding]` 하나만 더했다. 누수 접수·보고서 코드(`hjLeakIntakeSave/View`·`hjLeakReportView/Form`·`hjLeakIntakeCapture`)는 v425 뒤로 main·#162 에서 안 바뀌어 v427 hunk 가 그대로 들어갔다.
   ⚠ 겹침(대표 판단 대기): 보험 청구 서류 목록(`HJ_LEAK_FUNDING_DOCS.insurance` 7건)은 v442 🧾 보험 청구 체크리스트(`hjInsClaimView` — 보험사별 템플릿·제출 기록)와 역할이 겹친다. 이 판은 둘 다 두었다 — 한쪽으로 합칠지는 대표 결정 뒤.
+- 적대적 검토(세 렌즈 → 반박 2표, 2026-11-12)가 잡아 셋째 커밋에서 고친 것 2건: ① `hjLeakWebIntakeView`(v461 '📋 접수 문자 붙여넣기' → 접수 채우기 — v427 뒤에 생긴 입구)가 옛 접수 전용 스탬프
+  `JSON.stringify(p.leak.intake||null)` 을 넘겨 합성 스탬프와 영영 안 맞았다 → 그 경로의 저장·출동 잡기가 전부 '현장 정보가 바뀌었습니다'로 막혔다(고치기 전 `leakintakeweb-v431` 가 그 화면에서 멈춰 실패, 고친 뒤 6/6).
+  이제 `hjLeakIntakeStamp(p)` 와 저장된 출처(`funding`)를 넘기고, `hjLeakIntakeView` 는 초안에 `funding` 키가 없으면 저장된 출처를 유지한다(다른 입구가 생겨도 출처를 지우지 않게).
+  ② 검사 ⑦ 의 7개 핀 옆에 붙인 `//` 주석이 같은 줄의 `geometry`·스크린샷 호출을 삼켜 390px/44px 확인이 죽은 채 7/7 로 통과하고 있었다 → 줄을 나누고 `[data-insclaim]` 버튼도 측정 목록에 넣었다(7개 전부 44px).
+  교훈: 다시 얹을 때 '그 사이 main 에 생긴 호출처'를 grep 으로 찾아라(`resume.expected`·`expected:` 를 만드는 곳) — 원래 작성 시점에 없던 입구는 충돌이 나지 않아 조용히 깨진다.
 - 문서 정정(센 값, 옛 #191 둘째 커밋을 이 트리에서 다시 셈): `index.html` 약 54,000줄(wc 53,879) · 전체 회귀 485개(check 20 · unit 31 · e2e 434 — 이 검사 포함) · `AI_TOOLS` 168 ·
   불변식 표의 없는 검사 `due-settle-all` 행 → `receivable-removed.check` 행. DEVELOPER.md §11·index.html 리드 인입 주석은 `#lead=` 프래그먼트만(`?lead=`·`?hjreq=` 쿼리는 값을 읽지 않고 지움, `hjLeadParse` 는 hash 만). 더보기 주석 112→126.
   **`apps-script/README_APPS_SCRIPT.md` 훅은 뺐다** — `office-ops-server-isolation.check` 가 apps-script 트리를 고정해 #191 CI 가 빨개진 원인이었다. 이 커밋은 apps-script 를 건드리지 않는다.
 - 더보기 126 · 직렬화 최상위 키 42 그대로(새 최상위 키 없음, serializeData/applyData 변경 없음 — 저장은 `p.leak.funding` 하위 키 하나뿐).
 - 검사(이 컨테이너, #162 머리 ad1d1a6 위): `tests/leakfunding-v427.e2e.js` 7/7 · 변이 6종(`HJ_LEAK_FUNDING_MUTATION=purpose|whitelist|chip|resume|stamp|conflict`) 모두 `MUTATION_DETECTED` · `--canary` 통과.
-  같이 돌림: leakintake-v419 7/7 · leakreport-v422 7/7 · leaksms-v424 9/9 · board-v351 4/4 · health-board 11/11 · warranty-review 12/12 · mobile-more-tools 16(126 클릭) · reviewlink-v575 7/7 · settings-tabs 11 ·
+  같이 돌림: leakintakeweb-v431 6/6 · leakintake-v419 7/7 · leakreport-v422 7/7 · leaksms-v424 9/9 · board-v351 4/4 · health-board 11/11 · warranty-review 12/12 · mobile-more-tools 16(126 클릭) · reviewlink-v575 7/7 · settings-tabs 11 ·
   offlinequeue-cache-v425 8/8 · offlinequeue-v425 13/13. 정적 syntax·version-sync·serialized-keys·sw-cache·dead-endpoint·cost-honesty·ai-tools-count·sri 통과(`office-ops-server-isolation` 은 얕은 클론에 19657c3 이 없어 환경 실패). 전체 run-all·CI 는 PR.
 - 병합 순서: manmool #223 → hyeonjang #162 → 이 PR. 이 커밋은 #162 머리 위에 있다 — #162 보다 먼저 병합하면 안 된다.
 - 화면 문구 2건(대표 승인 2026-10-23, 둘째 커밋): 문자 센터 '🔑 작업자 출입 안내'가 빈 문안으로 열리던 것(`msgCenterView` 상황 목록에는 있는데 `msgTemplate` 에 `access` 키가 없었다)에
   출입번호를 담지 않는 안내 문안(작업자 소속·현장 책임자·작업 시간, 출입번호는 문자로 주고받지 않고 전화로만)을 넣었고, '📊 연간 결산'(`annualReport`) 도움말이 🏆 연말 결산(`yearReport`)에만 있는
-  성장률·베스트 현장·AI 총평을 설명하던 것을 사실대로 고쳤다(두 항목의 자리는 #162 에서도 그대로였다). `tests/warranty-review.e2e.js` 12번째 검사가 두 문구를 지킨다(문안 제거·도움말 되돌림·출입번호 포함 변이 검출).
+  성장률·베스트 현장·AI 총평을 설명하던 것을 사실대로 고쳤다(두 항목의 자리는 #162 에서도 그대로였다). `tests/warranty-review.e2e.js` 에 더한 검사('문자 센터 작업자 출입 안내 문안…', 12개 중 7번째)가 두 문구를 지킨다(문안 제거·도움말 되돌림·출입번호 포함 변이 검출).
 
 ## 2026-11-12 v590 · 일정 알림 watch-v6 — 다 받은 내역서의 현장 줄 남은 돈 숨김 · '[파수꾼]' → 매일 9시 '[일정 알림]' 내일 일정 요약
 
