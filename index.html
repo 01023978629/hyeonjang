@@ -295,6 +295,10 @@
   .hj-today-warn{margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--hj-warn-bg,#fff7ed);color:var(--hj-warn-fg,#9a3412);font-size:14px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
   .hj-today-warn[hidden]{display:none}
   .hj-today-more{margin:6px 0 0;font-size:12px;color:var(--muted-2);line-height:1.4}
+  /* 큰 글씨 — 칩 이름은 전역 button 규칙(1.06em·1.12em)으로 커진다. 머리글·작은 글·경고·더 있음 줄은 px 라 따로 키운다(.ps-meta 와 같은 방식). */
+  body.a11y-big1 .hj-today-h{font-size:15px}body.a11y-big2 .hj-today-h{font-size:17px}
+  body.a11y-big1 .hj-today-chip small,body.a11y-big1 .hj-today-more{font-size:13px}body.a11y-big2 .hj-today-chip small,body.a11y-big2 .hj-today-more{font-size:14px}
+  body.a11y-big1 .hj-today-warn{font-size:16px}body.a11y-big2 .hj-today-warn{font-size:18px}
   .more-sheet h4{margin:4px 0 10px;font-size:13px;color:var(--blueprint)}
   .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .more-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);cursor:pointer;font-size:11.5px;color:var(--ink)}

@@ -9,11 +9,11 @@
    ④ 사진 추가 확인 창 — 오늘 현장 칩(누르면 칸 값만 · 남은 '현장을 선택해 주세요' 글을 지움) · 촬영·공유 사진인데 오늘 현장 밖이면 경고,
       오늘 현장이어도 ⏱ 작업 중인 현장이 따로 있으면 경고(막지 않음) · 갤러리·빈칸·미배정·⏱ 현장은 경고 없음 ·
       오늘 현장 7곳 이상 — 칩은 6곳·'외 n곳' 안내, 경고 판정·글은 전체로 · 저장 없음 (INTAKE)
-   ⑤ 폰 360 · 긴 이름 — 가로 넘침 없음 · 누르는 것 44px · 입력 16px (PHONE)
+   ⑤ 폰 360 · 긴 이름 · 큰 글씨 2단계 — 가로 넘침 없음 · 누르는 것 44px · 입력 16px · 머리글·작은 글·경고도 커짐 (PHONE)
    ⑥ 핀(세 곳 같음) · 페이지 오류 0 · 바깥 쓰기 0
    HJ_V585_BASELINE=<commit> 은 ① 에서, HJ_V585_MUTATION=no-cont(이어지는 날 빼기)·money-in(💰 포함)·workdata(workData() 로 읽기)·
    team-work(팀 보고 기록도 작업 중으로)는 ①, no-hide(검색 중 숨기지 않음)는 ②, no-warn(경고 끔)·no-work(⏱ 경고 끔)·no-clear(현장 검색을 안 비움)·
-   no-issue-clear(오류 글을 안 지움)·cap-judge(경고를 6곳으로 자른 목록으로 판정)는 ④ 에서 실패해야 한다. */
+   no-issue-clear(오류 글을 안 지움)·cap-judge(경고를 6곳으로 자른 목록으로 판정)는 ④, no-big(큰 글씨 경고 규칙 빼기)는 ⑤ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -36,6 +36,7 @@ const MUT = {
   'cap-judge': ['const todayAll=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)),todayNames=todayAll.slice(0,HJ_TODAY_SITE_SHOW),',
     'const todayAll=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)).slice(0,HJ_TODAY_SITE_SHOW),todayNames=todayAll,'],
   'no-issue-clear': ["    const issue=document.getElementById('photoIntakeIssue');if(issue)issue.textContent='';\n", ''],
+  'no-big': ['  body.a11y-big1 .hj-today-warn{font-size:16px}body.a11y-big2 .hj-today-warn{font-size:18px}\n', ''],
   'no-clear': ["    if(q&&q.value){q.value='';q.dispatchEvent(new Event('input'));}\n", '']
 };
 let html = process.env.HJ_V585_BASELINE ? execFileSync('git', ['show', process.env.HJ_V585_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
@@ -309,7 +310,7 @@ const tapSizes = (page, sel) => page.locator(sel).evaluateAll(es => es.filter(e 
       assert.deepEqual(keys(before, after).sort(), ['schedule', 'workLogs'], '창은 저장하지 않는다(일정·작업 기록은 검사가 바꾼 것)');
     });
 
-    await test('⑤ 폰 360 · 긴 이름 — 가로 넘침 없음 · 44px · 입력 16px (PHONE)', async () => {
+    await test('⑤ 폰 360 · 긴 이름 · 큰 글씨 — 가로 넘침 없음 · 44px · 입력 16px (PHONE)', async () => {
       const m = await open(360);
       await m.page.evaluate(SEED);
       await m.page.evaluate(() => {
@@ -339,6 +340,21 @@ const tapSizes = (page, sel) => page.locator(sel).evaluateAll(es => es.filter(e 
         font: parseFloat(getComputedStyle(document.getElementById('photoIntakeProject')).fontSize), warn: document.getElementById('photoIntakeTodayWarn').textContent }));
       assert.ok(f.modal <= 1 && f.font >= 16, '창 넘침·입력 글자 ' + JSON.stringify(f));
       assert.match(f.warn, /외 1곳/, '오늘 현장이 넷이면 경고는 셋까지 · 외 1곳 — ' + f.warn);
+      // 큰 글씨 2단계 — 칩 이름은 전역 단추 규칙으로, 머리글·⏱ 작은 글·경고 줄은 따로 커진다(아래 목록 .ps-meta 14px 와 같은 방식)
+      const big = await m.page.evaluate(() => {
+        document.body.classList.add('a11y-big2'); closeModal(true);
+        openPhotoIntake([new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' })], { project: '바다아파트', source: 'camera' });
+        const fs = el => parseFloat(getComputedStyle(el).fontSize), modal = document.querySelector('#modalRoot .modal');
+        const r = { warn: fs(document.getElementById('photoIntakeTodayWarn')), head: fs(document.getElementById('photoIntakeTodayH')),
+          small: fs(document.querySelector('#photoIntakeToday small')), chip: fs(document.querySelector('#photoIntakeToday .hj-today-n')),
+          over: modal.scrollWidth - modal.clientWidth, doc: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+        closeModal(true); document.body.classList.remove('a11y-big2');
+        return r;
+      });
+      assert.ok(big.warn >= 18 && big.head >= 17 && big.small >= 14 && big.chip >= 17 && big.over <= 1 && big.doc <= 1, '큰 글씨 ' + JSON.stringify(big));
+      await m.page.evaluate(() => { document.body.classList.add('a11y-big2'); openPhotoIntake([new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' })], { project: '바다아파트', source: 'camera' }); });
+      await check('#photoIntakeToday [data-intake-today]', '사진 추가(큰 글씨)');
+      await m.page.evaluate(() => { closeModal(true); document.body.classList.remove('a11y-big2'); });
       await m.page.evaluate(() => closeModal(true));
       await m.context.close();
     });
