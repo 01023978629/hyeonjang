@@ -127,7 +127,8 @@ const snap = page => page.evaluate(async () => { clearTimeout(__idbSaveTimer); c
     });
     await test('② 미연결 견적 줄 → ✍ 견적 작성 탭의 그 카드(화면 안·테두리) · 내역서 탭이 켜져 있어도 · 읽기만 (UNLINKED)', async () => {
       const item = await page.evaluate(() => { const it = dailyCheckData().find(i => i.ic === '🧾'); return it && { t: it.t, w: it.w }; });
-      assert.deepEqual(item, { t: '현장 미연결 견적 1건 — 연결하면 매출 반영', w: 5 }, '종결·빈 견적은 세지 않음(예전 그대로)');
+      // v589 이 기기는 매출 기준이 작업내역서(salesBasis 'stmt') — 미연결 견적은 연결해도 매출이 아니라 현장 견적 합계에 들어간다(끈 기기는 예전 글 '매출 반영')
+      assert.deepEqual(item, { t: '현장 미연결 견적 1건 — 연결하면 현장 견적 합계에 반영', w: 5 }, '종결·빈 견적은 세지 않음(예전 그대로)');
       assert.equal(await page.evaluate(() => hjStmtTabOn()), true, '내역서 탭이 켜진 기기');
       await page.evaluate(() => { state.tab = 'dashboard'; render(); scrollTo(0, 0); });
       const before = await snap(page);

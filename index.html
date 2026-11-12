@@ -10576,6 +10576,7 @@ function hjSalesLabel(){return hjSalesBasis()==='stmt'?'매출(내역서)':'견�
 /* v562 마진 기준 — 대표 지시(11/8) "마진은 퍼센트로 작업내역서 기준으로 진행". 매출 기준이 작업내역서면 마진 = 작업내역서 매출(sales) − 지출이고
    화면은 마진율(%)을 먼저 보인다. 작업내역서가 없는 현장은 마진을 셀 수 없어 '내역서 없음'(projStats.marginNA — 마진 0, 합계·순위·경보에서 뺀다).
    설정이 없으면 예전 그대로(견적 − 지출, 금액 먼저). 청구·고객 숫자(est·bill·due)는 이 판에서도 그대로. */
+function hjEstSumWord(){return hjSalesBasis()==='stmt'?'견적 합계':'매출';}   // v589 견적을 '매출에 들어간다'고 말하던 안내 — 내역서 기준이면 견적은 '견적 합계'(청구 숫자)에만 들어간다
 function hjMarginWord(){return hjSalesBasis()==='stmt'?'매출(내역서)':'매출';}   // 마진의 바탕 매출 이름(수익 분석·월말 결산 완료 현장·수익성 순위)
 /* v564 작업내역서 월 매출 — 오늘의 브리핑 💰 칸(대표 지시 11/8 "7번은 내역서로 월 매출로 표시해줘"). 매출 기준 설정과 상관없이 내역서만 센다.
    매출 한 벌(hjSalesEntries — 사본·집계 제외 규칙 그대로)에서 작업내역서 가상 파일(_stmt)·내역서 견적(q.stmt)만 골라 그 달(ym)을 더한다. 읽기만. */
@@ -10585,6 +10586,9 @@ function hjStmtMonthSales(ym){
   return {ym,mm:+String(ym).slice(5,7),total,n};
 }
 function hjMarginShort(s){if(hjSalesBasis()!=='stmt')return hjMan(s.marginEff);return s.marginNA?'내역서 없음':s.marginRateEff+'% · '+hjMan(s.marginEff);}
+// v589 📊 매출 목표 체크 옆 '저절로' 글 — 정하지 않았는데(pref '') 작업내역서가 있어 켜진 때만. 체크를 바꾸면 정한 값이 생겨 '저절로'가 아니므로
+//      goalManage 가 체크를 바꿀 때마다 이 글을 다시 넣는다(열 때 한 번만 그리면 끈 뒤에도 '저절로 켜져 있어요'가 남았다).
+function hjSalesBasisAutoHtml(){return !hjSalesBasisPref()&&hjSalesBasis()==='stmt'?' <small data-sales-basis-auto style="color:var(--muted)">· 작업내역서가 있어 저절로 켜져 있어요</small>':'';}
 function hjSalesBasisSet(on){
   state.goals=(state.goals&&typeof state.goals==='object')?state.goals:{};
   state.goals.salesBasis=on?'stmt':'all';   // v589 끄면 'all' — 키를 지우면 내역서가 있는 자료는 다음에 열 때 다시 켜진다
@@ -14887,11 +14891,11 @@ function dailyCheckData(){
   if(noRep)items.push({ic:'📋',t:'최근 작업일지 미작성 '+noRep+'건',act:"state.tab='schedule';render()",w:3});
   const un=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
   if(un)items.push({ic:'🧭',t:'미배정 사진 '+un+'장 — 추측 배정 보기(사진·근거 확인 뒤 배정)',act:"hjPhotoSuggestReview({from:'daily'})",w:4});   // v523 AI 키 없이, 안전판 뒤
-  try{const unread=hjUnreadEstimates().length;if(unread)items.push({ic:'📄',t:'읽지 않은 견적서 '+unread+'건 — 읽어야 매출에 들어갑니다',act:"hjEstimateAutoRead({silent:false,auto:false})",w:3.5});}catch(e){}   // v521
+  try{const unread=hjUnreadEstimates().length;if(unread)items.push({ic:'📄',t:'읽지 않은 견적서 '+unread+'건 — 읽어야 '+hjEstSumWord()+'에 들어갑니다',act:"hjEstimateAutoRead({silent:false,auto:false})",w:3.5});}catch(e){}   // v521
   // v331 작성·보냄 견적만 — 종결(lost)은 연결될 일이 없어 매일 조르기만 했고, 수주 표시(won)는 연결 없이도 이미 매출이다(hjSalesEntries).
   const labelGapN=hjLabelGaps().reduce((n,g)=>n+g.n,0);if(labelGapN>=20)items.push({ic:'🏷',t:'작업명 없는 사진 '+labelGapN+'장 — 같은 날 사진 작업명으로 채울 수 있어요',act:'hjLabelGapView()',w:4.5});
   const unq=(state.quotes||[]).filter(hjQuoteUnlinkedOk).length;
-  if(unq)items.push({ic:'🧾',t:'현장 미연결 견적 '+unq+'건 — 연결하면 매출 반영',act:"hjQuoteUnlinkedOpen()",w:5});   // v586 ✍ 견적 작성 탭의 그 카드로
+  if(unq)items.push({ic:'🧾',t:'현장 미연결 견적 '+unq+'건 — 연결하면 '+(hjSalesBasis()==='stmt'?'현장 견적 합계에 반영':'매출 반영'),act:"hjQuoteUnlinkedOpen()",w:5});   // v586 ✍ 견적 작성 탭의 그 카드로
   items.sort((a,b)=>a.w-b.w);
   return items.slice(0,5);
 }
@@ -23598,11 +23602,11 @@ function goalManage(){
     '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">📌 검은 선은 오늘까지의 기대 진행률입니다. 막대가 선을 넘으면 목표보다 앞서가는 거예요. (수금 기준)</div>'+
     // v561 매출 기준 — 켜면 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)은 작업내역서만. 청구서·고객 페이지 금액은 그대로(마진은 v562 부터 내역서 기준).
     // v589 체크는 실제 기준 — 정하지 않았어도 작업내역서가 있으면 저절로 켜져 있고, 그때는 그렇다고 적는다(끄면 'all' 로 남는다).
-    '<label data-sales-basis style="display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:10px 12px;margin-bottom:10px;background:var(--paper-2);border-radius:12px;font-size:13px;line-height:1.5;cursor:pointer"><input type="checkbox" id="goalSalesStmt"'+(hjSalesBasis()==='stmt'?' checked':'')+' style="width:22px;height:22px;flex:none;margin:1px 0 0"><span><b>📑 매출은 작업내역서만 셉니다</b>'+(!hjSalesBasisPref()&&hjSalesBasis()==='stmt'?' <small data-sales-basis-auto style="color:var(--muted)">· 작업내역서가 있어 저절로 켜져 있어요</small>':'')+'<br><small style="color:var(--muted)">견적서·앱 견적은 \'견적\'으로만 보이고 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)에서 빠집니다. 청구서·고객 페이지 금액은 그대로이고, 마진은 작업내역서 기준(%)으로 셉니다.</small></span></label>'+
+    '<label data-sales-basis style="display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:10px 12px;margin-bottom:10px;background:var(--paper-2);border-radius:12px;font-size:13px;line-height:1.5;cursor:pointer"><input type="checkbox" id="goalSalesStmt"'+(hjSalesBasis()==='stmt'?' checked':'')+' style="width:22px;height:22px;flex:none;margin:1px 0 0"><span><b>📑 매출은 작업내역서만 셉니다</b><span data-sales-basis-note>'+hjSalesBasisAutoHtml()+'</span><br><small style="color:var(--muted)">견적서·앱 견적은 \'견적\'으로만 보이고 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)에서 빠집니다. 청구서·고객 페이지 금액은 그대로이고, 마진은 작업내역서 기준(%)으로 셉니다.</small></span></label>'+
     '<button class="clay" id="goalEdit" style="width:100%;padding:12px">🎯 목표 설정/수정</button>';
   openModal('📊 매출 목표',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.getElementById('goalEdit').onclick=()=>goalEditDialog();
-  const ss=document.getElementById('goalSalesStmt');if(ss)ss.onchange=()=>{const b=hjSalesBasisSet(ss.checked);toast(b==='stmt'?'📑 이제 매출은 작업내역서만 셉니다 — 견적은 견적으로만 보여요':'매출을 예전처럼 견적까지 셉니다');};
+  const ss=document.getElementById('goalSalesStmt');if(ss)ss.onchange=()=>{const b=hjSalesBasisSet(ss.checked);ss.checked=b==='stmt';const nt=document.querySelector('#modalRoot [data-sales-basis-note]');if(nt)nt.innerHTML=hjSalesBasisAutoHtml();toast(b==='stmt'?'📑 이제 매출은 작업내역서만 셉니다 — 견적은 견적으로만 보여요':'매출을 예전처럼 견적까지 셉니다');};
   return {월목표:d.g.month,월수금:d.monthRecv,월달성률:d.monthPace,연목표:d.g.year,연수금:d.yearRecv,연달성률:d.yearPace,매출기준:hjSalesBasis()==='stmt'?'작업내역서':'견적 포함'};
 }
 function goalEditDialog(){
@@ -37986,8 +37990,8 @@ function viewEstimates(){
   const __looseTotal=byProj['(현장 미지정)']||0;
   let __shadows=new Map();try{__shadows=hjLooseEstShadows(list);}catch(e){}
   const __purchase=list.filter(f=>f.est&&f.est.purchase&&!f._fromQuote),__purchaseN=__purchase.length,__purchaseSum=__purchase.reduce((n,f)=>n+(Number(f.est.amount)||0),0);
-  let html=`<section class="estimates-view">${documentToolbar(true)}${documentSelectionToolbar()}${hjUnreadEstimateBarHTML()}${hjEstAssignBarHTML()}<div class="estimate-overview"><div><span>전체 견적 파일</span><b>${list.length}건</b></div><div><span>프로젝트 미지정</span><b>${list.filter(f=>!f.project).length}건</b></div><div><span>견적 합계 · 매출 집계 기준</span><b>${won(total)}</b><small style="display:block;color:var(--muted);font-size:11px;margin-top:2px">현장 배정 ${won(total-__looseTotal)} · 미지정 ${won(__looseTotal)} · 사본·집계 제외 뺌${__purchaseN?' · 외주(매입) '+__purchaseN+'건 '+won(__purchaseSum)+' 별도':''}</small></div></div><div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
-  try{const _fc=estFinalCandidates();if(_fc.length){html+=`<div class="hint" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:0 0 10px">⭐ 최종본(★)이 있는 달의 다른 안 <b>${_fc.length}건</b>이 매출에 같이 잡히고 있어요. <button class="moss tiny" data-finalize="1" style="padding:5px 10px;margin-left:6px">한 번에 집계 제외</button></div>`;}}catch(e){}
+  let html=`<section class="estimates-view">${documentToolbar(true)}${documentSelectionToolbar()}${hjUnreadEstimateBarHTML()}${hjEstAssignBarHTML()}<div class="estimate-overview"><div><span>전체 견적 파일</span><b>${list.length}건</b></div><div><span>프로젝트 미지정</span><b>${list.filter(f=>!f.project).length}건</b></div><div><span>${hjSalesBasis()==='stmt'?'견적 합계 · 매출은 작업내역서만':'견적 합계 · 매출 집계 기준'}</span><b>${won(total)}</b><small style="display:block;color:var(--muted);font-size:11px;margin-top:2px">현장 배정 ${won(total-__looseTotal)} · 미지정 ${won(__looseTotal)} · 사본·집계 제외 뺌${__purchaseN?' · 외주(매입) '+__purchaseN+'건 '+won(__purchaseSum)+' 별도':''}</small></div></div><div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
+  try{const _fc=estFinalCandidates();if(_fc.length){html+=`<div class="hint" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:0 0 10px">⭐ 최종본(★)이 있는 달의 다른 안 <b>${_fc.length}건</b>이 ${hjEstSumWord()}에 같이 잡히고 있어요. <button class="moss tiny" data-finalize="1" style="padding:5px 10px;margin-left:6px">한 번에 집계 제외</button></div>`;}}catch(e){}
   html+=`<p class="list-intro">금액은 바로 수정하고, 고객명·견적일·사업자번호는 ‘상세 입력’에서 확인하세요. 자동으로 읽은 값은 원본과 대조해 주세요.</p><div class="estimate-list-tools"><label class="estimate-search" for="estimateListSearch">견적 검색<input id="estimateListSearch" type="search" placeholder="파일명 · 프로젝트 · 고객명" value="${escapeAttr(__estimateListUI.search)}"></label><label for="estimateListStatus">표시 대상<select id="estimateListStatus">${[['all','전체 견적'],['unassigned','프로젝트 미지정'],['excluded','집계 제외']].map(([v,t])=>`<option value="${v}"${__estimateListUI.status===v?' selected':''}>${t}</option>`).join('')}</select></label><label for="estimateListSort">정렬<select id="estimateListSort">${[['original','기존 순서'],['date','견적일 최신순'],['amount','금액 높은순']].map(([v,t])=>`<option value="${v}"${__estimateListUI.sort===v?' selected':''}>${t}</option>`).join('')}</select></label><button class="ghost" id="estimateListReset">전체 보기</button></div><p class="list-intro" id="estimateListCount" role="status" aria-live="polite">전체 ${list.length}건 중 ${visible.length}건 표시${state.search?' · 상단 통합 검색 적용 중':''}</p><p class="estimate-footnote">검색·필터는 목록에만 적용됩니다. 위 합계와 엑셀 내보내기는 검색과 상관없이 전체 견적 기준입니다.</p>`;
   // [v91] 사본 그룹 뱃지 준비
   const __gb={};try{__estGroupsByPj.forEach(g=>{if(g.dups.length){__gb[g.rep.id]='rep:'+(g.dups.length+1);g.dups.forEach(d=>__gb[d.id]='dup');}});}catch(e){}
@@ -39127,7 +39131,7 @@ function saveQuoteEdit(){
   markDirty();
   state.editingQuote=null;render();
   const srcNote=quoteSrcNote(r.srcExcluded);
-  toast((legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')))+srcNote+hjQuoteTierNote(q));   // v437 안 여러 개가 매출에 다 더해질 때
+  toast((legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} ${hjSalesQuoteOk(q)?'매출 반영':'견적 합계 반영'}`:'')))+srcNote+hjQuoteTierNote(q));   // v437 안 여러 개가 매출에 다 더해질 때
 }
 function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
   openModal('견적서 삭제',`<p style="font-size:13px">‘${escapeHtml(q.title||q.no)}’ 견적서를 삭제할까요?</p>`,
@@ -39784,8 +39788,10 @@ function hjStmtReview(r){
     const ex=chosen.map(p=>({p,list:hjStmtExistingEst(p)})).filter(x=>x.list.length);
     const shown=new Set();ex.forEach(x=>x.list.forEach(e=>shown.add(e.id)));
     [...cur.exclude].forEach(id=>{if(!shown.has(id))cur.exclude.delete(id);});
+    // v589 머리 글은 반영한 '뒤'의 기준으로 — 정하지 않았으면(pref '') 이 반영으로 내역서가 생겨 저절로 내역서 기준이 되므로, 그 견적들은 매출이 아니라
+    //      견적 합계·청구(projStats.est·bill·due — 고객에게 나가는 숫자)에만 잡혀 있다. 사람이 끈('all') 때만 예전 글('이미 매출로 잡힌 견적').
     const box=root.querySelector('#stmtExisting');
-    if(box)box.innerHTML=ex.length?`<div style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin:4px 0"><div style="font-size:12.5px;font-weight:700;margin-bottom:4px">이 현장들에 이미 매출로 잡힌 견적 — 내역서로 대신하면 체크(집계 제외 · 지우지 않음)</div>${ex.map(x=>x.list.map(e=>`<label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:12.5px"><input type="checkbox" data-stmt-ex="${escapeAttr(e.id)}"${cur.exclude.has(e.id)?' checked':''}> ${escapeHtml(x.p)} · ${escapeHtml(e.name)} · ${won(e.amount)}${e.members.length>1?' (사본 '+(e.members.length-1)+'건 포함)':''}</label>`).join('')).join('')}</div>`:'';
+    if(box)box.innerHTML=ex.length?`<div style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin:4px 0"><div data-stmt-ex-head style="font-size:12.5px;font-weight:700;margin-bottom:4px">${hjSalesBasisPref()==='all'?'이 현장들에 이미 매출로 잡힌 견적 — 내역서로 대신하면 체크(집계 제외 · 지우지 않음)':'이 현장들의 견적 합계·청구에 잡힌 견적(매출은 작업내역서만 셉니다) — 내역서로 대신하면 체크(견적 합계·청구에서 제외 · 지우지 않음)'}</div>${ex.map(x=>x.list.map(e=>`<label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:12.5px"><input type="checkbox" data-stmt-ex="${escapeAttr(e.id)}"${cur.exclude.has(e.id)?' checked':''}> ${escapeHtml(x.p)} · ${escapeHtml(e.name)} · ${won(e.amount)}${e.members.length>1?' (사본 '+(e.members.length-1)+'건 포함)':''}</label>`).join('')).join('')}</div>`:'';
     if(box)box.querySelectorAll('[data-stmt-ex]').forEach(cb=>cb.onchange=()=>{if(cb.checked)cur.exclude.add(cb.dataset.stmtEx);else cur.exclude.delete(cb.dataset.stmtEx);});
     const sm=root.querySelector('#stmtSummary');
     const np=Object.keys(newBy).length;
@@ -45203,7 +45209,9 @@ function hjEvidenceQuoteText(q,o){
   return lines.join('\n');
 }
 /* 수금·발행 기록 — 날짜·금액·방법·견적·세금계산서/현금영수증 상태(v421 q.paid.receipt 또는 payLog.proof)·간이영수증 번호(v433 p.docs ref). */
-function hjEvidenceLedgerRows(p){
+// v589 o(선택, hjEvidenceOptions 결과): '매출(내역서)' 줄은 세무사용(o.internal)에만 — 고객·보험·관리사무소용 묶음에 내부 지표를 싣지 않는다.
+//      v589 부터 작업내역서가 하나라도 있으면 저절로 내역서 기준이라, 견적서로만 일한 현장의 고객에게 '매출(내역서): 0원'이 나갔다. o 없이 부르면 예전처럼(세무사용).
+function hjEvidenceLedgerRows(p,o){
   const rows=[['날짜','금액','방법','견적','세금계산서/현금영수증','간이영수증']];
   const pays=(state.payLog||[]).filter(x=>x&&x.project===p.name).slice().sort((a,b)=>String(a.d||'').localeCompare(String(b.d||'')));
   const rcpts=hjDocLogsOf(p,'payrcpt');let sum=0;
@@ -45215,7 +45223,7 @@ function hjEvidenceLedgerRows(p){
     rows.push([String(x.d||''),num(x.amt),String(x.method||''),q?String(q.title||q.id):'',tax,rcpts.filter(r=>r.ref&&r.ref===String(x.id||'')).map(r=>r.no).join(', ')]);
   });
   rows.push(['합계',sum,'','','','']);
-  const s=projStats(p.name);rows.push([hjEstLabel(),num(s.est),'','','','']);if(hjSalesBasis()==='stmt')rows.push(['매출(내역서)',num(s.sales),'','','','']);
+  const s=projStats(p.name);rows.push([hjEstLabel(),num(s.est),'','','','']);if(hjSalesBasis()==='stmt'&&(!o||o.internal))rows.push(['매출(내역서)',num(s.sales),'','','','']);
   return rows;
 }
 function hjEvidenceDocsText(p){
@@ -45280,12 +45288,12 @@ function hjEvidencePlan(name,input){
     else notes.push('금액 숨김 — 명세서·청구서·수금 기록은 뺐습니다');
   }
   if(o.parts.warranty){if(p.doneAt){const h=warrantyHTML(name,{});if(h)add('05_보증서/하자보증서.html','html',h);else notes.push('보증서를 만들 수 없음');}else notes.push('보증서는 준공 처리 후 담깁니다');}
-  if(o.parts.ledger&&!o.hideAmount)add('06_수금발행기록.xlsx','xlsx',hjEvidenceLedgerRows(p));
+  if(o.parts.ledger&&!o.hideAmount)add('06_수금발행기록.xlsx','xlsx',hjEvidenceLedgerRows(p,o));
   const s=projStats(name),day=localDate();
   const head=['['+COMPANY.name+' 증빙 묶음] '+name,'용도: '+o.purposeLabel+(o.hideAmount?' · 금액 숨김':''),'만든 날: '+day,'',
     '의뢰인: '+(o.maskName?hjLeakReportMaskName(cust.name):(cust.name||'—'))+(o.withPhone&&cust.phone?' · '+cust.phone:''),'현장 주소: '+(cust.addr||'—'),
     '기간: '+(p.startDate||hjEvidenceStartOf(p)||'?')+' ~ '+(p.doneAt||'진행 중'),'유형: '+(leak?'누수·배관':'인테리어')+(leak&&hjLeakSummary(p)?' · '+hjLeakSummary(p):''),''];
-  if(!o.hideAmount)head.push(hjEstLabel()+': '+won(s.est)+(hjSalesBasis()==='stmt'?' · 매출(내역서): '+won(s.sales):'')+' · 수금: '+won(s.recv));
+  if(!o.hideAmount)head.push(hjEstLabel()+': '+won(s.est)+(o.internal&&hjSalesBasis()==='stmt'?' · 매출(내역서): '+won(s.sales):'')+' · 수금: '+won(s.recv));   // v589 매출(내역서)는 세무사용에만
   if(o.internal)head.push('원가(내부): 자재 '+won(s.material)+' · 인건 '+won(s.labor)+' · 외주 '+won(s.outsource)+' · 합계 '+won(s.costEffective));
   head.push('','[포함 파일]');entries.forEach(e=>head.push('· '+e.path));
   if(notes.length){head.push('','[빠진 것]');notes.forEach(n=>head.push('· '+n));}
@@ -48375,16 +48383,16 @@ function hjQuoteTierConfirm(name,chosenId,ids){
   if(!chosen||list.length<2){toast('확정할 안을 찾을 수 없어요');return false;}
   const n=hjQuoteTierApply(list,chosenId);
   const label=hjQuoteCompare([chosen]).cols[0].label.replace(/^A안$/,'고른 안');
-  (state.notes=state.notes||[]).push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[견적 안 확정] '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':(chosen.title||'고른 안'))+' — 나머지 '+(list.length-1)+'안은 매출 Σ 에서 뺌',project:name});
+  (state.notes=state.notes||[]).push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[견적 안 확정] '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':(chosen.title||'고른 안'))+' — 나머지 '+(list.length-1)+'안은 '+(list.every(hjSalesQuoteOk)?'매출':'견적')+' Σ 에서 뺌',project:name});
   markDirty();render();
-  toast('✅ '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':label)+'으로 확정 — 나머지 '+(list.length-1)+'안은 매출 합계에서 뺐어요(견적·정산 Σ 로 되돌림)');
+  toast('✅ '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':label)+'으로 확정 — 나머지 '+(list.length-1)+'안은 '+(list.every(hjSalesQuoteOk)?'매출':'견적')+' 합계에서 뺐어요(견적·정산 Σ 로 되돌림)');
   return n;
 }
 function hjQuoteTierNote(q){
   if(!q||!q.project)return '';
   const same=hjQuotesOf(q.project);if(same.length<2)return '';
   const live=same.filter(x=>{const f=(state.files||[]).find(y=>y&&y.id==='quote_'+x.id);return f&&!f.exSum;});
-  return live.length>=2?' · 이 현장 견적 '+live.length+'개가 매출에 모두 더해집니다 — 안이면 📊 비교표에서 [이 안으로 확정]':'';
+  return live.length>=2?' · 이 현장 견적 '+live.length+'개가 '+(live.every(hjSalesQuoteOk)?'매출':'견적 합계')+'에 모두 더해집니다 — 안이면 📊 비교표에서 [이 안으로 확정]':'';   // v589 내역서 기준이면 견적 합계
 }
 function hjQuoteCompareView(name,pick){
   const all=hjQuotesOf(name);
