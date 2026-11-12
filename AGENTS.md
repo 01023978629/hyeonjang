@@ -3,6 +3,30 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-12 v591 💧 누수 접수 비용 출처·제출 서류 체크 — v427(PR #191) 을 #162(v590) 위에 다시 얹음
+
+- 왜: 누수 접수에 "돈이 어디서 나오는지"(자가 부담 / 관리사무소(관리비·공용부) / 보험 청구 / 미정)를 적을 자리가 없어 카드에서 안 보였고, 보고서 용도(보험사 제출용/관리사무소용)를
+  매번 손으로 골랐다. 출처별로 현장에서 챙길 서류를 체크해 둘 곳도 없었다.
+- 동작(v427 그대로): `p.leak.funding {source,docs,at}` — `source` 는 `HJ_LEAK_FUNDING_SOURCES` 키(`self/office/insurance/undecided`, 미입력 `''`), `docs` 는 `HJ_LEAK_FUNDING_DOCS[source]` 의
+  id 부분집합(정본 순서·화이트리스트, 라벨 `HJ_LEAK_FUNDING_DOC_LABELS` 는 화면 전용 — id 를 바꾸면 기존 체크가 조용히 사라지므로 라벨만 고친다). 읽기 `hjLeakFundingData/Summary/Chip/Conflict` 는 저장본을 바꾸지 않는다.
+  쓰기 2경로: ① 접수 모달(`hjLeakIntakeView`) '비용 출처' select(`#hjLeakFunding`) — `hjLeakIntakeSave` 트랜잭션 안에서 **출처가 달라진 때만** funding 을 쓰고(같으면 docs·at 불변, 둘 다 `''` 이면 키를 만들지 않음)
+  접수 노트 꼬리에 ` · 비용 출처 …` / ` · 비용 출처 지움`. `#hjLeakFundingHint` 는 지워질 체크 건수와 접수 선택지와의 모순(보험 '없음'+보험 청구 등)을 안내만 한다(값을 바꾸지 않음).
+  ② 현장 카드 `📋 비용·서류`(`data-leakfunding` → `hjLeakFundingView`) 가 `hjLeakFundingSave` 로 funding 만 통째 교체하고 `[비용 출처] 날짜 · …` 노트 1건(접수의 `intake.at`·접수 노트는 다시 찍지 않는다).
+  두 writer 가 같은 키를 쓰므로 접수 저장 가드는 합성 스탬프 `hjLeakIntakeStamp`(intake+funding). 보고서 기본 용도 `hjLeakReportDefaultPurpose`(보험 청구→보험사 제출용, 관리사무소→관리사무소용, 그 외 기존 'insurance'),
+  `#hjLeakReportPurposeHint` 는 안내만(막지 않음).
+- 다시 얹으며 바뀐 것: 핀 3곳 `hyeonjang-v591-leakfunding`(#162 의 v590 다음 번호 — 검사 파일 이름 `leakfunding-v427` 은 갈래 번호로 그대로, #162 규칙과 같다).
+  누수 카드 버튼은 **7개** — 그 사이 main 에 v442 `🧾 보험 서류`(`hjInsClaimButton`) 가 들어와 `📋 비용·서류` 는 ⚡ 즉시 견적 뒤·보고서 앞에 두고 검사 ⑦ 의 6→7.
+  위임 선택자는 #162 가 늘린 `closest()` 목록에 `[data-leakfunding]` 하나만 더했다. 누수 접수·보고서 코드(`hjLeakIntakeSave/View`·`hjLeakReportView/Form`·`hjLeakIntakeCapture`)는 v425 뒤로 main·#162 에서 안 바뀌어 v427 hunk 가 그대로 들어갔다.
+  ⚠ 겹침(대표 판단 대기): 보험 청구 서류 목록(`HJ_LEAK_FUNDING_DOCS.insurance` 7건)은 v442 🧾 보험 청구 체크리스트(`hjInsClaimView` — 보험사별 템플릿·제출 기록)와 역할이 겹친다. 이 판은 둘 다 두었다 — 한쪽으로 합칠지는 대표 결정 뒤.
+- 문서 정정(센 값, 옛 #191 둘째 커밋을 이 트리에서 다시 셈): `index.html` 약 54,000줄(wc 53,879) · 전체 회귀 485개(check 20 · unit 31 · e2e 434 — 이 검사 포함) · `AI_TOOLS` 168 ·
+  불변식 표의 없는 검사 `due-settle-all` 행 → `receivable-removed.check` 행. DEVELOPER.md §11·index.html 리드 인입 주석은 `#lead=` 프래그먼트만(`?lead=`·`?hjreq=` 쿼리는 값을 읽지 않고 지움, `hjLeadParse` 는 hash 만). 더보기 주석 112→126.
+  **`apps-script/README_APPS_SCRIPT.md` 훅은 뺐다** — `office-ops-server-isolation.check` 가 apps-script 트리를 고정해 #191 CI 가 빨개진 원인이었다. 이 커밋은 apps-script 를 건드리지 않는다.
+- 더보기 126 · 직렬화 최상위 키 42 그대로(새 최상위 키 없음, serializeData/applyData 변경 없음 — 저장은 `p.leak.funding` 하위 키 하나뿐).
+- 검사(이 컨테이너, #162 머리 ad1d1a6 위): `tests/leakfunding-v427.e2e.js` 7/7 · 변이 6종(`HJ_LEAK_FUNDING_MUTATION=purpose|whitelist|chip|resume|stamp|conflict`) 모두 `MUTATION_DETECTED` · `--canary` 통과.
+  같이 돌림: leakintake-v419 7/7 · leakreport-v422 7/7 · leaksms-v424 9/9 · board-v351 4/4 · health-board 11/11 · warranty-review 12/12 · mobile-more-tools 16(126 클릭) · reviewlink-v575 7/7 · settings-tabs 11 ·
+  offlinequeue-cache-v425 8/8 · offlinequeue-v425 13/13. 정적 syntax·version-sync·serialized-keys·sw-cache·dead-endpoint·cost-honesty·ai-tools-count·sri 통과(`office-ops-server-isolation` 은 얕은 클론에 19657c3 이 없어 환경 실패). 전체 run-all·CI 는 PR.
+- 병합 순서: manmool #223 → hyeonjang #162 → 이 PR. 이 커밋은 #162 머리 위에 있다 — #162 보다 먼저 병합하면 안 된다.
+
 ## 2026-11-12 v590 · 일정 알림 watch-v6 — 다 받은 내역서의 현장 줄 남은 돈 숨김 · '[파수꾼]' → 매일 9시 '[일정 알림]' 내일 일정 요약
 
 대표 답(11/12, 아래 v588~v589 의 확인 대기 ①~③): ① "다 받은 현장 줄의 남은 돈은 숨겨" ② "구글에서 하루로 줄인 여러 날 공정은 지금처럼 '날짜 옮김'"(코드 그대로)
@@ -3206,7 +3230,7 @@ Apps Script/Pages 배포는 로컬 코드 검증과 별개이며 별도 승인·
 ## 이 저장소가 무엇인가
 
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
-`index.html` 단일 파일 PWA(약 28,000줄) + `sw.js`. **main 에 병합되는 순간
+`index.html` 단일 파일 PWA(약 54,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
 실제 운영 기준선은 `hyeonjang-v319-phonetap`(main `8eedf70`, 2026-09-19 Pages #168)이다 — 맨 위 v306~v318 항목 참조.
 아래 v272 기록은 당시 기준선이다: PR #116 main `46793bc`, Pages 실행 `34185653553` 성공(126/126, 5.0분, 동시 3),
@@ -3338,7 +3362,7 @@ node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 node tests/serialized-keys.check.js    # 직렬화 최상위 키 목록 네 곳 일치(키를 더했으면 반드시)
 
-# 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-19 기준 165개)
+# 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-11-12 기준 485개 — check 20 · unit 31 · e2e 434)
 #    종료코드로 판정한다(출력 마지막 줄만 보고 성공으로 판정하지 마라).
 #    러너의 파일당 180초 제한을 제거하지 마라 — 한 파일이 멈춰도 실패로 끝나야 한다.
 node tests/run-all.js
@@ -3386,7 +3410,7 @@ node scripts/verify-office-ops-branch-scope.mjs
 | 아파트 오더 전/후 카드는 그 동/호 사진만 대상(파일명 매칭), 2장 이상일 때만 | `apt-ba` |
 | 클로드 요청은 승인해야 적용, 같은 id 두 번 적용 금지, 모르는 도구 실행 금지 | `claude-inbox` |
 | 링크는 `#hjreq=`(쿼리 금지 — 로그·SW캐시 누수), 승인 전 안전판, 삭제·발송·반출 도구 차단 | `claude-link` |
-| 수금은 **누적**이지 덮어쓰기가 아니다 — 일괄 완납도 현장마다 payLog 1건 | `due-settle-all` |
+| 미수금 추적·독촉·에이징·일괄 완납·파수꾼 `dueAfterDone`/`dueMin` 은 2026-08-13 삭제 — 되살리지 않는다(수금액 입력·payLog 만 남김) | `receivable-removed.check` |
 | 하자보증 기본값은 법정기간(방수 36·설비 24·마감 12) 이상 | `warranty-review` |
 
 ## 구조 지도 (함수명으로 찾아라 — 줄번호는 금방 낡는다)
@@ -3449,9 +3473,9 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 - (2026-09-04) 운영 기준선은 main 최신 `hyeonjang-v254-suggestbar`. v249~v254: 접수함 접수번호 읽기(v249)·접수함 링크(v250)·📍 사진 배정 점검(v251)·부팅 설정 읽기 완료 신호 `__hjOfficeOpsBootDone`(v252, 검사가 `__commercialApproval` 모의값을 넣기 전에 기다려야 한다)·👉 추천 배정(v253)·추천 버튼을 상단 요약 줄로(v254, 폰 첫 화면 규칙). 아래는 2026-09-01 기록: 소스 브랜치 기준선은 `hyeonjang-v243-photofirst`였다. 232~236 이력에서 v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함했고, v233은 관리사무소 포털 선언 사진 슬롯, 승인 전 사진 attach gate, pre-accept revision 승계, semantic outbox 차단과 admin fail-closed를 추가했다. v234는 신규 접수의 사진 슬롯 선언을 필수화하고, 오프라인 승인 뒤 `photos-pending` 복구와 완료 사진 오류의 strict FIFO·상위 revision 교체 계약을 추가했다. v235는 완료 보고 수정의 합법적인 상태 전이 체인과 승인 payload 입력 오류 차단을 추가했다. 해당 범위의 마지막 버전은 승인 오더·outbox 선저장과 단일 FIFO 발송, request 단위 projection revision 재기준화, 익명 로그인 선행 캐시 제한, canonical slug·PNG 8-byte·slash 전화 마스킹 계약을 추가했다.
 - OfficeOps·paid gate 작업은 이 소스 브랜치에만 있다. Task 6 최종 버전 마커·검토와 이후 대표의 명시적 병합·배포 승인이 모두 끝나기 전에는 운영 배포 상태로 보지 않는다. `apps-script-office-ops/conversion-promotion.json`의 `enabled`는 현재 `false`라 운영 OfficeOps 전환 승격도 꺼져 있다.
 - 로컬 v201 사진 동기화 후보는 운영 서버 v1 멱등 계약과 대표 iPhone 실기기 확인 전까지 병합하지 않는다. v219에도 포함하지 않았다.
-- 현재 전체 회귀 기준은 `tests/run-all.js`가 집계하는 파일 전부(2026-09-19 현재 163개)다. 과거의 브라우저·정적 60개 집계는
+- 현재 전체 회귀 기준은 `tests/run-all.js`가 집계하는 파일 전부(2026-11-12 현재 485개)다. 과거의 브라우저·정적 60개 집계는
   OfficeIntake 서버·회귀 검사를 추가하기 전 기록이므로 완료 기준으로 쓰지 않는다.
-- `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
+- `AI_TOOLS` 실제 배열은 168종. 맨 앞 개발자 주석도 168종으로 맞췄고,
   `tests/ai-tools-count.check.js` 가 숫자가 어긋나면 실패한다.
 - 전자계약 Apps Script는 배포 URL과 속성이 설정돼 있다. 완료로 확정하려면 대표 폰에서
   앱 자가진단, 계약 생성→서명→완료 PDF 실기기 확인이 필요하다. 실제 문자·알림톡은 계속 OFF.
