@@ -12997,7 +12997,7 @@ async function aiToolRun(name,a){
       let est=0,recv=0;const sc=[0,0,0,0];
       acts.forEach(p=>{const s=projStats(p.name);est+=s.est;recv+=s.recv;sc[Math.min(s.stage||0,3)]++;});
       const today=localDate();
-      const ts=hjDaySchView(today).sort((x,y)=>String(x.time||'').localeCompare(String(y.time||''))).map(s=>({시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));   // v591 이어지는 날 포함(💰 도 예전처럼 셈 — aiBriefData 와 같은 목록)
+      const ts=hjDaySchView(today).sort((x,y)=>String(x.time||'').localeCompare(String(y.time||''))).map(s=>({시간:s.time||'',제목:s._cont?hjDaySchCutTitle(s,40):cut(s.title),현장:cut(s.project)}));   // v591 이어지는 날 포함(💰 도 예전처럼 셈 — aiBriefData 와 같은 목록)
       const up=(state.schedule||[]).filter(s=>s.date>today).sort((x,y)=>(x.date+(x.time||'')).localeCompare(y.date+(y.time||''))).slice(0,5).map(s=>({날짜:s.date,시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));
       return {오늘:today,현장수:acts.length,단계별:{상담:sc[0],실측:sc[1],시공:sc[2],완료:sc[3]},
         견적합계원:est,수금합계원:recv,
@@ -14848,12 +14848,22 @@ function hjDaySchView(day,filter){
     title:(String(x.s.title||'').replace(HJ_PLAN_SUFFIX_RE,'')||'작업')+' ('+x.c.day+'/'+x.c.days+'일째)',_cont:x.c})));
 }
 /* v591 '오늘 일정'을 세던 나머지 아홉 곳(AI get_overview·🔔 스마트 알림·📅 일정 브리핑·🤖 능동 브리핑·🗣 음성 브리핑·운영 루프 계획·
-   ☀️ 운영 일일 브리핑·🗺 오늘 동선·🧠 AI 브레인)은 v586 뒤에도 date===오늘만 세어, 3일짜리 공정 둘째·셋째 날이 빠지고 🤖 오늘 챙길 일과 수가 달랐다
+   ☀️ 운영 일일 브리핑·🗺 오늘 동선·🧠 AI 브레인)은 v586 뒤에도 date===오늘만 세어 3일짜리 공정 둘째·셋째 날이 빠졌다
    (🗺 동선은 그 현장에 오늘 가는데도 '방문할 현장 없음'). 이제 모두 hjDaySchView(그날, 그곳이 예전에 거르던 조건) — 이어지는 날 복사본(제목 '(2/3일째)',
    date 그날, id 원본 그대로)을 더한다. 거르던 것(💰 수금)은 이어지는 날에도 그대로 거르고, 예전에 안 거르던 것(세금·개인 일정)은 새로 거르지 않는다.
-   일요일·완료 보고된 공정은 hjSchContOn 이 뺀다. 읽기만 — 원본 일정은 바꾸지 않는다. */
+   그래서 💰 를 거르는 여덟 곳은 🤖 오늘 챙길 일(hjTodaySchRows — 💰·세금도 셈)보다 그날 💰 일정 수만큼 적을 수 있다 — 같은 목록은 get_overview 뿐이다.
+   이 차이는 일부러다: 맞추겠다고 여덟 곳의 💰 거르기를 빼지 마라(수금 일정이 '현장 일정'으로 읽히고 🗺 동선 방문지가 된다).
+   일요일·완료된 공정은 hjSchContOn 이 뺀다(진행 중 보고는 끝난 것이 아니다 — hjSchContEnded). 읽기만 — 원본 일정은 바꾸지 않는다. */
 const HJ_MONEY_SCH_RE=/^💰/;
 function hjDaySchNoMoney(day){return hjDaySchView(day,s=>!HJ_MONEY_SCH_RE.test(String(s.title||'')));}
+/* v591 hjDaySchView 복사본의 제목을 n자로 자를 때 — 복사본 제목 끝의 '(2/3일째)'까지 한꺼번에 자르면 긴 공정 이름에서 '몇째 날'이 '…'로 사라진다
+   (🤖 능동 브리핑 10자·🗣 음성 브리핑 20자). 바탕 제목만 자르고 꼬리를 붙인다. speak 면 귀로 듣기 좋게 '3일 중 2일째'('2/3'은 분수로 읽힌다). */
+function hjDaySchCutTitle(s,n,speak){
+  const c=s&&s._cont,t=String((s&&s.title)||'');
+  if(!c)return hjCut(t,n);
+  const tag=' ('+c.day+'/'+c.days+'일째)',base=t.endsWith(tag)?t.slice(0,-tag.length):t;
+  return hjCut(base,n)+(speak?' '+c.days+'일 중 '+c.day+'일째':tag);
+}
 // 한 줄 글 — 이어지는 날이면 공정표 꼬리 '(N일차 시작)' 를 떼고 '(2/3일째)' 를 붙인다
 function hjTodaySchLine(r,tn,pn){
   const s=r.s,t=r.c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,''):s.title;
@@ -15214,9 +15224,17 @@ function hjSchSpan(s){
   return {from,to:m[2],days:hjWorkDaysBetween(m[1],m[2])+1};
 }
 function hjSchReported(s){return !!(s&&s.report&&(s.report.progress==='완료'||String(s.report.done||'').trim()));}
+/* v591 여러 날 공정이 '끝났나'는 보고가 있느냐가 아니라 진행률로 본다. 예전(v354)에는 hjSchReported(보고 글만 있어도 참)를 써서,
+   1일째 저녁에 🎙 음성 일지·첫 화면 [기록]·AI add_work_log(workLogSave — 진행률 '진행')나 📋 일일 작업 보고(진행률 '진행중'·'50%')를 남기면
+   그 공정이 끝난 것으로 보여 둘째·셋째 날이 오늘 일정·📋 내 업무·달력·알림·🗺 동선 어디에도 안 나왔다(현장에서 가장 흔한 흐름).
+   진행률이 '하는 중'(HJ_SCH_GOING_RE — 시작·진행·진행중·NN%)이면 이어지는 날은 그대로 이어진다. 그 밖의 보고('완료', 그리고 글이 있는데
+   진행률이 비었거나 '보류'인 옛 보고)는 예전처럼 끝난 것 — 진행률을 안 고르고 '오늘 한 작업'만 적어 끝을 알리던 쓰임을 지킨다.
+   hjSchReported 자체는 그대로 둔다 — 지연 점검·오늘 마감·고객 일정 안내 등이 '보고가 있나'로 쓴다. */
+const HJ_SCH_GOING_RE=/^(시작|진행|진행중|\d{1,2}%)$/;
+function hjSchContEnded(s){return hjSchReported(s)&&!HJ_SCH_GOING_RE.test(String(s.report.progress||'').trim());}
 // 그날이 그 일정의 '이어지는 날'이면 {day,days,from,to}, 아니면 null
 function hjSchContOn(s,ymd){
-  if(!s||!s.date||!(ymd>s.date)||hjSchReported(s))return null;
+  if(!s||!s.date||!(ymd>s.date)||hjSchContEnded(s))return null;
   const sp=hjSchSpan(s);if(sp.days<2||ymd>sp.to)return null;
   const d=new Date(String(ymd)+'T00:00:00');if(isNaN(d)||d.getDay()===0)return null;
   return {day:hjWorkDaysBetween(sp.from,ymd)+1,days:sp.days,from:sp.from,to:sp.to};
@@ -15228,7 +15246,7 @@ function hjSchContinuing(ymd,filter){
 function hjSchContLabel(c){return c?'↳ 이어서 '+c.day+'/'+c.days+'일째 · '+hjMdDow(c.from)+'~'+hjMdDow(c.to):'';}
 // 그 일정이 이어지는 날 목록(시작일 제외·일요일 제외·완료 보고면 없음) — 달력 막대·일정 점검이 같이 쓴다
 function hjSchContDates(s){
-  if(!s||!s.date||hjSchReported(s))return [];
+  if(!s||!s.date||hjSchContEnded(s))return [];   // v591 진행 중 보고는 끝난 것이 아니다(위 hjSchContEnded)
   const sp=hjSchSpan(s);if(sp.days<2)return [];
   const dt=new Date(sp.from+'T00:00:00');if(isNaN(dt))return [];
   const out=[];for(let i=0;i<62;i++){dt.setDate(dt.getDate()+1);const ds=hjYmd(dt);if(ds>sp.to)break;if(dt.getDay()!==0)out.push(ds);}
@@ -24318,7 +24336,7 @@ function aiActiveBriefData(){
   // 오늘 일정
   const today=localDate();
   const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
-  if(sch.length){const f=sch[0];parts.push('오늘 일정 '+sch.length+'건'+(f.time?'('+f.time+' '+hjCut(f.title,10)+' 등)':''));urgent.push({ic:'🗓',t:'오늘 일정 '+sch.length+'건',cmd:'오늘 일정 브리핑'});}
+  if(sch.length){const f=sch[0];parts.push('오늘 일정 '+sch.length+'건'+(f.time?'('+f.time+' '+hjDaySchCutTitle(f,10)+' 등)':''));urgent.push({ic:'🗓',t:'오늘 일정 '+sch.length+'건',cmd:'오늘 일정 브리핑'});}
   // AI 제안(완료 현장 청구 등)
   try{const sug=(typeof aiSuggestions==='function')?aiSuggestions():[];sug.slice(0,2).forEach(s=>{const clean=String(s.t||'').replace(/<[^>]+>/g,'');urgent.push({ic:s.ic||'💡',t:clean,cmd:s.cmd});});}catch(e){}
   // 목표
@@ -26762,7 +26780,7 @@ function ttsBriefText(){
   const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
   if(sch.length){
     parts.push('오늘 일정은 '+sch.length+'건입니다.');
-    sch.slice(0,4).forEach(s=>{parts.push((s.time?s.time+' ':'')+(s.project?s.project+' ':'')+hjCut(s.title||'',20));});
+    sch.slice(0,4).forEach(s=>{parts.push((s.time?s.time+' ':'')+(s.project?s.project+' ':'')+hjDaySchCutTitle(s,20,true));});   // v591 이어지는 날은 '3일 중 2일째'
   }else{parts.push('오늘은 등록된 일정이 없습니다.');}
   // 보강 항목(보증·AS)
   try{
@@ -28227,7 +28245,7 @@ function aiPlannerScan(scope){
     try{
       const today=aiOpsTodayKey();
       const tmr=new Date();tmr.setDate(tmr.getDate()+1);const tmrKey=tmr.getFullYear()+'-'+pad2(tmr.getMonth()+1)+'-'+pad2(tmr.getDate());
-      const todaySch=hjDaySchNoMoney(today);   // v591 이어지는 날 포함(복사본 date 가 오늘이라 아래 시각 겹침도 그날로 센다) — 내일 줄은 예전 그대로
+      const todaySch=hjDaySchNoMoney(today);   // v591 이어지는 날 포함(건수·브리핑 줄만) — 내일 줄은 예전 그대로
       const tmrSch=(state.schedule||[]).filter(s=>s.date===tmrKey&&!/^💰/.test(s.title||''));
       if(todaySch.length)add({category:'일정',type:'brief_today',title:'오늘 일정 브리핑 ('+todaySch.length+'건)',
         reason:todaySch.slice(0,3).map(s=>(s.time||'')+' '+(s.project||s.title||'')).join(', '),
@@ -28238,7 +28256,9 @@ function aiPlannerScan(scope){
         priority:'normal',priorityScore:55,action:{kind:'open',fn:'hjMorningBrief'},readOnly:true,requiresApproval:false,
         source:'brief_tmr:'+tmrKey});
       // 일정 충돌(같은 날 같은 시간 2건↑)
-      const byKey={};todaySch.concat(tmrSch).forEach(s=>{if(s.time){const k=s.date+' '+s.time;byKey[k]=(byKey[k]||0)+1;}});
+      // v591 이어지는 날(_cont)은 세지 않는다 — 🗓 공정표는 공정마다 09:00 이라, 두 현장 여러 날 공정이 겹치는 날마다 '충돌'(높음·폰 알림)이 생겼다.
+      // 담당이 다르면 충돌이 아니라는 🔍 일정 점검(scheduleConflicts, v362)과 어긋난다. 이 대략 규칙은 예전처럼 그날 '시작하는' 일정만 본다.
+      const byKey={};todaySch.filter(s=>!s._cont).concat(tmrSch).forEach(s=>{if(s.time){const k=s.date+' '+s.time;byKey[k]=(byKey[k]||0)+1;}});
       const conflict=Object.keys(byKey).filter(k=>byKey[k]>=2);
       if(conflict.length)add({category:'일정',type:'conflict',title:'일정 충돌 확인',
         reason:conflict[0]+' 에 '+byKey[conflict[0]]+'건 겹침',priority:'high',priorityScore:78,
