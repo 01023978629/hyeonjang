@@ -147,8 +147,10 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
       const snaps = await page.evaluate(() => { window.__snaps = []; const o = hjSnapshot; hjSnapshot = async (...a) => { window.__snaps.push(a[0]); return o(...a); }; return 0; });
       await page.click('#csApply');
       // v581 부터 반영 뒤 '바뀐 일정 알리기' 창이 뜬다(맞추기 창은 닫힘) — 그 창을 닫고 본다
-      await page.waitForSelector('#modalRoot #hjCalSyncDone');
-      assert.equal(await page.evaluate(() => { const n = document.querySelectorAll('#hjCalSyncDone [data-csd-row]').length; closeModal(true); return n; }), 7, '알릴 일정 7건(새 5 · 시간 1 · 옮김 1)');
+      // 맞추기 창이 닫힐 때까지(실패면 오류 토스트) 기다린 뒤 결과 창을 단언한다 — 창이 안 뜨는 회귀가 시간 초과가 아니라 단언 실패로 떨어지게
+      await page.waitForFunction(() => !document.querySelector('#hjCalSync') || /안전판을 만들지 못해|바뀌었어요|체크하세요|오래된 창/.test(document.getElementById('toast').textContent));
+      const done = await page.evaluate(() => { const n = document.querySelectorAll('#modalRoot #hjCalSyncDone [data-csd-row]').length, open = !!document.querySelector('#hjCalSync'), t = document.getElementById('toast').textContent; closeModal(true); return { n, open, t }; });
+      assert.deepEqual([done.open, done.n], [false, 7], '반영 뒤 알릴 일정 7건(새 5 · 시간 1 · 옮김 1) — ' + JSON.stringify(done));
       const r = await page.evaluate(() => ({ snaps: window.__snaps, n: state.schedule.length, by: Object.fromEntries(state.schedule.map(s => [s.id, [s.date, s.time, s.project]])),
         added: state.schedule.filter(s => s.icsUid).map(s => [s.date, s.time, s.title, s.project, s.hours]).sort((a, b) => (a[0] + a[1]).localeCompare(b[0] + b[1])), memo: state.schedule.find(s => /세면대/.test(s.title)).memo }));
       assert.ok(r.snaps[0] === '구글 캘린더 맞추기 전' && r.snaps.filter(x => x === '구글 캘린더 맞추기 전').length === 1, '반영 전 안전판 1회(먼저) — ' + JSON.stringify(r.snaps));
