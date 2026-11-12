@@ -16200,7 +16200,7 @@ function hjWorkOrderLog(projName,rec){
   if(!p)return; // 현장 미지정이면 이력 생략 — 전화 원문은 어디에도 저장하지 않음
   if(!Array.isArray(p.workOrders))p.workOrders=[];
   p.workOrders.push({at:new Date().toISOString(),worker:rec.worker||'',title:rec.title||'',date:rec.date||''});   // worker는 hjMaskTel 결과(뒷4자리)만
-  if(p.workOrders.length>50)p.workOrders=p.workOrders.slice(-50);
+  hjWoTrim(p,p.workOrders);   // v587 밀려나는 지시의 팀 보고는 지우지 않고 p.teamReports 로(예전 slice(-50)은 보고째 버렸다)
   markDirty();
 }
 async function hjWorkOrderAlimtalk(phone,text,projName,rec){
@@ -45564,7 +45564,7 @@ async function hjWoRecord(name,order,via,items){
     let record;
     if(found){record=found;record.sentAt=at;record.via=String(via||'');record.resent=(Number(record.resent)||0)+1;}
     else{record={at,packetId:order.id,sentAt:at,via:String(via||''),worker:'',title:order.title,date:order.due||'',assignee:order.assignee||'',due:order.due||'',priority:order.priority,checklist:order.checklist.slice(),photosWanted:order.photosWanted.slice(),items:refs,reports:[]};
-      list.push(record);if(list.length>50)list.splice(0,list.length-50);target.workOrders=list;}
+      list.push(record);hjWoTrim(target,list);target.workOrders=list;}   // v587 밀려나는 지시의 팀 보고는 p.teamReports 로
     draft.notes=Array.isArray(draft.notes)?draft.notes:[];
     draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[팀 지시] '+(order.due?hjMdDow(order.due)+' ':'')+(refs.length||1)+'건'+(order.assignee?' → '+order.assignee:'')+' · '+order.id+(found?' (다시 보냄)':''),project:name});
     return {packetId:order.id,resent:!!found};
@@ -48692,19 +48692,32 @@ function hjWoBuildDay(day){
   const base=hjWoNextId(state,localDate()),m=HJ_WO_ID_RE.exec(base),date=m[1];let n=Number(m[2]);
   const orders=[],refs=[];
   // 이미 보낸 일정은 같은 번호로 다시 보낸다(팀 앱에서 같은 지시가 두 번 생기지 않게).
-  // v587 여러 날 공정은 날마다 지시가 따로라 그날(items[].day)까지 맞아야 같은 번호 — day 가 없는 옛 기록(v444)은 그 일정의 시작일로 읽는다.
-  const sentId=(p,s)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&Array.isArray(w.items)&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)&&String(x.day||s.date)===day));return w?w.packetId:'';};
+  // v587 여러 날 공정은 날마다 지시가 따로라 '몇째 날'(items[].n — 시작일 1, 이어지는 날 hjSchContOn().day)까지 맞아야 같은 번호.
+  // 달력 날짜가 아니라 몇째 날로 맞추므로 보낸 뒤 일정을 옮겨도(비로 하루 밀림·v353 뒤 일정 같이 미루기) 같은 번호로 다시 보낸다(v444 그대로).
+  // n 이 없는 옛 기록(v444)은 1(시작일)로 읽는다.
+  const sentId=(p,s,nth)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&Array.isArray(w.items)&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)&&(Number(x.n)||1)===nth));return w?w.packetId:'';};
   rows.forEach(s=>{
-    const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s);
-    const c=s.date===day?null:hjSchContOn(s,day),contTail=c?' ('+c.day+'/'+c.days+'일째)':'';   // v587 이어지는 날이면 '(2/3일째)' — 공정표 꼬리 '(N일차 시작)' 는 뗀다
+    const c=s.date===day?null:hjSchContOn(s,day),contTail=c?' ('+c.day+'/'+c.days+'일째)':'',nth=c?c.day:1;   // v587 이어지는 날이면 '(2/3일째)' — 공정표 꼬리 '(N일차 시작)' 는 뗀다
+    const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s,nth);
     const tail=(trade?' ('+trade+')':'')+contTail,rawTitle=c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업':(s.title||'작업');
     const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo),
       assignee:hjWoText(crew.join(','),20),due:day,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
       checklist:(HJ_WO_CHECKLIST_BY[trade]||HJ_WO_CHECKLIST).slice(),photosWanted:HJ_WO_PHOTOS.map(x=>x[0]),notes:''});
     const o=one.orders[0];o.guideKey=hjWoGuideKey(p,trade);
-    orders.push(o);refs.push({name:p.name,order:o,again:!!again,items:[{kind:'sched',ref:String(s.id),day,text:hjWoText((c?rawTitle:(s.title||'일정'))+contTail,120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
+    orders.push(o);refs.push({name:p.name,order:o,again:!!again,items:[{kind:'sched',ref:String(s.id),day,n:nth,text:hjWoText((c?rawTitle:(s.title||'일정'))+contTail,120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
   });
   return {packet:{type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders},refs};
+}
+/* v587 지시 기록은 현장마다 50개까지 — 넘쳐 밀려나는 옛 지시에 팀 작업 보고(wo.reports)가 있으면 지우지 않고 p.teamReports 로 옮긴다
+   (지시 번호는 보고의 order 로 남긴다 — hjTeamReportsOf 가 그대로 읽는다). 여러 날 공정을 날마다 보내면 기록이 빨리 쌓여, 예전처럼 통째로
+   잘라내면 팀 공수 정산(v508)·완료보고서 줄(v458)·노트 창에서 보고가 조용히 사라졌다. teamReports 형식이 이상하면 보고 있는 기록은 남긴다. */
+function hjWoTrim(target,list,max){
+  const cap=max||50;if(!Array.isArray(list)||list.length<=cap)return list;
+  const drop=list.splice(0,list.length-cap),hasRep=w=>!!w&&Array.isArray(w.reports)&&w.reports.some(r=>r&&typeof r==='object');
+  if(target.teamReports!=null&&!Array.isArray(target.teamReports)){list.unshift(...drop.filter(hasRep));return list;}
+  const moved=[];drop.filter(hasRep).forEach(w=>w.reports.forEach(r=>{if(r&&typeof r==='object')moved.push(Object.assign({},r,{order:String(r.order||w.packetId||'')}));}));
+  if(moved.length)target.teamReports=(target.teamReports||[]).concat(moved);
+  return list;
 }
 async function hjWoRecordMany(refs,via){
   const at=new Date().toISOString();
@@ -48715,9 +48728,10 @@ async function hjWoRecordMany(refs,via){
       if(!target)throw new Error('현장을 찾을 수 없습니다: '+r.name);
       if(target.workOrders!=null&&!Array.isArray(target.workOrders))throw new Error('기존 지시 기록 형식을 확인해 주세요.');
       const list=target.workOrders||[],o=r.order,found=list.find(w=>w&&w.packetId===o.id);
-      if(found){found.sentAt=at;found.via=String(via||'');found.resent=(Number(found.resent)||0)+1;}
+      if(found){found.sentAt=at;found.via=String(via||'');found.resent=(Number(found.resent)||0)+1;
+        if(o.due){found.due=found.date=o.due;(Array.isArray(found.items)?found.items:[]).forEach(x=>{const y=x&&x.kind==='sched'&&(r.items||[]).find(y=>String(y.ref)===String(x.ref));if(y&&x.day)x.day=y.day;});}}   // v587 옮긴 일정을 다시 보내면 기록 날짜도 따라간다
       else{list.push({at,packetId:o.id,sentAt:at,via:String(via||''),worker:'',title:o.title,date:o.due||'',assignee:o.assignee||'',due:o.due||'',priority:o.priority,checklist:o.checklist.slice(),photosWanted:o.photosWanted.slice(),guideKey:o.guideKey||'',items:r.items,reports:[]});
-        if(list.length>50)list.splice(0,list.length-50);target.workOrders=list;}
+        hjWoTrim(target,list);target.workOrders=list;}
       draft.notes=Array.isArray(draft.notes)?draft.notes:[];
       draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[팀 지시] '+(o.due?hjMdDow(o.due)+' ':'')+o.title+(o.assignee?' → '+o.assignee:'')+' · '+o.id+(found?' (다시 보냄)':''),project:r.name});
       n++;

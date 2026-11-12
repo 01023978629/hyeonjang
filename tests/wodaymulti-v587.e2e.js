@@ -2,11 +2,16 @@
    문제(기준선): hjWoDaySchedules 가 date===그날만 골라, 3일짜리 공정 둘째·셋째 날은 [📤 내일 일정 팀에 보내기](hjWoTomorrowView)에서 빠졌다
    (📤 일정 공유는 v354 부터 넣음). 이미 보냈는지(sentId)는 일정 id 만 대조해, 이어지는 날을 넣으면 둘째 날 지시가 첫날 번호를 다시 쓰게 된다.
    합성 자료(이름은 지어낸 것), 시계 2026-11-10(화) 10:00 고정, 다운로드·복사는 기록용 스텁, 바깥 쓰기 0.
-   ① 하루치 = 그날 시작 + 이어지는 날(완료 보고·일요일·💰 제외) · 시간순 · 제목 '(2/3일째)' · due 그날 · items.day · 형식·개인정보 검사 그대로 (BUILD)
+   ① 하루치 = 그날 시작 + 이어지는 날(완료 보고·일요일·💰·현장 없음·지운 현장 제외 — 창이 죽지 않음) · 시간순 · 제목 '(2/3일째)' · due 그날 ·
+      items.day·n(몇째 날) · 형식·개인정보 검사 그대로 (BUILD)
    ② 창 → 저장(원자 저장 1번·안전판 1개) → 같은 날 다시 열면 같은 번호(다시 보냄) → 다음 날은 새 번호·기록 2개 (RESEND)
    ③ 옛 기록(items.day 없음)은 그 일정 시작일로 읽는다 — 시작일 지시는 같은 번호(v444 그대로) · 이어지는 날은 새 번호 · 폰 390 넘침 없음 ·
       44px · 열기만으로 저장 자료 그대로 · 페이지 오류 0 · 외부 쓰기 0 (LEGACY)
-   HJ_V587_BASELINE=<commit> 은 ① 에서, HJ_V587_MUTATION=start-only(이어지는 날을 안 더함)는 ①, no-day-key(그날 대조를 뺌)는 ② 에서 실패해야 한다. */
+   ④ 보낸 뒤 일정을 옮겨도(하루짜리·여러 날 공정의 시작일) 같은 번호로 다시 보냄(v444 그대로) · 기록 날짜도 따라감 (MOVE)
+   ⑤ 지시 기록 50개 상한 — 밀려나는 옛 지시의 팀 보고는 p.teamReports 로(지시 번호 그대로) · 팀 공수 정산·두 번 반영 막기 그대로 ·
+      옛 작업지시 기록(hjWorkOrderLog)도 · teamReports 형식이 이상하면 보고 있는 기록은 남김 (CAP)
+   HJ_V587_BASELINE=<commit> 은 ① 에서, HJ_V587_MUTATION=start-only(이어지는 날을 안 더함)·no-filter-cont(이어지는 날에 현장 거르기를 뺌)는 ①,
+   no-day-key(몇째 날 대조를 뺌)는 ②, date-key(달력 날짜로 대조)·no-due-update 는 ④, trim-drop(밀려나는 보고를 버림)은 ⑤ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -20,7 +25,11 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'start-only': ['.filter(s=>s&&s.date===day&&hjWoDayOk(s)).concat(hjSchContinuing(day,hjWoDayOk).map(x=>x.s))', '.filter(s=>s&&s.date===day&&hjWoDayOk(s))'],
-  'no-day-key': ["String(x.ref)===String(s.id)&&String(x.day||s.date)===day));return w?w.packetId:'';};", "String(x.ref)===String(s.id)));return w?w.packetId:'';};"]
+  'no-day-key': ["String(x.ref)===String(s.id)&&(Number(x.n)||1)===nth));return w?w.packetId:'';};", "String(x.ref)===String(s.id)));return w?w.packetId:'';};"],
+  'no-filter-cont': ['.concat(hjSchContinuing(day,hjWoDayOk).map(x=>x.s))', '.concat(hjSchContinuing(day).map(x=>x.s))'],
+  'date-key': ["String(x.ref)===String(s.id)&&(Number(x.n)||1)===nth));", "String(x.ref)===String(s.id)&&String(x.day||s.date)===day));"],
+  'no-due-update': ["if(o.due){found.due=found.date=o.due;", "if(false){found.due=found.date=o.due;"],
+  'trim-drop': ['if(moved.length)target.teamReports=(target.teamReports||[]).concat(moved);', '']
 };
 let html = process.env.HJ_V587_BASELINE ? execFileSync('git', ['show', process.env.HJ_V587_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V587_MUTATION) {
@@ -77,7 +86,11 @@ async function seed(page, legacy) {
       S('START', '2026-11-11', '13:00', '설비 점검', '나래빌라 주방', { crew: '박설비' }),
       S('MONEY', '2026-11-11', '', '💰 수금: 나래빌라 주방', '나래빌라 주방'),
       S('NOPJ', '2026-11-11', '10:00', '현장 없는 일정', ''),
-      S('SUNM', '2026-11-14', '09:00', '목공 (4일차 시작)', '다솜상가', { memo: '2026-11-14~2026-11-18 (4일)' })];
+      S('SUNM', '2026-11-14', '09:00', '목공 (4일차 시작)', '다솜상가', { memo: '2026-11-14~2026-11-18 (4일)' }),
+      // 이어지는 날에도 거른다 — 지운 현장(v328 '(삭제됨) …')·현장 없음·💰 여러 날 일정(거르지 않으면 p 가 없어 창이 TypeError 로 안 열린다)
+      S('DELM', '2026-11-10', '10:00', '미장 (3일차 시작)', '(삭제됨) 가온아파트 욕실 · 2026-11-09', { memo: '2026-11-10~2026-11-12 (3일)' }),
+      S('NOPJM', '2026-11-10', '11:00', '청소 (3일차 시작)', '', { memo: '2026-11-10~2026-11-12 (3일)' }),
+      S('MONM', '2026-11-10', '', '💰 수금: 다솜상가 (3일차 시작)', '다솜상가', { memo: '2026-11-10~2026-11-12 (3일)' })];
     if (legacy) {   // v444 이 남긴 옛 기록 — items[].day 없음
       const rec = (packetId, ref, due) => ({ at: '2026-11-09T01:00:00.000Z', packetId, sentAt: '2026-11-09T01:00:00.000Z', via: 'file', worker: '', title: ref, date: due, assignee: '', due, priority: 'normal', checklist: ['완료 사진'], photosWanted: ['before'], guideKey: 'finish', items: [{ kind: 'sched', ref, text: ref }], reports: [] });
       state.projects[1].workOrders = [rec('wo_20261109_001', 'START', '2026-11-11')];
@@ -108,7 +121,7 @@ const footer = (page, text) => page.locator('#modalRoot .mfoot button', { hasTex
       assert.deepEqual(r.ids, ['wo_20261110_001', 'wo_20261110_002'], '번호는 보내는 날 기준 다음 번호');
       assert.deepEqual(r.due, [D11, D11], 'due 는 그날'); assert.deepEqual(r.time, ['09:00', '13:00'], '시간순');
       assert.deepEqual(r.who, ['김타일', '박설비']); assert.deepEqual(r.guide, ['tile', 'finish']); assert.equal(r.check, r.tile, '공종 체크리스트 그대로');
-      assert.deepEqual(r.items, [[{ kind: 'sched', ref: 'MULTI', day: D11, text: '타일 (2/3일째)' }], [{ kind: 'sched', ref: 'START', day: D11, text: '설비 점검' }]]);
+      assert.deepEqual(r.items, [[{ kind: 'sched', ref: 'MULTI', day: D11, n: 2, text: '타일 (2/3일째)' }], [{ kind: 'sched', ref: 'START', day: D11, n: 1, text: '설비 점검' }]]);
       assert.deepEqual(r.again, [false, false]); assert.deepEqual(r.issues, [[], []], '개인정보 검사 통과'); assert.deepEqual(r.schema, [], 'work-order.json 형식 그대로');
       assert.equal(r.priv, false, '고객 이름·전화·금액 없음'); assert.doesNotMatch(r.detail, /잔금|30만원/);
       const d = await page.evaluate(() => ({
@@ -183,7 +196,70 @@ const footer = (page, text) => page.locator('#modalRoot .mfoot button', { hasTex
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '외부 쓰기 0');
     });
-    console.log(`wodaymulti-v587: ${passed}/3 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
+    await test('④ 보낸 뒤 일정을 옮겨도 같은 번호로 다시 보냄(하루짜리·여러 날 시작일) · 기록 날짜도 따라감 (MOVE)', async () => {
+      const m = await open(1280); await seed(m.page);
+      try {
+        const r = await m.page.evaluate(async () => {
+          const ids = b => b.refs.map(x => [x.items[0].ref, x.order.id, x.again]);
+          const b11 = hjWoBuildDay('2026-11-11'); await hjWoRecordMany(b11.refs, 'file');
+          const sch = id => state.schedule.find(s => s.id === id);
+          sch('START').date = '2026-11-12';   // 비로 하루 밀림 — 하루짜리 일정
+          const b12 = hjWoBuildDay('2026-11-12'); await hjWoRecordMany(b12.refs, 'file');
+          const nara = hjWoOrders(state.projects.find(p => p.name === '나래빌라 주방')).map(w => [w.packetId, w.due, w.date, w.items.map(x => x.day + '#' + x.n).join(), Number(w.resent) || 0]);
+          // 여러 날 공정의 시작일을 하루 미룸(v353 뒤 일정 같이 미루기) — 11/12 는 이제 둘째 날, 11/13 은 셋째 날
+          const M = sch('MULTI'); M.date = '2026-11-11'; M.memo = M.memo.replace('2026-11-10~2026-11-12', '2026-11-11~2026-11-13');
+          const b12b = hjWoBuildDay('2026-11-12'), b13 = hjWoBuildDay('2026-11-13');
+          return { b11: ids(b11), b12: ids(b12), nara, b12b: ids(b12b).filter(x => x[0] === 'MULTI'), b13: ids(b13).filter(x => x[0] === 'MULTI'),
+            gaon: hjWoOrders(state.projects.find(p => p.name === '가온아파트 욕실')).map(w => w.packetId) };
+        });
+        assert.deepEqual(r.b11, [['MULTI', 'wo_20261110_001', false], ['START', 'wo_20261110_002', false]], JSON.stringify(r.b11));
+        assert.deepEqual(r.b12, [['MULTI', 'wo_20261110_003', false], ['START', 'wo_20261110_002', true]], '옮긴 하루짜리 일정은 같은 번호·다시 보냄 — WO_MOVE_SAME_ID ' + JSON.stringify(r.b12));
+        assert.deepEqual(r.nara, [['wo_20261110_002', D12, D12, D12 + '#1', 1]], '기록은 하나 · 날짜는 새 날짜로 — WO_MOVE_DUE ' + JSON.stringify(r.nara));
+        assert.deepEqual(r.gaon, ['wo_20261110_001', 'wo_20261110_003']);
+        assert.deepEqual(r.b12b, [['MULTI', 'wo_20261110_001', true]], '시작일을 미뤄도 둘째 날 지시는 같은 번호 — ' + JSON.stringify(r.b12b));
+        assert.deepEqual(r.b13, [['MULTI', 'wo_20261110_003', true]], '셋째 날 지시도 같은 번호 — ' + JSON.stringify(r.b13));
+      } finally { await m.context.close(); }
+    });
+    await test('⑤ 지시 기록 50개 상한 — 밀려나는 지시의 팀 보고는 p.teamReports 로 · 정산·두 번 반영 막기 그대로 (CAP)', async () => {
+      const m = await open(1280); await seed(m.page);
+      try {
+        const r = await m.page.evaluate(async () => {
+          const rec = (i, reports) => ({ at: '2026-11-0' + (1 + (i % 9)) + 'T01:00:00.000Z', packetId: 'wo_20261101_' + String(i + 1).padStart(3, '0'), sentAt: '2026-11-01T01:00:00.000Z', via: 'file', worker: '', title: '옛 지시 ' + i,
+            date: '2026-11-03', assignee: '', due: '2026-11-03', priority: 'normal', checklist: ['완료 사진'], photosWanted: ['before'], guideKey: 'finish', items: [{ kind: 'sched', ref: 'OLD' + i, text: '옛' }], reports: reports || [] });
+          const rep = { key: 'wr_test_old', status: 'done', workDate: '2026-11-03', hours: 8, done: '타일 붙임', issue: '', reporter: '김타일', checklist: [], photos: 0, at: '2026-11-03T09:00:00.000Z' };
+          const gaon = state.projects[0];
+          gaon.workOrders = [rec(0, [rep])].concat(Array.from({ length: 49 }, (_, i) => rec(i + 1)));
+          const before = hjTeamHoursData('2026-11');
+          const b = hjWoBuildDay('2026-11-11'); await hjWoRecordMany(b.refs.filter(x => x.name === gaon.name), 'file');
+          const g2 = state.projects.find(p => p.name === gaon.name);   // 원자 저장 뒤 현장 객체가 바뀐다
+          const after = { n: hjWoOrders(g2).length, first: hjWoOrders(g2)[0].packetId, tr: (g2.teamReports || []).map(x => [x.key, x.order]),
+            reports: hjTeamReportsOf(g2).map(x => [x.key, x.order]), hours: hjTeamHoursData('2026-11').h, applied: hjWrApplied(g2.name, 'wr_test_old'),
+            done: hjTeamDoneLines(g2).map(x => x.text) };
+          // 옛 작업지시 기록(hjWorkOrderLog — packetId 없음)이 넘쳐도 같다
+          const nara = state.projects.find(p => p.name === '나래빌라 주방');
+          nara.workOrders = [rec(60, [Object.assign({}, rep, { key: 'wr_test_log' })])].concat(Array.from({ length: 49 }, (_, i) => ({ at: '2026-11-01T00:00:00.000Z', worker: '***1234', title: '문자 지시 ' + i, date: '2026-11-01' })));
+          hjWorkOrderLog(nara.name, { worker: '***5678', title: '새 문자 지시', date: '2026-11-11' });
+          const log = { n: nara.workOrders.length, tr: (nara.teamReports || []).map(x => [x.key, x.order]) };
+          // teamReports 형식이 이상하면(배열 아님) 보고 있는 기록은 지우지 않고 남긴다
+          const das = state.projects.find(p => p.name === '다솜상가'); das.teamReports = { broken: true };
+          das.workOrders = [rec(70, [Object.assign({}, rep, { key: 'wr_test_bad' })])].concat(Array.from({ length: 50 }, (_, i) => rec(71 + i)));
+          hjWoTrim(das, das.workOrders);
+          const bad = { n: das.workOrders.length, first: das.workOrders[0].packetId, kept: das.workOrders[0].reports.length, tr: das.teamReports };
+          return { before: before.h, after, log, bad };
+        });
+        assert.equal(r.before, 8);
+        assert.deepEqual([r.after.n, r.after.first], [50, 'wo_20261101_002'], '50개까지 · 가장 오래된 기록이 밀려남 — ' + JSON.stringify(r.after));
+        assert.deepEqual(r.after.tr, [['wr_test_old', 'wo_20261101_001']], '밀려난 지시의 보고는 p.teamReports 로(지시 번호 그대로) — WO_TRIM_KEEPS_REPORTS ' + JSON.stringify(r.after));
+        assert.deepEqual(r.after.reports, [['wr_test_old', 'wo_20261101_001']]);
+        assert.equal(r.after.hours, 8, '팀 공수 정산 그대로'); assert.equal(r.after.applied, true, '같은 보고 두 번 반영 막기 그대로');
+        assert.deepEqual(r.after.done, ['11/03 타일 붙임'], '완료보고서 줄 그대로');
+        assert.deepEqual(r.log, { n: 50, tr: [['wr_test_log', 'wo_20261101_061']] }, '옛 작업지시 기록 길도 — ' + JSON.stringify(r.log));
+        assert.deepEqual(r.bad, { n: 51, first: 'wo_20261101_071', kept: 1, tr: { broken: true } }, '형식이 이상하면 보고 있는 기록은 남김 — ' + JSON.stringify(r.bad));
+      } finally { await m.context.close(); }
+      assert.deepEqual(errors, [], '페이지 오류 0');
+      assert.equal(network.writes, 0, '외부 쓰기 0');
+    });
+    console.log(`wodaymulti-v587: ${passed}/5 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
   } catch (error) {
     console.error('FAIL wodaymulti-v587 ' + (error && error.stack || error));
     process.exitCode = 1;
