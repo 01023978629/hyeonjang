@@ -258,13 +258,13 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
         gap: document.querySelectorAll('#modalRoot [data-sd-gap]').length,
         siteLeft: [...document.querySelectorAll('#modalRoot [data-sd-site-sum]')].map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(t => /남은 돈/.test(t)),
         btns: [...document.querySelectorAll('#modalRoot .mfoot button')].map(b => b.textContent.trim()) }));
-      // 머리 남음 737,000 을 현장별 남은 돈 770,000 비율로 나누면 머리는 '다 받음'(장부 셈)이고 현장 줄에는 남은 돈이 그대로 보인다 — 차이 경고 줄은 없다(v589)
+      // 머리 남음 737,000 을 현장별 남은 돈 770,000 비율로 나누면 머리는 '다 받음'(장부 셈) — 차이 경고 줄은 없다(v589).
+      // 현장 줄에 남은 몫(33,000)은 v590 부터 숨긴다(대표 결정 11/12 '다 받은 현장 줄의 남은 돈은 숨김') — 자료(g.left)는 그대로.
       assert.equal(after.logs, 15, '입금 저장 2건');
       assert.equal(after.sum, '합계 1,650,000원 · 받음 1,650,000원 · ✓ 다 받음');
       assert.equal(after.gap, 0, '차이 경고 줄 없음 — 머리 남음은 장부 셈 하나');
-      assert.equal(after.siteLeft.length, 2, '현장 줄의 남은 돈은 그대로 보임 ' + JSON.stringify(after.siteLeft));
-      const siteLeftSum = after.siteLeft.reduce((a, t) => a + Number((t.match(/남은 돈 ([\d,]+)원/) || [0, '0'])[1].replace(/,/g, '')), 0);
-      assert.equal(siteLeftSum, 33000, '현장 줄 남은 돈 합 = 33,000 ' + JSON.stringify(after.siteLeft));
+      assert.equal(after.siteLeft.length, 0, '다 받은 내역서는 현장 줄에 남은 돈 없음(v590) ' + JSON.stringify(after.siteLeft));
+      assert.equal(await page.evaluate(() => hjStmtDetailData('A.xlsx').sites.reduce((a, g) => a + (g.quotes ? g.left : 0), 0)), 33000, '자료의 현장 몫 합 = 33,000(화면에서만 숨김)');
       assert.deepEqual(after.btns, ['닫기', '🧾 증빙 5건'], '다 받으면 입금·미수 단추 없음 ' + JSON.stringify(after.btns));
       // 🧾 증빙도 저장 뒤 이 창으로(통합 검토 v587 — 예전엔 창이 닫혀 장부로 떨어졌다)
       await page.click('#modalRoot .mfoot button:has-text("🧾 증빙 5건")');
