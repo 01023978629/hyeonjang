@@ -6738,8 +6738,8 @@ function ensureHeic2any(){
   return __heicLoading;
 }
 let __heicPreviewQueue=[],__heicPreviewRunning=0,__heicRenderTimer=null;
-function queueHeicPreview(file,rec){
-  __heicPreviewQueue.push({file,rec});
+function queueHeicPreview(file,rec,done){   // done(선택): 변환이 끝나면(성공·실패 모두) 부른다 — v584 창 썸네일(hjThumbMake)
+  __heicPreviewQueue.push({file,rec,done});
   pumpHeicPreviewQueue();
 }
 function scheduleHeicRender(){
@@ -6777,7 +6777,7 @@ function pumpHeicPreviewQueue(){
         job.rec._needHeic=false; job.rec._heicFile=null;   // 완료 → 표식·원본 참조 해제(메모리 회수)
         scheduleHeicRender();
       }catch(err){ /* 실패 시 미리보기 없음(목록엔 남음) */ }
-      finally{__heicPreviewRunning--;pumpHeicPreviewQueue();}
+      finally{__heicPreviewRunning--;if(typeof job.done==='function'){try{job.done();}catch(_){}}pumpHeicPreviewQueue();}
     })();
   }
 }
@@ -8548,24 +8548,76 @@ async function photoSuggestApplyAll(){
    🧭 창은 '사진 탭의 묶음에서 보세요'라 창을 나가면 체크·고른 현장을 잃었다. '내역서에 아직 없는 작업' 줄(v566)은 '사진 n장' 숫자뿐이었다.
    · 썸네일은 단추(44px 이상) — 체크 칸(label) 밖에 있어 눌러도 체크·고른 현장이 안 바뀐다(v319·v486 교훈).
    · 누르면 사진 크게 보기(openLightbox)가 창 위에 겹쳐 열리고, 그 묶음 사진만 넘겨 본다. '+n' 칸은 묶음 첫 장부터.
-   · 닫으면(✕·Esc·뒤로) 창·체크·고르기 값 그대로. 저장하는 것 없음. */
-function hjThumbOpen(id,ids){
-  const have=new Set((state.files||[]).map(f=>f&&f.id));
-  if(!id||!have.has(id)){toast('사진을 찾을 수 없어요 — 창을 닫고 다시 열어 주세요');return false;}
-  const list=(Array.isArray(ids)?ids:[]).filter(x=>x&&have.has(x));
+   · 닫으면(✕·Esc·뒤로) 창·체크·고르기 값 그대로. 저장하는 것 없음.
+   · 크게 보기로 넘기는 것은 '지금 보여 줄 수 있는 사진'(미리보기·서버 사본·동영상 — hjThumbCanShow)뿐이다. renderLightbox 는 미리보기도 서버 사본도 없는 사진을
+     드라이브 전체에서 '같은 이름'으로 찾아(크기가 달라도·여럿이어도) 그 Drive ID 를 사진에 적고 저장한다(v584 검토 — PC 폴더 스캔 직후 사진·폰의 PC 전용 사진이
+     바로 그 사진들이다). 엉뚱한 사진을 보고 현장을 고르거나 남의 Drive ID 가 저장될 수 있어 이 입구는 그 길로 들어가지 않는다.
+     - 이 기기에 원본만 있는 사진(hjThumbLocal)은 열기 전에 원본으로 작은 미리보기를 만든다(hjThumbMake → 사진 탭과 같은 queueHeicPreview, 화면 메모리만 — 저장 안 함,
+       누른 사진 + 묶음 앞 HJ_THUMB_PREP_MAX 장까지). 창은 #view 밖이라 observeHeicLazy 가 못 보므로 창이 열리면 보이는 썸네일부터 만든다(hjThumbPrep).
+     - 둘 다 아니면(폰의 PC 전용 사진 등) 단추가 아니라 '미리보기 없음' 칸 — 누를 것이 없다. '+n' 은 볼 수 있는 첫 장부터.
+   · 창을 연 뒤 다시 스캔·복원으로 사진 id 가 바뀌면(id 는 부팅·복원·스캔마다 바뀐다) 없는 사진은 넘겨 볼 목록에서 빼고, 누른 사진이 없으면 알린다. */
+const HJ_THUMB_PREP_MAX=24,HJ_THUMB_MAKE_MS=8000;
+function hjThumbCanShow(f){return !!f&&(!!f.thumb||!!f._driveId||isVideoRec(f));}
+function hjThumbLocal(f){return !!f&&!hjThumbCanShow(f)&&!!(f._heicFile||f.handle||f._file);}
+function hjThumbUsable(f){return hjThumbCanShow(f)||hjThumbLocal(f);}
+const __hjThumbMaking=new WeakMap();
+function hjThumbMake(f){
+  if(hjThumbCanShow(f))return Promise.resolve(true);
+  if(!hjThumbLocal(f))return Promise.resolve(false);
+  const was=__hjThumbMaking.get(f);if(was)return was;
+  let done,fin=false,tm=0;const p=new Promise(r=>{done=r;});__hjThumbMaking.set(f,p);
+  const end=()=>{if(fin)return;fin=true;clearTimeout(tm);__hjThumbMaking.delete(f);done(hjThumbCanShow(f));};
+  tm=setTimeout(end,HJ_THUMB_MAKE_MS);
+  (async()=>{try{
+    const file=f._heicFile||await getFileOf(f);
+    if(!file)return end();
+    f._needHeic=false;   // #view 의 observeHeicLazy 가 같은 사진을 또 변환하지 않게(그 함수와 같은 표시)
+    queueHeicPreview(file,f,end);
+  }catch(_){end();}})();
+  return p;
+}
+let __hjThumbSeq=0,__hjThumbIO=null;
+async function hjThumbOpen(id,ids,ctx){
+  const seq=++__hjThumbSeq,byId=new Map();
+  (state.files||[]).forEach(f=>{if(f&&f.id)byId.set(f.id,f);});
+  const f0=id?byId.get(id):null;
+  if(!f0){toast('사진을 찾을 수 없어요 — 창을 닫고 다시 열어 주세요');return false;}
+  const group=(Array.isArray(ids)?ids:[]).map(x=>byId.get(x)).filter(Boolean);   // 없어진 id 는 뺀다
+  if(!group.includes(f0))group.unshift(f0);
+  const need=[f0].concat(group.filter(f=>f!==f0)).filter(hjThumbLocal).slice(0,HJ_THUMB_PREP_MAX);
+  if(need.length){if(need.length>2)toast('사진 미리보기를 만드는 중… '+need.length+'장');await Promise.all(need.map(hjThumbMake));}
+  if(seq!==__hjThumbSeq||(ctx&&!ctx.isConnected)||document.getElementById('lightbox'))return false;   // 그 사이 다른 사진을 눌렀거나 창이 닫혔다
+  if(!hjThumbCanShow(f0)){toast('이 사진은 이 기기에서 미리보기를 만들 수 없어요 — 원본이 있는 기기(PC)에서 확인하세요');return false;}
+  const list=group.filter(hjThumbCanShow).map(f=>f.id);
   openLightbox(id,list.length?list:[id]);
   return true;
 }
+// 창 안 썸네일 중 이 기기 원본만 있는 것 — 화면에 보이는 것부터 미리보기를 만들어 그림으로 바꾼다(창이 #view 밖이라 observeHeicLazy 가 못 본다)
+function hjThumbPrep(root,attr){
+  if(__hjThumbIO){try{__hjThumbIO.disconnect();}catch(_){}__hjThumbIO=null;}
+  const els=root?[...root.querySelectorAll('['+attr+'][data-thumb-make]')]:[];
+  if(!els.length)return 0;
+  const go=btn=>{const f=(state.files||[]).find(x=>x&&x.id===btn.getAttribute('data-thumb-make'));
+    hjThumbMake(f).then(ok=>{if(!ok||!btn.isConnected)return;btn.removeAttribute('data-thumb-make');btn.innerHTML=photoImg(f,160);});};
+  if(!('IntersectionObserver' in window)){els.slice(0,HJ_THUMB_PREP_MAX).forEach(go);return els.length;}
+  const io=__hjThumbIO=new IntersectionObserver(ents=>ents.forEach(en=>{if(en.isIntersecting){io.unobserve(en.target);go(en.target);}}),{rootMargin:'200px'});
+  els.forEach(el=>io.observe(el));
+  return els.length;
+}
 function hjThumbBind(root,sel,attr,idsOf){
   if(!root)return 0;let n=0;
-  root.querySelectorAll(sel).forEach(btn=>{n++;btn.onclick=e=>{e.preventDefault();e.stopPropagation();hjThumbOpen(btn.getAttribute(attr),idsOf(btn));};});
+  root.querySelectorAll(sel).forEach(btn=>{n++;btn.onclick=e=>{e.preventDefault();e.stopPropagation();hjThumbOpen(btn.getAttribute(attr),idsOf(btn),btn.closest('.modal'));};});
+  hjThumbPrep(root,attr);
   return n;
 }
-// 묶음 미리보기 — 앞 3장 + '+n'(묶음 첫 장부터). cls 는 칸 모양(.hjorg-th/.psr-th), attr 은 단추 표시(data-org-photo/data-psr-photo).
+// 묶음 미리보기 — 앞 3장 + '+n'(볼 수 있는 첫 장부터). cls 는 칸 모양(.hjorg-th/.psr-th), attr 은 단추 표시(data-org-photo/data-psr-photo).
+// 이 기기에서 볼 수 없는 사진(hjThumbUsable 아님)은 단추가 아니라 '미리보기 없음' 칸.
 function hjThumbStrip(files,attr,wrapCls,cls,moreCls){
-  const all=(files||[]).filter(f=>f&&f.id),ps=all.slice(0,3);
-  return '<span class="'+wrapCls+'">'+ps.map((f,i)=>'<button type="button" class="'+cls+'" '+attr+'="'+escapeAttr(String(f.id))+'" aria-label="'+escapeAttr('사진 크게 보기 '+(i+1)+'/'+all.length)+'">'+photoImg(f,160)+'</button>').join('')+
-    (all.length>3?'<button type="button" class="'+cls+' '+moreCls+'" '+attr+'="'+escapeAttr(String(all[0].id))+'" aria-label="'+escapeAttr('사진 크게 보기 — '+(all.length-3)+'장 더, 첫 장부터')+'">+'+(all.length-3)+'</button>':'')+'</span>';
+  const all=(files||[]).filter(f=>f&&f.id),ps=all.slice(0,3),use=all.filter(hjThumbUsable);
+  const btn=(f,label,inner,extra,make)=>'<button type="button" class="'+cls+(extra?' '+extra:'')+'" '+attr+'="'+escapeAttr(String(f.id))+'"'+(make&&hjThumbLocal(f)?' data-thumb-make="'+escapeAttr(String(f.id))+'"':'')+' aria-label="'+escapeAttr(label)+'">'+inner+'</button>';
+  const none=(inner,extra)=>'<span class="'+cls+(extra?' '+extra:'')+'" data-thumb-none role="img" aria-label="미리보기 없음 — 이 기기에 사진이 없어요" title="이 기기에 사진이 없어 크게 볼 수 없어요 — 원본이 있는 기기(PC)에서 확인하세요" style="cursor:default">'+inner+'</span>';
+  return '<span class="'+wrapCls+'">'+ps.map(f=>{const k=use.indexOf(f);return k<0?none(photoImg(f,160)):btn(f,'사진 크게 보기 '+(k+1)+'/'+use.length,photoImg(f,160),'',true);}).join('')+
+    (all.length>3?(use.length?btn(use[0],'사진 크게 보기 — '+(all.length-3)+'장 더, 첫 장부터','+'+(all.length-3),moreCls,false):none('+'+(all.length-3),moreCls)):'')+'</span>';
 }
 /* ---------- v523 🧭 추측 배정 보기: 현장 없는 사진 묶음을 한 창에서 훑고 체크한 것만 배정 ----------
    사진 탭 요약 줄 [🧭 추측 배정 보기]·첫 화면 점검 줄 '미배정 사진 n장'에서 연다. 묶음(clusterPhotos)과 추천(photoSuggestFor —
@@ -37553,8 +37605,9 @@ function viewStatements(){
    · 내역서 줄(q.stmt.lines 의 작업 날짜, 없으면 작성일)이 그 작업 앞뒤 하루 안에 있으면 '들어간 작업'. 집계 제외한 내역서 줄도 청구한 것으로 본다.
    · 견적서로 청구하는 현장(견적 파일·앱 견적은 있고 내역서는 없는 현장)과 사진 없이 '방문·견적·상담·실측·점검' 일정만 있는 날은 '참고'로 따로.
    · [청구 안 함]은 그 현장 안 p.stmtSkip[{from,to,at}] 에만 적는다(새 최상위 저장 키 없음). [📋 글로 복사]는 다음 내역서를 쓸 때 붙여 넣을 글 — 금액·고객 정보 없음.
-   · v584 줄마다 사진 미리보기(앞 3장) — 누르면 사진 크게 보기(그 작업 사진만). 작업 r.ids 는 날짜마다 볼 수 있는 사진(미리보기·서버 사본·기기 원본)을
-     HJ_UNBILLED_DAY_IDS 장까지만 모은다(건강 줄 메모 경로에서도 불리므로 비용 제한). 복사 글·내역서 초안(엑셀)에는 넣지 않는다. */
+   · v584 줄마다 사진 미리보기(앞 3장 + 남은 장수 '+n') — 누르면 사진 크게 보기(그 작업 사진만). 작업 r.ids 는 날짜마다 이 기기에서 볼 수 있는 사진
+     (미리보기·서버 사본·기기 원본 — hjThumbUsable)을 HJ_UNBILLED_DAY_IDS 장까지만 모은다(건강 줄 메모 경로에서도 불리므로 비용 제한). 기기 원본만 있는 사진은
+     크게 보기 전에 미리보기를 먼저 만든다(hjThumbOpen — 드라이브 이름 찾기 길로 가지 않게). 복사 글·내역서 초안(엑셀)에는 넣지 않는다. */
 const HJ_UNBILLED_DAYS=90,HJ_UNBILLED_VISIT_RE=/방문|견적|상담|실측|미팅|점검/,HJ_UNBILLED_DAY_IDS=4;
 function hjUnbilledSkipped(p,run){return (Array.isArray(p&&p.stmtSkip)?p.stmtSkip:[]).some(x=>x&&String(x.from)<=run.from&&String(x.to)>=run.to);}
 function hjUnbilledPlan(opts){
@@ -37563,7 +37616,7 @@ function hjUnbilledPlan(opts){
   const ev=new Map();
   const at=(name,day)=>{if(!pj.has(name)||!ISO.test(day)||day<since||day>today)return null;let m=ev.get(name);if(!m){m=new Map();ev.set(name,m);}let d=m.get(day);if(!d){d={photos:0,labels:new Map(),titles:[],ids:[]};m.set(day,d);}return d;};
   (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||!f.project)return;const d=at(f.project,hjKDayFast(f));if(!d)return;d.photos++;const lb=hjWorkLabelClean(f._worklabel);if(lb)d.labels.set(lb,(d.labels.get(lb)||0)+1);
-    if(d.ids.length<HJ_UNBILLED_DAY_IDS&&f.id&&(f.thumb||f._driveId||f.handle||f._file))d.ids.push(f.id);});   // v584 미리보기용 — 날짜마다 4장까지
+    if(d.ids.length<HJ_UNBILLED_DAY_IDS&&f.id&&hjThumbUsable(f))d.ids.push(f.id);});   // v584 미리보기용 — 날짜마다 4장까지
   (state.schedule||[]).forEach(s=>{if(!s||!s.project||!hjPrepOtherOk(s)||s.sourceUid)return;const d=at(s.project,String(s.date||''));if(!d)return;const t=String(s.title||'').replace(/\s*\(\d+일차 시작\)\s*$/,'').replace(/\s+/g,' ').trim();if(t&&!d.titles.includes(t))d.titles.push(t);});
   const billed=new Map(),hasStmt=new Set(),hasEst=new Set();
   (state.quotes||[]).forEach(q=>{if(!q||!q.project)return;if(!q.stmt){hasEst.add(q.project);return;}
@@ -37678,13 +37731,16 @@ function hjUnbilledHTML(){
   if(!P.rows.length&&!P.refs.length&&!P.skipped)return '';
   const byId=new Map();P.rows.concat(P.refs).forEach(r=>(r.ids||[]).forEach(id=>byId.set(id,null)));
   if(byId.size)(state.files||[]).forEach(f=>{if(f&&byId.has(f.id))byId.set(f.id,f);});
-  // v584 사진 미리보기 — 앞 3장 단추(44px), 누르면 그 작업 사진(r.ids)만 넘겨 보는 사진 크게 보기(#view 위임 [data-unbilled-photo])
-  const thumbs=r=>{const fs=(r.ids||[]).map(id=>byId.get(id)).filter(Boolean);if(!fs.length)return '';
-    return '<span data-unbilled-thumbs="'+escapeAttr(JSON.stringify(fs.map(f=>f.id)))+'" style="display:flex;gap:4px;flex:none;align-items:center">'+fs.slice(0,3).map((f,i)=>'<button type="button" class="ub-th" data-unbilled-photo="'+escapeAttr(String(f.id))+'" aria-label="'+escapeAttr('사진 크게 보기 '+(i+1)+'/'+fs.length+' — '+r.project)+'">'+photoImg(f,120)+'</button>').join('')+'</span>';};
+  // v584 사진 미리보기 — 앞 3장 단추(44px) + 남은 장수 '+n'(그 작업 사진 수 기준 — 크게 보기는 날짜마다 앞 HJ_UNBILLED_DAY_IDS 장까지라 따로 알린다),
+  // 누르면 그 작업 사진(r.ids)만 넘겨 보는 사진 크게 보기(#view 위임 [data-unbilled-photo])
+  const thumbs=r=>{const fs=(r.ids||[]).map(id=>byId.get(id)).filter(hjThumbUsable);if(!fs.length)return '';
+    const all=Math.max(Number(r.photos)||0,fs.length),more=all-Math.min(3,fs.length),note='크게 보기는 날짜마다 앞 '+HJ_UNBILLED_DAY_IDS+'장까지';
+    return '<span data-unbilled-thumbs="'+escapeAttr(JSON.stringify(fs.map(f=>f.id)))+'" title="'+escapeAttr('사진 '+all+'장 — '+note)+'" style="display:flex;gap:4px;flex:none;align-items:center">'+fs.slice(0,3).map((f,i)=>'<button type="button" class="ub-th" data-unbilled-photo="'+escapeAttr(String(f.id))+'" aria-label="'+escapeAttr('사진 크게 보기 '+(i+1)+' — '+r.project+' 사진 '+all+'장('+note+')')+'">'+photoImg(f,120)+'</button>').join('')+
+      (more>0?'<button type="button" class="ub-th ub-more" data-unbilled-photo="'+escapeAttr(String(fs[0].id))+'" aria-label="'+escapeAttr('사진 크게 보기 — '+more+'장 더, 첫 장부터('+note+')')+'">+'+more+'</button>':'')+'</span>';};
   const row=(r,ref)=>'<div data-unbilled-row="'+escapeAttr(r.project)+'"'+(ref?' data-unbilled-ref="'+(r.visit?'visit':'est')+'"':'')+' style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere">'+escapeHtml(hjUnbilledLine(r))+(ref?' <span style="color:var(--muted)">('+(r.visit?'방문·상담 일정만':'견적서로 청구하는 현장')+')</span>':'')+'</div>'+thumbs(r)+
     '<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">현장</button><button type="button" class="mini-btn" data-unbilled-skip="'+escapeAttr(r.project)+'" data-from="'+r.from+'" data-to="'+r.to+'" style="min-height:44px" title="서비스·AS처럼 청구하지 않는 작업이면 목록에서 넘깁니다">청구 안 함</button></div>';
   const SHOW=20;
-  return '<section data-unbilled class="card" style="cursor:default;padding:12px 14px;margin:0 0 14px">'+(byId.size?'<style>#view .ub-th,#view .ub-th:hover{width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);flex:none;cursor:zoom-in;transform:none;box-shadow:none}#view .ub-th img{width:100%;height:100%;object-fit:cover;display:block}</style>':'')+
+  return '<section data-unbilled class="card" style="cursor:default;padding:12px 14px;margin:0 0 14px">'+(byId.size?'<style>#view .ub-th,#view .ub-th:hover{width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);flex:none;cursor:zoom-in;transform:none;box-shadow:none}#view .ub-th img{width:100%;height:100%;object-fit:cover;display:block}#view .ub-more,#view .ub-more:hover{font-size:12px;font-weight:700;color:var(--ink)}</style>':'')+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">🧾 내역서에 아직 없는 작업 <span data-unbilled-n>'+P.rows.length+'</span>건</b>'+(P.rows.length?'<span style="display:flex;flex-wrap:wrap;gap:6px"><button type="button" class="mini-btn" data-unbilled-copy style="min-height:44px">📋 글로 복사</button><button type="button" class="mini-btn" data-unbilled-draft style="min-height:44px" title="협력사에 보내는 작업내역서 양식으로 엑셀 초안 — 작업비용은 비워 둠">📝 내역서 초안(엑셀)</button></span>':'')+'</div>'+
     '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px">최근 '+HJ_UNBILLED_DAYS+'일 사진·일정이 있는 날인데 앞뒤 하루 안에 작업내역서 줄이 없는 작업이에요. 다음 내역서에 넣거나, 청구하지 않는 작업이면 [청구 안 함].</div>'+
     (P.rows.length?P.rows.slice(0,SHOW).map(r=>row(r,false)).join('')+(P.rows.length>SHOW?'<div data-unbilled-more style="font-size:11.5px;color:var(--muted);padding-top:4px">…외 '+(P.rows.length-SHOW)+'건 — [📋 글로 복사]에는 모두 들어가요</div>':''):'<div data-unbilled-ok style="font-size:12.5px;color:var(--ok);padding:4px 0">✓ 최근 작업이 모두 내역서에 들어 있어요</div>')+
