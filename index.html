@@ -12997,7 +12997,7 @@ async function aiToolRun(name,a){
       let est=0,recv=0;const sc=[0,0,0,0];
       acts.forEach(p=>{const s=projStats(p.name);est+=s.est;recv+=s.recv;sc[Math.min(s.stage||0,3)]++;});
       const today=localDate();
-      const ts=(state.schedule||[]).filter(s=>s.date===today).sort((x,y)=>String(x.time||'').localeCompare(String(y.time||''))).map(s=>({시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));
+      const ts=hjDaySchView(today).sort((x,y)=>String(x.time||'').localeCompare(String(y.time||''))).map(s=>({시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));   // v591 이어지는 날 포함(💰 도 예전처럼 셈 — aiBriefData 와 같은 목록)
       const up=(state.schedule||[]).filter(s=>s.date>today).sort((x,y)=>(x.date+(x.time||'')).localeCompare(y.date+(y.time||''))).slice(0,5).map(s=>({날짜:s.date,시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));
       return {오늘:today,현장수:acts.length,단계별:{상담:sc[0],실측:sc[1],시공:sc[2],완료:sc[3]},
         견적합계원:est,수금합계원:recv,
@@ -14847,6 +14847,13 @@ function hjDaySchView(day,filter){
   return (state.schedule||[]).filter(s=>s&&s.date===day&&ok(s)).concat(hjSchContinuing(day,s=>!!s&&ok(s)).map(x=>Object.assign({},x.s,{date:day,
     title:(String(x.s.title||'').replace(HJ_PLAN_SUFFIX_RE,'')||'작업')+' ('+x.c.day+'/'+x.c.days+'일째)',_cont:x.c})));
 }
+/* v591 '오늘 일정'을 세던 나머지 아홉 곳(AI get_overview·🔔 스마트 알림·📅 일정 브리핑·🤖 능동 브리핑·🗣 음성 브리핑·운영 루프 계획·
+   ☀️ 운영 일일 브리핑·🗺 오늘 동선·🧠 AI 브레인)은 v586 뒤에도 date===오늘만 세어, 3일짜리 공정 둘째·셋째 날이 빠지고 🤖 오늘 챙길 일과 수가 달랐다
+   (🗺 동선은 그 현장에 오늘 가는데도 '방문할 현장 없음'). 이제 모두 hjDaySchView(그날, 그곳이 예전에 거르던 조건) — 이어지는 날 복사본(제목 '(2/3일째)',
+   date 그날, id 원본 그대로)을 더한다. 거르던 것(💰 수금)은 이어지는 날에도 그대로 거르고, 예전에 안 거르던 것(세금·개인 일정)은 새로 거르지 않는다.
+   일요일·완료 보고된 공정은 hjSchContOn 이 뺀다. 읽기만 — 원본 일정은 바꾸지 않는다. */
+const HJ_MONEY_SCH_RE=/^💰/;
+function hjDaySchNoMoney(day){return hjDaySchView(day,s=>!HJ_MONEY_SCH_RE.test(String(s.title||'')));}
 // 한 줄 글 — 이어지는 날이면 공정표 꼬리 '(N일차 시작)' 를 떼고 '(2/3일째)' 를 붙인다
 function hjTodaySchLine(r,tn,pn){
   const s=r.s,t=r.c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,''):s.title;
@@ -22474,7 +22481,7 @@ async function hjNotifyRequest(){
 function hjNotifyItems(){
   const items=[];const today=localDate();
   // 오늘 일정
-  (state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).forEach(s=>{
+  hjDaySchNoMoney(today).forEach(s=>{   // v591 이어지는 날 포함 — 그날 한 일정은 시작 또는 이어지는 날 중 하나라 'sch-'+id 가 겹치지 않는다
     items.push({key:'sch-'+s.id,ic:'🗓',title:'오늘 일정: '+(s.time?s.time+' ':'')+s.title,body:(s.project?s.project+' · ':'')+(s.workers?'인원 '+s.workers:'')});
   });
   // 무상 A/S 만료 임박(30일 이내)
@@ -23988,7 +23995,7 @@ function hjAddrArea(addr){
 }
 function todayScheduleBrief(){
   const today=localDate();
-  const list=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const list=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
   // 각 일정에 현장 정보·준비물 힌트
   const rows=list.map(s=>{
     const p=state.projects.find(x=>x.name===s.project);
@@ -24310,7 +24317,7 @@ function aiActiveBriefData(){
   const parts=[];const urgent=[];
   // 오늘 일정
   const today=localDate();
-  const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
   if(sch.length){const f=sch[0];parts.push('오늘 일정 '+sch.length+'건'+(f.time?'('+f.time+' '+hjCut(f.title,10)+' 등)':''));urgent.push({ic:'🗓',t:'오늘 일정 '+sch.length+'건',cmd:'오늘 일정 브리핑'});}
   // AI 제안(완료 현장 청구 등)
   try{const sug=(typeof aiSuggestions==='function')?aiSuggestions():[];sug.slice(0,2).forEach(s=>{const clean=String(s.t||'').replace(/<[^>]+>/g,'');urgent.push({ic:s.ic||'💡',t:clean,cmd:s.cmd});});}catch(e){}
@@ -26314,7 +26321,7 @@ function routeOptimize(stops,startLat,startLng){
 async function routeToday(dateStr){
   const date=dateStr||localDate();
   // 그 날 일정에서 현장 있는 것
-  const sch=(state.schedule||[]).filter(s=>s.date===date&&s.project&&!/^💰/.test(s.title||''));
+  const sch=hjDaySchView(date,s=>!!s.project&&!HJ_MONEY_SCH_RE.test(String(s.title||'')));   // v591 여러 날 공정의 이어지는 날도 그 현장에 가는 날
   const [c1,c2]=hjBrandGrad('#0e7a6b','#1d6fd8');
   // 좌표 있는 현장만
   const stops=[];const noCoord=[];
@@ -26752,7 +26759,7 @@ function ttsBriefText(){
   parts.push(greet+'. 오늘의 브리핑입니다.');
   // 오늘 일정
   const today=localDate();
-  const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
   if(sch.length){
     parts.push('오늘 일정은 '+sch.length+'건입니다.');
     sch.slice(0,4).forEach(s=>{parts.push((s.time?s.time+' ':'')+(s.project?s.project+' ':'')+hjCut(s.title||'',20));});
@@ -28220,7 +28227,7 @@ function aiPlannerScan(scope){
     try{
       const today=aiOpsTodayKey();
       const tmr=new Date();tmr.setDate(tmr.getDate()+1);const tmrKey=tmr.getFullYear()+'-'+pad2(tmr.getMonth()+1)+'-'+pad2(tmr.getDate());
-      const todaySch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||''));
+      const todaySch=hjDaySchNoMoney(today);   // v591 이어지는 날 포함(복사본 date 가 오늘이라 아래 시각 겹침도 그날로 센다) — 내일 줄은 예전 그대로
       const tmrSch=(state.schedule||[]).filter(s=>s.date===tmrKey&&!/^💰/.test(s.title||''));
       if(todaySch.length)add({category:'일정',type:'brief_today',title:'오늘 일정 브리핑 ('+todaySch.length+'건)',
         reason:todaySch.slice(0,3).map(s=>(s.time||'')+' '+(s.project||s.title||'')).join(', '),
@@ -28606,7 +28613,7 @@ function aiOpsReportSummary(){
 }
 function aiOpsDailyBrief(){
   const today=aiOpsTodayKey();
-  const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time).localeCompare(String(b.time)));   // v591 이어지는 날 포함
   const sum=aiOpsReportSummary();
   const extra=(typeof briefExtraItems==='function')?briefExtraItems():[];
   const lines=[];
@@ -32068,7 +32075,7 @@ async function aiOpsBrain(){
   // 현재 상태 요약(앱 데이터만)
   const sum=aiQueueSummary();
   const active=(state.projects||[]).filter(p=>!p.archived&&p.stage<3).length;
-  const todaySch=(state.schedule||[]).filter(s=>s.date===aiOpsTodayKey()&&!/^💰/.test(s.title||'')).length;
+  const todaySch=hjDaySchNoMoney(aiOpsTodayKey()).length;   // v591 이어지는 날 포함
   const queueTop=sum.top3.map(t=>t.title).join(', ')||'없음';
   const prompt='너는 1인 인테리어 사장의 운영 비서다. 아래는 현재 사업 상태다.\n'+
     '- 진행 현장: '+active+'곳\n- 오늘 일정: '+todaySch+'건\n'+
