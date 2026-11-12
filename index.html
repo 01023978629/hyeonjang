@@ -39208,6 +39208,9 @@ function hjStmtQuoteEdited(q,n){
   if(!st||!ls.length||items.length!==ls.length)return '품목 수가 내역서 줄과 달라요';
   if(!q.vatIncluded)return '부가세 설정이 바뀌었어요';
   for(let i=0;i<ls.length;i++){if(num(items[i].qty)!==1||String(items[i].name||'')!==(hjStmtCell(ls[i].work)||hjStmtCell(ls[i].loc)||'작업'))return '품목 이름·수량이 내역서 줄과 달라요';}
+  // 합은 그대로 두고 품목 사이 금액만 옮긴 견적도 손으로 고친 것 — 품목마다 그 줄 금액에서 나온 단가(부가세 포함이면 ÷1.1)와 1원 보정 몫(줄 수 × 2 + 2원) 넘게 다르면
+  const tol=2*ls.length+2;
+  for(let i=0;i<ls.length;i++){const a=Math.round(num(ls[i].amt)),base=st.vat==='separate'?a:Math.round(a/1.1);if(Math.abs(num(items[i].price)-base)>tol)return '품목 금액을 손으로 고쳤어요';}
   const tot=ls.reduce((a,l)=>a+Math.round(num(l.amt)),0),sub=Math.round(items.reduce((a,it)=>a+num(it.qty)*num(it.price),0));
   const w=quoteSupplyForTotal(tot),want=st.vat==='separate'?tot:(w!=null?w:Math.round(tot/1.1));
   return Math.abs(want-sub)>(n||1)+1?'품목 금액을 손으로 고쳤어요':'';
@@ -39221,15 +39224,37 @@ function hjStmtReprice(q){
   st.total=vat==='separate'?tot+Math.round(tot*0.1):tot;
   st.updatedAt=new Date().toISOString();
 }
-// 기본 '바꾸기'('r:<견적 id>:<줄 번호>') — 짝이 하나로 정해지고(sure) 손으로 고친 견적이 아니며, 날짜가 있을 때만.
-// 날짜 없는 줄(더케이 양식 '미기재')은 위치·작업명만 같은 것이라 같은 원본 파일의 줄일 때만 — 아니면 '' (사람이 고른다)
-function hjStmtRevDefault(v,l,src){const e=v&&v.sure?v.cands[0]:null;return e&&!hjStmtQuoteEdited(e.q,1)&&(l&&l.d||hjStmtSrcOf(e.q)===hjStmtCell(src))?'r:'+e.q.id+':'+e.li:'';}
-// 미리보기용(읽기만) — 금액만 바뀐 줄과 후보, 기본값(hjStmtRevDefault), 같은 파일인데 새 파일에 없는 옛 줄
-function hjStmtRevisions(lines,src){
+// 확인 창의 고른 현장 이름('__new__:이름' 이면 그 이름) — hjStmtApply 묶음과 같은 셈
+function hjStmtChoiceName(c){c=String(c||'');return c.indexOf('__new__:')===0?hjStmtCell(c.slice(8)).slice(0,60):c;}
+// 그 옛 줄을 기본으로 바꾸면 안 되는 까닭('' = 기본 '바꾸기' 가능) — 애매하면 사람이 고른다. ctx={project:이 줄 묶음에서 고른 현장, to:새 파일 받는 분}
+// 손으로 고친 견적 · 집계 제외 견적 · 지운 현장('(삭제됨) …')·보관 현장 견적 · 고른 현장과 다른 현장 견적 · 다른 원본 파일인데 거래처가 다르거나 모름 ·
+// 날짜 없는 줄(더케이 양식 '미기재' — 위치·작업명만 같은 것)은 같은 원본 파일일 때만. (고른 현장을 모르면(ctx.project 없음) 현장 비교는 건너뛴다)
+function hjStmtRevBlock(e,l,src,ctx){
+  const q=e&&e.q;if(!q)return '바꿀 줄을 찾지 못했어요';
+  if(hjStmtQuoteEdited(q,1))return '손으로 고친 견적이라 바꿀 수 없어요 — 골라 주세요';
+  if(q.exSum)return '집계 제외한 견적이라 골라 주세요';
+  const p=q.project||'',pj=(state.projects||[]).find(x=>x&&x.name===p);
+  if(!pj)return '지운 현장의 견적이라 골라 주세요';
+  if(pj.archived)return '보관한 현장의 견적이라 골라 주세요';
+  if(ctx&&ctx.project!=null&&ctx.project!==p)return '고른 현장('+ctx.project+')과 다른 현장의 견적이라 골라 주세요';
+  if(hjStmtSrcOf(q)!==hjStmtCell(src)){
+    if(!(l&&l.d))return '날짜가 없는 줄이라 골라 주세요';
+    const a=hjStmtCell(q.stmt&&q.stmt.to),b=hjStmtCell(ctx&&ctx.to);
+    if(!a||!b)return '다른 파일이고 거래처를 알 수 없어 골라 주세요';
+    if(a!==b)return '다른 거래처(‘'+a+'’) 내역서라 골라 주세요';
+  }
+  return '';
+}
+// 기본 '바꾸기'('r:<견적 id>:<줄 번호>') — 짝이 하나로 정해지고(sure) 막을 까닭(hjStmtRevBlock)이 없을 때만, 아니면 '' (사람이 고른다)
+function hjStmtRevDefault(v,l,src,ctx){const e=v&&v.sure?v.cands[0]:null;return e&&!hjStmtRevBlock(e,l,src,ctx)?'r:'+e.q.id+':'+e.li:'';}
+// 미리보기용(읽기만) — 금액만 바뀐 줄과 후보, 기본값(hjStmtRevDefault), 같은 파일인데 새 파일에 없는 옛 줄.
+// ctx={projectOf:줄→고른 현장 이름, to:받는 분} — 확인 창과 같은 기본값을 셈한다
+function hjStmtRevisions(lines,src,ctx){
   const c=hjStmtClassify(lines),rows=[],inRev=new Set();
-  (lines||[]).forEach((l,i)=>{const v=c.rev.get(l);if(!v)return;
-    const cands=v.cands.map(e=>{inRev.add(e);return {qid:e.q.id,li:e.li,amt:Math.round(num(e.l.amt)),project:e.q.project||'',src:hjStmtSrcOf(e.q),edited:hjStmtQuoteEdited(e.q,1)};});
-    rows.push({i,line:l,cands,sure:v.sure,def:hjStmtRevDefault(v,l,src)});});
+  const cx=l=>({project:ctx&&typeof ctx.projectOf==='function'?ctx.projectOf(l):undefined,to:ctx&&ctx.to});
+  (lines||[]).forEach((l,i)=>{const v=c.rev.get(l);if(!v)return;const x=cx(l);
+    const cands=v.cands.map(e=>{inRev.add(e);return {qid:e.q.id,li:e.li,amt:Math.round(num(e.l.amt)),project:e.q.project||'',src:hjStmtSrcOf(e.q),edited:hjStmtQuoteEdited(e.q,1),block:hjStmtRevBlock(e,l,src,x)};});
+    rows.push({i,line:l,cands,sure:v.sure,def:hjStmtRevDefault(v,l,src,x)});});
   const s=hjStmtCell(src);
   const missing=s?c.exist.filter(e=>!e.used&&!inRev.has(e)&&hjStmtSrcOf(e.q)===s).map(e=>({project:e.q.project||'',d:e.l.d||'',loc:e.l.loc||'',work:e.l.work||'',amt:Math.round(num(e.l.amt))})):[];
   return {rows,missing,dup:c.dup.size};
@@ -39261,7 +39286,15 @@ function hjStmtRevisePlan(lines){
     hjStmtReprice(c);
     qs.push({q,c,rs,before:quoteCalc(q).total,after:quoteCalc(c).total});
   });
-  // 그 내역서에 이미 적힌 입금이 새 합계보다 크면 막는다(장부 hjStmtLedger 와 같은 셈 — 집계 제외·현장 없는 견적은 빼고). 이번에 줄어든 내역서만 본다.
+  // 그 내역서에 이미 적힌 입금이 새 합계보다 크면 막는다(장부 hjStmtLedger 와 같은 셈 — 집계 제외·현장 없는 견적은 빼고). 이번에 줄어든 것만 본다.
+  // 입금은 현장마다 나눠 적으므로(hjStmtPayApply) 먼저 그 내역서·그 현장 입금을 본다 — 내역서 전체로만 보면 한 현장은 더 받은 채로 남고
+  // 다른 현장 미수는 장부가 '다 받음'이 된 뒤에도 영영 남는다(현장 화면·미수와 장부 숫자가 갈라진다).
+  const sum=(src,p)=>{let before=0,after=0;(state.quotes||[]).forEach(q=>{if(!q||!q.stmt||q.exSum||!q.project||hjStmtSrcOf(q)!==src||(p!=null&&q.project!==p))return;const x=qs.find(y=>y.q===q),t=quoteCalc(q).total;before+=t;after+=x?x.after:t;});return {before,after};};
+  const pairs=new Map();qs.forEach(x=>{if(x.q.exSum||!x.q.project)return;const src=hjStmtSrcOf(x.q);pairs.set(src+'\u0000'+x.q.project,{src,p:x.q.project});});
+  pairs.forEach(({src,p})=>{
+    const t=sum(src,p),paid=(state.payLog||[]).reduce((a,x)=>a+(x&&x.stmt===src&&x.project===p?Math.round(num(x.amt)):0),0);
+    if(t.after<t.before&&paid>t.after)throw new Error('‘'+src+'’ · '+p+' 에 이미 적힌 입금 '+won(paid)+'이 이 현장의 새 합계 '+won(t.after)+'보다 커요 — 입금 기록을 먼저 고치세요');
+  });
   new Set(qs.map(x=>hjStmtSrcOf(x.q))).forEach(src=>{
     let before=0,after=0;
     (state.quotes||[]).forEach(q=>{if(!q||!q.stmt||q.exSum||!q.project||hjStmtSrcOf(q)!==src)return;const x=qs.find(y=>y.q===q),t=quoteCalc(q).total;before+=t;after+=x?x.after:t;});
@@ -39275,7 +39308,7 @@ function hjStmtPlanByProject(plan){
   const byP=new Map();
   ((plan&&plan.groups)||[]).forEach(g=>{
     let p=String(g&&g.choice||''),isNew=false;if(!p)return;
-    if(p.indexOf('__new__:')===0){p=hjStmtCell(p.slice(8)).slice(0,60);if(!p)return;isNew=!(state.projects||[]).some(x=>x.name===p);}
+    if(p.indexOf('__new__:')===0){p=hjStmtChoiceName(p);if(!p)return;isNew=!(state.projects||[]).some(x=>x.name===p);}
     else if(!(state.projects||[]).some(x=>x.name===p))return;
     if(!byP.has(p))byP.set(p,{lines:[],isNew});
     byP.get(p).lines.push(...(g.lines||[]));
@@ -39363,7 +39396,7 @@ function hjStmtReview(r){
     return;
   }
   const groups=hjStmtGroups(r);
-  const cur={r,groups,exclude:new Set(),rev:new Map(),revSig:null,busy:false};window.__hjStmtCur=cur;   // v583 rev: 금액만 바뀐 줄 → 고른 값('r:<견적 id>:<줄 번호>'|'add'|'skip'|'')
+  const cur={r,groups,exclude:new Set(),rev:new Map(),revUser:new Set(),revAmt:new Map(),revSig:null,busy:false};window.__hjStmtCur=cur;   // v583 rev: 금액만 바뀐 줄 → 고른 값('r:<견적 id>:<줄 번호>'|'add'|'skip'|'') · revUser: 사람이 직접 고른 줄(기본값을 다시 셈하지 않음) · revAmt: 그 옛 줄의 화면에 보인 금액
   // v583 같은 파일로 예전에 넣었는데 이번 파일에 없는 줄 — 알림만(지우지 않는다). 이 창이 열린 동안 자료는 그대로라 한 번만 센다.
   const miss=hjStmtRevisions(r.lines,r.file).missing;
   const missHtml=miss.length?`<p class="hint" data-stmt-missing="${miss.length}" style="font-size:12px;line-height:1.6;margin:0 0 8px;padding:8px 10px;border:1px dashed var(--line-soft);border-radius:10px">ℹ 같은 파일 ‘${escapeHtml(r.file)}’ 로 예전에 넣은 줄 중 <b>새 파일에 없는 줄 ${miss.length}개</b> — 지우지 않습니다. 빼야 하면 그 견적을 직접 고치세요.<br>${miss.slice(0,5).map(x=>escapeHtml((hjStmtMd(x.d)?hjStmtMd(x.d)+' ':'')+(x.work||'작업')+' '+hjNum(x.amt)+' · '+x.project)).join('<br>')}${miss.length>5?'<br>외 '+(miss.length-5)+'줄':''}</p>`:'';
@@ -39410,10 +39443,11 @@ function hjStmtReview(r){
       // v583 금액만 바뀐 줄을 아직 안 골랐으면 반영하지 않는다(조용히 두 번 더하지 않게)
       const pend=[...root.querySelectorAll('[data-stmt-rev]')].filter(sel=>!sel.value);
       if(pend.length){toast('금액만 바뀐 줄 '+pend.length+'개 — 바꾸기·따로 더하기·넣지 않기 중 골라 주세요');try{pend[0].focus();}catch(e){}return;}
+      // 바꾸기는 화면에 보인 옛 금액(revAmt)을 같이 넘긴다 — 창을 연 뒤 그 옛 줄이 바뀌었으면 hjStmtRevisePlan 이 막는다(누르는 순간 값을 다시 읽으면 늘 같아 못 막는다)
       const withRev=l=>{const d=cur.rev.get(l);if(!d)return l;
         if(d==='add'||d==='skip')return Object.assign({},l,{revise:d});
-        const a=d.split(':'),qid=a[1],li=+a[2],q=(state.quotes||[]).find(x=>x&&x.id===qid),old=q&&q.stmt&&(q.stmt.lines||[])[li];
-        return Object.assign({},l,{revise:'replace',reviseTo:{qid,li,amt:old?Math.round(num(old.amt)):null}});};
+        const a=d.split(':'),qid=a[1],li=+a[2],amt=cur.revAmt.get(d);
+        return Object.assign({},l,{revise:'replace',reviseTo:{qid,li,amt:amt==null?null:amt}});};
       const plan={src:r.file,file:r.file,doc:'작업내역서',to:hjStmtCell((root.querySelector('#stmtTo')||{}).value||''),date:(root.querySelector('#stmtDate')||{}).value||r.date,
         vat:((root.querySelector('input[name="stmtVat"]:checked')||{}).value)==='separate'?'separate':'included',
         groups:cur.groups.map(g=>({loc:g.loc,lines:g.lines.map(withRev),choice:g.choice})),exclude:[...cur.exclude]};
@@ -39426,12 +39460,13 @@ function hjStmtReview(r){
       toast('📑 작업내역서 반영: 새 견적 '+res.quotes.length+'건'+(res.appended.length?' · 기존 견적에 줄 추가 '+res.appended.length+'건':'')+(res.replaced.length?' · 금액 바꾼 줄 '+res.replaced.length+'개':'')+' · '+won(res.total)+(res.newProjects.length?' · 새 현장 '+res.newProjects.length:'')+(res.excluded?' · 기존 견적 '+res.excluded+'건 집계 제외':'')+(res.dupLines?' · 이미 반영된 줄 '+res.dupLines+'개 건너뜀':'')+(res.reviseSkipped?' · 넣지 않은 줄 '+res.reviseSkipped+'개':''));
     }}],true);
   const root=$('#modalRoot');
-  // v583 금액만 바뀐 줄의 지금 값 — 없거나 후보와 안 맞으면 기본값(hjStmtRevDefault — 아니면 '' = 아직 안 고름)
+  // v583 금액만 바뀐 줄의 지금 값 — 사람이 고른 값이 아직 맞으면 그대로, 아니면 기본값(hjStmtRevDefault — 아니면 '' = 아직 안 고름).
+  // 기본값은 그 줄 묶음에서 고른 현장·받는 분(ctx)에 따라 달라지므로, 사람이 손대지 않은 줄은 그릴 때마다 다시 셈한다.
   const revKey=e=>'r:'+e.q.id+':'+e.li;
-  const revDec=(l,v)=>{
+  const revDec=(l,v,ctx)=>{
     let d=cur.rev.get(l);
-    const ok=d==='add'||d==='skip'||d===''||v.cands.some(e=>revKey(e)===d&&!hjStmtQuoteEdited(e.q,1));
-    if(d==null||!ok){d=hjStmtRevDefault(v,l,r.file);cur.rev.set(l,d);}
+    const ok=cur.revUser.has(l)&&(d==='add'||d==='skip'||d===''||v.cands.some(e=>revKey(e)===d&&!hjStmtQuoteEdited(e.q,1)));
+    if(!ok){cur.revUser.delete(l);d=hjStmtRevDefault(v,l,r.file,ctx);cur.rev.set(l,d);}
     return d;
   };
   const refresh=()=>{
@@ -39439,14 +39474,16 @@ function hjStmtReview(r){
     // 이미 들어간 줄 · 금액만 바뀐 줄(어느 내역서 견적이든) — 반영(hjStmtApply → hjStmtClassify)과 같은 기준으로 미리 보여 준다
     const chosenLines=[];cur.groups.forEach(g=>{if(g.choice)chosenLines.push(...g.lines);});
     const cls=hjStmtClassify(chosenLines);
-    const pOf=g=>g.choice.indexOf('__new__:')===0?hjStmtCell(g.choice.slice(8)):g.choice;
+    const pOf=g=>hjStmtChoiceName(g.choice);
+    const to=hjStmtCell((root.querySelector('#stmtTo')||{}).value||'');
+    const ctxOf=new Map();cur.groups.forEach(g=>{if(g.choice)g.lines.forEach(l=>ctxOf.set(l,{project:pOf(g),to}));});
     const newBy={},lineN={};let repN=0,repD=0,pendN=0;
     cur.groups.forEach((g,i)=>{
       let dup=0,fresh=0,amt=0,rev=0;
       if(g.choice)g.lines.forEach(l=>{
         if(cls.dup.has(l)){dup++;return;}
         const v=cls.rev.get(l);
-        if(v){rev++;const d=revDec(l,v);
+        if(v){rev++;const d=revDec(l,v,ctxOf.get(l));
           if(d==='add'){fresh++;amt+=l.amt;}
           else if(d.indexOf('r:')===0){repN++;const e=v.cands.find(x=>revKey(x)===d);if(e)repD+=Math.round(num(l.amt))-Math.round(num(e.l.amt));}
           else if(!d)pendN++;
@@ -39462,21 +39499,25 @@ function hjStmtReview(r){
         :[ln.dup?'줄 '+ln.dup+'개는 이미 반영돼 건너뜁니다':'',ln.rev?'✏️ 금액만 바뀐 줄 '+ln.rev+'개 — 아래에서 고르세요':'',
           ln.fresh?(app?'같은 내역서 견적에 새 줄을 붙입니다':g.choice.indexOf('__new__:')===0?'새 현장을 만들어 넣습니다':(g.cands[0]&&g.cands[0].name===g.choice&&g.cands[0].score<0.5?'⚠ 이름이 많이 다릅니다 — 맞는 현장인지 확인':'')):''].filter(Boolean).join(' · ');});
     // v583 금액만 바뀐 줄 고르기 — 줄이 바뀔 때만 다시 그린다(고르는 중인 칸이 사라지지 않게)
-    const rrows=[];r.lines.forEach((l,i)=>{const v=cls.rev.get(l);if(v)rrows.push({i,l,v});});
-    const sig=rrows.map(x=>x.i+':'+x.v.cands.map(revKey).join(',')).join('|');
+    const rrows=[];r.lines.forEach((l,i)=>{const v=cls.rev.get(l);if(v)rrows.push({i,l,v,ctx:ctxOf.get(l)});});
+    // 후보·옛 금액·막는 까닭·기본값이 바뀔 때만 다시 그린다(고르는 중인 칸이 사라지지 않게 — 사람이 고른 값은 cur.rev 에 남는다)
+    const sig=rrows.map(x=>x.i+':'+x.v.cands.map(e=>revKey(e)+'='+Math.round(num(e.l.amt))+'/'+hjStmtRevBlock(e,x.l,r.file,x.ctx)).join(',')+'>'+hjStmtRevDefault(x.v,x.l,r.file,x.ctx)).join('|');
     const rbox=root.querySelector('#stmtRevise');
     if(rbox&&sig!==cur.revSig){
       cur.revSig=sig;
+      cur.revAmt=new Map();rrows.forEach(x=>x.v.cands.forEach(e=>cur.revAmt.set(revKey(e),Math.round(num(e.l.amt)))));   // 화면에 보인 옛 금액
       rbox.innerHTML=rrows.length?`<div data-stmt-revbox style="border:1px solid #f59e0b;border-radius:10px;padding:8px 10px;margin:4px 0 8px"><div style="font-size:12.5px;font-weight:700;margin-bottom:4px">✏️ 금액만 바뀐 줄 ${rrows.length}개 — 예전에 넣은 줄과 날짜·위치·작업명이 같아요. 그대로 더하면 두 번 잡혀요.</div>${rrows.map(x=>{
         const d=cur.rev.get(x.l),lab=(hjStmtMd(x.l.d)?hjStmtMd(x.l.d)+' · ':'')+(x.l.loc||'(위치 없음)')+' · '+(x.l.work||'작업');
-        const why=!x.v.sure?'같은 줄이 여럿이라 골라야 해요':hjStmtRevDefault(x.v,x.l,r.file)?'':hjStmtQuoteEdited(x.v.cands[0].q,1)?'손으로 고친 견적이라 바꿀 수 없어요 — 골라 주세요':'날짜가 없는 줄이라 골라 주세요';
-        const opts=(d?'':'<option value="">— 골라 주세요</option>')+x.v.cands.map(e=>{const ed=hjStmtQuoteEdited(e.q,1),f=hjStmtSrcOf(e.q);
-          return `<option value="${escapeAttr(revKey(e))}"${ed?' disabled':''}>새 금액으로 바꾸기 — 옛 ${escapeHtml(hjNum(e.l.amt))}원 · ${escapeHtml(e.q.project||'')}${f!==src?' · ‘'+escapeHtml(f)+'’':''}${ed?' (손으로 고친 견적 — 못 바꿈)':''}</option>`;}).join('')
+        const why=!x.v.sure?'같은 줄이 여럿이라 골라야 해요':hjStmtRevBlock(x.v.cands[0],x.l,r.file,x.ctx);
+        const opts=(d?'':'<option value="">— 골라 주세요</option>')+x.v.cands.map(e=>{const ed=hjStmtQuoteEdited(e.q,1),f=hjStmtSrcOf(e.q),p=e.q.project||'',pj=(state.projects||[]).find(y=>y&&y.name===p),eto=hjStmtCell(e.q.stmt&&e.q.stmt.to);
+          // 기본값이 아닌 까닭을 후보마다 짧게(그래도 고를 수는 있다 — 손으로 고친 견적만 못 고른다)
+          const tags=[e.q.exSum?'집계 제외':'',!pj?'지운 현장':pj.archived?'보관 현장':'',x.ctx&&x.ctx.project!==p?'고른 현장과 다름':'',f!==src&&eto&&x.ctx&&x.ctx.to&&eto!==x.ctx.to?'다른 거래처 ‘'+eto+'’':''].filter(Boolean);
+          return `<option value="${escapeAttr(revKey(e))}"${ed?' disabled':''}>새 금액으로 바꾸기 — 옛 ${escapeHtml(hjNum(e.l.amt))}원 · ${escapeHtml(p)}${f!==src?' · ‘'+escapeHtml(f)+'’':''}${tags.length?' · ⚠ '+escapeHtml(tags.join(' · ')):''}${ed?' (손으로 고친 견적 — 못 바꿈)':''}</option>`;}).join('')
           +'<option value="add">따로 더하기 — 옛 줄은 그대로 두고 한 줄 더</option><option value="skip">넣지 않기</option>';
         return `<div data-stmt-revrow="${x.i}" style="border-top:1px solid var(--line-soft);padding:6px 0">
           <div style="font-size:12.5px;line-height:1.5;margin-bottom:4px;overflow-wrap:anywhere">${escapeHtml(lab)} — 새 <b>${escapeHtml(hjNum(x.l.amt))}원</b>${why?' <span style="color:#b45309">· '+escapeHtml(why)+'</span>':''}</div>
           <select data-stmt-rev="${x.i}" aria-label="${escapeAttr(lab+' 금액이 바뀐 줄 처리')}" style="width:100%;min-height:44px;font-size:16px">${opts}</select></div>`;}).join('')}</div>`:'';
-      rbox.querySelectorAll('[data-stmt-rev]').forEach(sel=>{const l=r.lines[+sel.dataset.stmtRev];sel.value=cur.rev.get(l)||'';sel.onchange=()=>{cur.rev.set(l,sel.value);refresh();};});
+      rbox.querySelectorAll('[data-stmt-rev]').forEach(sel=>{const l=r.lines[+sel.dataset.stmtRev];sel.value=cur.rev.get(l)||'';sel.onchange=()=>{cur.rev.set(l,sel.value);cur.revUser.add(l);refresh();};});
     }
     // 기존 견적 집계 제외는 이번에 새 줄이 들어가는 기존 현장만 — 다른 현장으로 바꾸거나 '반영 안 함'이면 체크도 사라진다
     const chosen=Object.keys(newBy).filter(p=>(state.projects||[]).some(x=>x.name===p));
@@ -39495,6 +39536,7 @@ function hjStmtReview(r){
     const g=cur.groups[+sel.dataset.stmtProj];sel.value=g.choice;if(sel.value!==g.choice)g.choice=sel.value;
     sel.onchange=()=>{g.choice=sel.value;refresh();};
   });
+  const toIn=root.querySelector('#stmtTo');if(toIn)toIn.oninput=()=>refresh();   // v583 받는 분이 바뀌면 '같은 거래처' 기본값도 다시 셈
   refresh();
 }
 /* ═══════════ v527 📑 작업내역서 장부 · 💰 내역서 입금 · 📂 폴더의 내역서 바로 반영 ═══════════

@@ -3,14 +3,20 @@
    매출(내역서)·남은 돈·부가세 매출이 조용히 부풀었다. v579 초안 엑셀을 채워 반영 → 금액을 고쳐 다시 반영하면 바로 일어난다.
    합성 자료(이름은 지어낸 것) · 시계 2026-11-10 고정 · 엑셀은 격자를 hjStmtParse 에 바로 넣거나 가짜 XLSX · 바깥 쓰기 0.
    ① 나누기 — 같은 파일 고친 줄(짝 하나 → 기본 '바꾸기') · 새 파일에 없는 옛 줄 알림 · 같은 줄이 여럿이면 기본값 없음 · 손으로 고친 견적은 기본값 없음 ·
-      날짜 없는 줄은 같은 파일일 때만 기본 '바꾸기' · 읽기만 (CLASSIFY)
+      날짜 없는 줄은 같은 파일일 때만 기본 '바꾸기' · 위치가 다르면 짝 아님 · 읽기만 (CLASSIFY)
+      기본값을 주지 않는 곳 — 고른 현장과 다른 현장 · 집계 제외 · 보관·지운 현장 · 다른 거래처·거래처 모름 · 합만 같고 품목 사이 금액을 옮긴 견적 · 품목 이름을 고친 견적 (DEFAULT)
    ② 반영 — 바꾸기: 줄 금액·stmt.total·품목 단가(1원 보정)·가상 견적 파일·매출·장부가 새 금액 · 견적 수 그대로 · 안전판 '작업내역서 금액 수정 전' ·
-      이름이 다른 수정본도 옛 견적을 바꿈 + 새 줄은 따로 · 따로 더하기·넣지 않기 · 공급가 견적 +10% (APPLY)
+      저장 표시(바꾸기만 해도) · 이름이 다른 수정본도 옛 견적을 바꿈 + 새 줄은 따로 · 따로 더하기·넣지 않기 · 공급가 견적 +10% (APPLY)
    ③ 막음 — 안 고른 줄·안전판 없이·안전판 실패·손으로 고친 견적·입금이 새 합계보다 큼·미리보기 뒤 바뀜·같은 옛 줄 두 번 → 아무것도 안 바뀜 ·
-      여럿 중 고른 줄만 바꿈 (GUARD)
-   ④ 화면 — 확인 창의 ✏️ 줄(기본 '바꾸기')·없는 줄 알림·[반영] → 바뀜 · 여럿이면 안 고르면 반영 안 함 → 고르면 반영 · 폰 390 넘침 없음·44px·16px (UI)
+      여럿 중 고른 줄만 바꿈 (GUARD) · 그 현장에 나눠 적힌 입금이 그 현장 새 합계보다 큼(내역서 전체는 괜찮아도) · 집계 제외 견적은 입금 대조에서 뺌 ·
+      품목 이름·순서를 고친 견적 · 품목 사이 금액을 옮긴 견적 · 견적 작성 화면에 열린 견적 (GUARD2)
+   ④ 화면 — 확인 창의 ✏️ 줄(기본 '바꾸기')·없는 줄 알림 · 현장을 다른 곳으로 고르면 기본값 없음 → 되돌리면 다시 바꾸기 ·
+      창을 연 뒤 옛 줄이 바뀌면 [반영]이 막힘 · [반영] → 바뀜 · 여럿이면 안 고르면 반영 안 함 → 고르면 반영 · 반영 중 Esc 로 안 닫힘 ·
+      폰 390 넘침 없음·44px·16px (UI)
    ⑤ 핀 3곳 서로 같음 · 오류 0 · 바깥 쓰기 0
-   HJ_V583_BASELINE=<commit> 은 ① 에서, HJ_V583_MUTATION=no-revise(감지 끔)·no-reprice(단가를 다시 안 셈)는 ①·② 에서 실패해야 한다. */
+   HJ_V583_BASELINE=<commit> 은 ① 에서, HJ_V583_MUTATION=no-revise(감지 끔)·no-reprice(단가를 다시 안 셈)는 ①·② 에서 실패해야 한다.
+   검토 뒤 더한 변이 — 모두 실패해야 한다: no-dirty(②) · no-loc·no-projctx·no-vendor·no-deadproj·no-exsumdef·no-itemcheck·no-namecheck(①)
+   · no-projpaid·no-exsum·no-editingq(③) · no-revamt·stale-default·no-lock(④). */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -25,6 +31,20 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'no-revise': ['byK.forEach((ls,k)=>{const cs=exist.filter(x=>!x.used&&x.k===k);if(cs.length)ls.forEach(l=>rev.set(l,{cands:cs,sure:ls.length===1&&cs.length===1}));});', ''],
   'no-reprice': ['  q.items.forEach((it,i)=>{it.price=prices[i];});\n', ''],
+  'no-dirty': ['||res.newProjects.length||res.replaced.length)markDirty();', '||res.newProjects.length)markDirty();'],
+  'no-loc': ["function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.loc),hjStmtKey(l&&l.work)].join('|');}", "function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.work)].join('|');}"],
+  'no-projctx': ["  if(ctx&&ctx.project!=null&&ctx.project!==p)return '고른 현장('+ctx.project+')과 다른 현장의 견적이라 골라 주세요';\n", ''],
+  'no-vendor': ["    if(!a||!b)return '다른 파일이고 거래처를 알 수 없어 골라 주세요';\n    if(a!==b)return '다른 거래처(‘'+a+'’) 내역서라 골라 주세요';\n", ''],
+  'no-deadproj': ["  if(!pj)return '지운 현장의 견적이라 골라 주세요';\n  if(pj.archived)return '보관한 현장의 견적이라 골라 주세요';\n", ''],
+  'no-exsumdef': ["  if(q.exSum)return '집계 제외한 견적이라 골라 주세요';\n", ''],
+  'no-itemcheck': ["  for(let i=0;i<ls.length;i++){const a=Math.round(num(ls[i].amt)),base=st.vat==='separate'?a:Math.round(a/1.1);if(Math.abs(num(items[i].price)-base)>tol)return '품목 금액을 손으로 고쳤어요';}\n", ''],
+  'no-namecheck': ["  for(let i=0;i<ls.length;i++){if(num(items[i].qty)!==1||String(items[i].name||'')!==(hjStmtCell(ls[i].work)||hjStmtCell(ls[i].loc)||'작업'))return '품목 이름·수량이 내역서 줄과 달라요';}\n", ''],
+  'no-projpaid': ["    if(t.after<t.before&&paid>t.after)throw new Error(", "    if(false)throw new Error("],
+  'no-exsum': ["(state.quotes||[]).forEach(q=>{if(!q||!q.stmt||q.exSum||!q.project||hjStmtSrcOf(q)!==src)return;const x=qs.find(y=>y.q===q)", "(state.quotes||[]).forEach(q=>{if(!q||!q.stmt||hjStmtSrcOf(q)!==src)return;const x=qs.find(y=>y.q===q)"],
+  'no-editingq': ["    if(state.editingQuote&&state.editingQuote.id===q.id)throw new Error(", "    if(false)throw new Error("],
+  'no-revamt': ["const a=d.split(':'),qid=a[1],li=+a[2],amt=cur.revAmt.get(d);", "const a=d.split(':'),qid=a[1],li=+a[2],qq=(state.quotes||[]).find(x=>x&&x.id===qid),old=qq&&qq.stmt&&(qq.stmt.lines||[])[li],amt=old?Math.round(num(old.amt)):null;"],
+  'stale-default': ["const ok=cur.revUser.has(l)&&(d==='add'", "const ok=d!=null&&(d==='add'"],
+  'no-lock': ['cur.busy=true;__modalCloseLocked=true;', ''],
 };
 let html = process.env.HJ_V583_BASELINE ? execFileSync('git', ['show', process.env.HJ_V583_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V583_MUTATION) {
@@ -81,8 +101,8 @@ const SEED = () => {
   };
   // 미리보기 기본값대로 고른 계획(짝 하나 → 바꾸기). over = {loc|work: 'add'|'skip'|cand index}
   window.DECIDE = (plan, over) => {
-    const all = []; plan.groups.forEach(g => all.push(...g.lines));
-    const rv = hjStmtRevisions(all, plan.src), by = new Map(rv.rows.map(x => [x.line, x]));
+    const all = [], pj = new Map(); plan.groups.forEach(g => { all.push(...g.lines); g.lines.forEach(l => pj.set(l, hjStmtChoiceName(g.choice))); });
+    const rv = hjStmtRevisions(all, plan.src, { projectOf: l => pj.get(l), to: plan.to }), by = new Map(rv.rows.map(x => [x.line, x]));
     plan.groups.forEach(g => { g.lines = g.lines.map(l => {
       const x = by.get(l); if (!x) return l;
       const o = (over || {})[l.work + '|' + l.amt];
@@ -125,7 +145,7 @@ const SEED = () => {
         out.edited = rn.rows.map(x => [x.def, x.cands[0].edited]);
         STMTQ('나래아파트', A).items[0].price -= 1000;
         // 날짜가 다르거나 작업명이 다르면 금액만 바뀐 줄이 아니다
-        out.other = hjStmtRevisions([{ d: '2026-11-08', loc: '가온아파트 101-1101', work: '우수관 교체', amt: 1 }, { d: '2026-11-03', loc: '가온아파트 101-1101', work: '우수관 보수', amt: 1 }, { d: '2026-11-03', loc: '가온아파트  101 - 1101', work: '우수관  교체', amt: 9 }], A).rows.map(x => x.line.work);
+        out.other = hjStmtRevisions([{ d: '2026-11-08', loc: '가온아파트 101-1101', work: '우수관 교체', amt: 1 }, { d: '2026-11-03', loc: '가온아파트 101-1101', work: '우수관 보수', amt: 1 }, { d: '2026-11-03', loc: '가온아파트 102-1203', work: '우수관 교체', amt: 2 }, { d: '2026-11-03', loc: '가온아파트  101 - 1101', work: '우수관  교체', amt: 9 }], A).rows.map(x => x.line.work);
         // 날짜 없는 줄(더케이 '미기재')은 같은 원본 파일일 때만 기본 '바꾸기'
         hjStmtApply({ src: 'U.xlsx', file: 'U.xlsx', doc: '작업내역서', to: '', date: '2026-11-10', vat: 'included', groups: [{ loc: '다솜빌라 3층', lines: [{ d: '', loc: '다솜빌라 3층', work: '엑셀 2개', amt: 100000 }], choice: '다솜빌라' }], exclude: [] });
         const pu = [{ d: '', loc: '다솜빌라 3층', work: '엑셀 2개', amt: 120000 }];
@@ -138,9 +158,38 @@ const SEED = () => {
       assert.equal(r.same, true, '읽기만');
       assert.deepEqual(r.amb, [[false, '', [100000, 120000]]], '같은 줄이 여럿이면 기본값 없음 ' + JSON.stringify(r.amb));
       assert.equal(r.edited[0][0], '', '손으로 고친 견적은 기본값 없음');
-      assert.match(r.edited[0][1], /손으로 고쳤|이름|수/, JSON.stringify(r.edited));
+      assert.equal(r.edited[0][1], '품목 금액을 손으로 고쳤어요', JSON.stringify(r.edited));
       assert.deepEqual(r.undated, [['r:'], [[true, '']]], '날짜 없는 줄 — 다른 파일이면 기본값 없음 ' + JSON.stringify(r.undated));
-      assert.deepEqual(r.other, ['우수관  교체'], '빈칸 차이는 같은 줄로 보고, 날짜·작업명이 다르면 아님 ' + JSON.stringify(r.other));
+      assert.deepEqual(r.other, ['우수관  교체'], '빈칸 차이는 같은 줄로 보고, 날짜·위치·작업명이 다르면 아님 ' + JSON.stringify(r.other));
+      // 기본 '바꾸기'를 주지 않는 곳 — 고른 현장·받는 분(ctx)에 따라
+      const d = await page.evaluate(({ l1, A, A2 }) => {
+        SEED_FN();
+        hjStmtApply(PLAN(A, l1));
+        const ga = STMTQ('가온아파트', A), one = [{ d: '2026-11-03', loc: '가온아파트 101-1101', work: '우수관 교체', amt: 330000 }];
+        const D = (file, project, to) => hjStmtRevisions(one, file, { projectOf: () => project, to }).rows.map(x => [x.def.slice(0, 2), x.cands[0].block]);
+        const out = { same: D(A, '가온아파트', '가상협력'), other: D(A, '다솜빌라', '가상협력'), newp: D(A, '새현장', '가상협력'),
+          vendorSame: D(A2, '가온아파트', '가상협력'), vendorOther: D(A2, '가온아파트', '더케이'), vendorNone: D(A2, '가온아파트', '') };
+        ga.exSum = true; out.exsum = D(A, '가온아파트', '가상협력'); delete ga.exSum;
+        state.projects[0].archived = true; out.arch = D(A, '가온아파트', '가상협력'); state.projects[0].archived = false;
+        // 합은 그대로 두고 품목 사이 금액을 옮긴 견적 · 품목 이름을 고친 견적 — 손으로 고친 견적
+        const p0 = ga.items.map(i => i.price);
+        ga.items[0].price -= 10000; ga.items[1].price += 10000; out.shift = [hjStmtQuoteEdited(ga, 1), D(A, '가온아파트', '가상협력')];
+        ga.items[0].price = p0[0]; ga.items[1].price = p0[1];
+        const n0 = ga.items[0].name; ga.items[0].name = n0 + '(수정)'; out.rename = hjStmtQuoteEdited(ga, 1); ga.items[0].name = n0;
+        out.clean = hjStmtQuoteEdited(ga, 1);
+        // 지운 현장 — 같은 이름 현장을 다시 만들어도 옛(지운) 견적은 기본값 없음
+        hjDeleteProjectCore('가온아파트');
+        state.projects.push({ name: '가온아파트', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
+        out.dead = D('C.xlsx', '가온아파트', '가상협력');
+        return out;
+      }, { l1: G(LINES1), A, A2 });
+      assert.deepEqual(d.same, [['r:', '']], 'DEFAULT 같은 현장·같은 파일 ' + JSON.stringify(d));
+      assert.ok(d.other[0][0] === '' && /고른 현장\(다솜빌라\)/.test(d.other[0][1]) && d.newp[0][0] === '', 'DEFAULT 고른 현장과 다른 현장 ' + JSON.stringify(d));
+      assert.deepEqual(d.vendorSame, [['r:', '']], 'DEFAULT 수정본 · 같은 거래처 ' + JSON.stringify(d));
+      assert.ok(d.vendorOther[0][0] === '' && /다른 거래처\(‘가상협력’\)/.test(d.vendorOther[0][1]) && d.vendorNone[0][0] === '' && /거래처를 알 수 없어/.test(d.vendorNone[0][1]), 'DEFAULT 다른 거래처·모름 ' + JSON.stringify(d));
+      assert.ok(d.exsum[0][0] === '' && /집계 제외/.test(d.exsum[0][1]) && d.arch[0][0] === '' && /보관/.test(d.arch[0][1]), 'DEFAULT 집계 제외·보관 ' + JSON.stringify(d));
+      assert.ok(d.dead[0][0] === '' && /지운 현장/.test(d.dead[0][1]), 'DEFAULT 지운 현장 ' + JSON.stringify(d));
+      assert.ok(d.shift[0] === '품목 금액을 손으로 고쳤어요' && d.shift[1][0][0] === '' && d.rename === '품목 이름·수량이 내역서 줄과 달라요' && d.clean === '', 'DEFAULT 손으로 고친 견적 ' + JSON.stringify(d));
     });
 
     await test('② 반영 — 바꾸기·1원 보정·매출·장부·가상 파일·안전판 · 수정본 · 따로 더하기·넣지 않기 · 공급가 (APPLY)', async () => {
@@ -148,6 +197,7 @@ const SEED = () => {
         SEED_FN();
         hjStmtApply(PLAN(A, l1));
         const s0 = { est: EST('가온아파트'), led: LEDGER(A), n: state.quotes.length };
+        state.dirty = false;   // 바꾸기만 한 반영도 저장 표시를 해야 한다(새 견적·붙인 줄이 없어도)
         const res = await hjStmtApplySafe(DECIDE(PLAN(A, l2)));
         const ga = STMTQ('가온아파트', A), vf = state.files.find(f => f.id === 'quote_' + ga.id);
         const snaps = await idbGetStrict('hj_snaps'), last = snaps[snaps.length - 1];
@@ -166,7 +216,8 @@ const SEED = () => {
       assert.deepEqual(r.s1.calc, { sub: 345455, supply: 345455, vat: 34545, total: 380000 }, '1원 보정 ' + JSON.stringify(r.s1.calc));
       assert.equal(r.s1.items.reduce((a, b) => a + b, 0), 345455, '품목 단가 합 = 새 공급가');
       assert.ok(r.s1.est === 380000 && r.s1.nare === 270000 && r.s1.led === 650000 && r.s1.vf === 380000 && r.s1.sales === 650000, 'APPLY 매출·장부·가상 파일 ' + JSON.stringify(r.s1));
-      assert.ok(r.s1.snap === '작업내역서 금액 수정 전' && JSON.stringify(r.s1.snapOld) === '[220000,50000]' && r.s1.dirty === true, 'APPLY 안전판은 바꾸기 전 자료 ' + JSON.stringify(r.s1));
+      assert.ok(r.s1.snap === '작업내역서 금액 수정 전' && JSON.stringify(r.s1.snapOld) === '[220000,50000]', 'APPLY 안전판은 바꾸기 전 자료 ' + JSON.stringify(r.s1));
+      assert.equal(r.s1.dirty, true, 'APPLY 바꾸기만 해도 저장 표시');
       const r2 = await page.evaluate(async ({ l3, A, A2 }) => {
         // 이름이 다른 수정본 — 옛 견적(A)의 우수관을 바꾸고, 새 줄(실리콘)만 새 견적
         const res3 = await hjStmtApplySafe(DECIDE(PLAN(A2, l3)));
@@ -246,9 +297,44 @@ const SEED = () => {
       assert.deepEqual(r.twoNew, [[false, '', 1], [false, '', 1]], '옛 줄 하나에 새 줄 둘 — 기본값 없음');
       assert.ok(/두 번/.test(r.twice) && r.twice_same, 'GUARD one old line paired once ' + JSON.stringify(r));
       assert.deepEqual(r.amb, [[[120000, 150000]], [100000, 150000], 250000, 0], 'GUARD chosen candidate only ' + JSON.stringify(r.amb));
+      const g2 = await page.evaluate(async ({ l1, A }) => {
+        const out = {};
+        const tryIt = async (k, fn) => { const b = SNAP(); try { const res = await fn(); out[k] = 'applied ' + res.replaced.length; } catch (e) { out[k] = e.message; } out[k + '_same'] = SNAP() === b; };
+        // 입금은 현장마다 나눠 적힌다 — 가온 135,000 · 나래 135,000. 가온만 70,000 으로 줄이면 내역서 전체(340,000 ≥ 270,000)는 괜찮아도 가온은 더 받은 채로 남는다
+        SEED_FN(); hjStmtApply(PLAN(A, l1));
+        hjStmtPayApply(A, { amt: 270000, d: '2026-11-09' });
+        out.split = state.payLog.map(x => [x.project, x.amt]);
+        await tryIt('proj', () => hjStmtApplySafe(DECIDE(PLAN(A, [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-03', '가온아파트 101-1101', '우수관 교체', 20000]]))));
+        // 가온 135,000 보다 크게 줄이는 것은 된다
+        await tryIt('projOk', () => hjStmtApplySafe(DECIDE(PLAN(A, [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-03', '가온아파트 101-1101', '우수관 교체', 200000]]))));
+        out.projOkTotals = [hjProjStmtData(state.projects[0]).left, LEDGER(A)];
+        // 집계 제외 견적은 입금 대조에서 뺀다(장부와 같은 셈) — 나래(집계 제외)로 적힌 300,000 이 가온 새 합계 250,000 보다 크다
+        SEED_FN(); hjStmtApply(PLAN(A, l1));
+        STMTQ('나래아파트', A).exSum = true;
+        state.payLog.push({ d: '2026-11-09', project: '나래아파트', amt: 300000, stmt: A });
+        await tryIt('exsum', () => hjStmtApplySafe(DECIDE(PLAN(A, [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-03', '가온아파트 101-1101', '우수관 교체', 200000]]))));
+        // 손으로 고친 견적 — 품목 이름만 고침(합 같음) · 품목 순서를 바꿈(합 같음) · 품목 사이 금액을 옮김(합 같음)
+        SEED_FN(); hjStmtApply(PLAN(A, l1));
+        const ga = STMTQ('가온아파트', A), pick = () => DECIDE(PLAN(A, [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-03', '가온아파트 101-1101', '우수관 교체', 330000]]), { '우수관 교체|330000': 0 });
+        const n0 = ga.items[0].name; ga.items[0].name = n0 + ' 외';
+        await tryIt('rename', () => hjStmtApplySafe(pick())); ga.items[0].name = n0;
+        ga.items.reverse(); await tryIt('swap', () => hjStmtApplySafe(pick())); ga.items.reverse();
+        ga.items[0].price -= 10000; ga.items[1].price += 10000; await tryIt('shift', () => hjStmtApplySafe(pick())); ga.items[0].price += 10000; ga.items[1].price -= 10000;
+        // 견적 작성 화면에 그 견적이 열려 있음
+        state.editingQuote = JSON.parse(JSON.stringify(ga)); await tryIt('editing', () => hjStmtApplySafe(pick())); state.editingQuote = null;
+        await tryIt('ok', () => hjStmtApplySafe(pick()));
+        return out;
+      }, { l1: G(LINES1), A });
+      assert.deepEqual(g2.split, [['가온아파트', 135000], ['나래아파트', 135000]], 'GUARD2 입금 나눔 ' + JSON.stringify(g2));
+      assert.ok(/가온아파트 에 이미 적힌 입금 135,000원이 이 현장의 새 합계 70,000원보다/.test(g2.proj) && g2.proj_same, 'GUARD2 현장별 입금 ' + JSON.stringify(g2));
+      assert.ok(g2.projOk === 'applied 1' && JSON.stringify(g2.projOkTotals) === '[115000,520000]', 'GUARD2 현장 합계보다 작은 입금은 막지 않음 ' + JSON.stringify(g2));
+      assert.ok(/입금 300,000원이 새 합계 250,000원보다/.test(g2.exsum) && g2.exsum_same, 'GUARD2 집계 제외 견적은 대조에서 뺌 ' + JSON.stringify(g2));
+      assert.ok(/품목 이름·수량이 내역서 줄과 달라요/.test(g2.rename) && g2.rename_same && /품목 이름·수량이 내역서 줄과 달라요/.test(g2.swap) && g2.swap_same, 'GUARD2 품목 이름·순서 ' + JSON.stringify(g2));
+      assert.ok(/품목 금액을 손으로 고쳤어요/.test(g2.shift) && g2.shift_same, 'GUARD2 품목 사이 금액 ' + JSON.stringify(g2));
+      assert.ok(/견적 작성 화면에 가온아파트 견적이 열려 있어요/.test(g2.editing) && g2.editing_same && g2.ok === 'applied 1', 'GUARD2 작성 중 견적 ' + JSON.stringify(g2));
     });
 
-    await test('④ 화면 — ✏️ 줄 기본 바꾸기·없는 줄 알림 → [반영] · 여럿이면 안 고르면 막음 → 고르면 반영 · 폰 390·44px·16px (UI)', async () => {
+    await test('④ 화면 — ✏️ 줄 기본 바꾸기·없는 줄 알림 · 다른 현장이면 기본값 없음 · 창을 연 뒤 바뀜 막음 → [반영] · 여럿이면 안 고르면 막음 → 고르면 반영 · 반영 중 잠김 · 폰 390·44px·16px (UI)', async () => {
       await page.evaluate(({ l1, A }) => { SEED_FN(); hjStmtApply(PLAN(A, l1)); hjStmtApply(PLAN('M.xlsx', [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-07', '다솜빌라 1층', '방수', 100000], ['2026-11-07', '다솜빌라 1층', '방수', 120000]])); state.tab = 'quotemaker'; render(); }, { l1: G(LINES1), A });
       // 가짜 엑셀로 파일 읽기 경로까지
       await page.evaluate(async ({ l2, A }) => {
@@ -268,6 +354,20 @@ const SEED = () => {
         sel: [...document.querySelectorAll('#modalRoot [data-stmt-rev]')].map(s => [Math.round(s.getBoundingClientRect().height), getComputedStyle(s).fontSize]),
         small: [...document.querySelectorAll('#modalRoot button')].filter(b => b.offsetParent && b.getBoundingClientRect().height < 43.5).map(b => b.textContent.trim()) }));
       assert.ok(phone.over <= 1 && phone.modalOver <= 1 && phone.sel.every(([h, f]) => h >= 44 && f === '16px') && !phone.small.length, 'phone 390 ' + JSON.stringify(phone));
+      // 그 위치를 다른 현장으로 고르면 기본 '바꾸기'를 거둔다(사람이 고른다) → 되돌리면 다시 기본 '바꾸기'
+      await page.selectOption('#modalRoot [data-stmt-proj="0"]', '다솜빌라');
+      const other = await page.evaluate(() => ({ val: document.querySelector('#modalRoot [data-stmt-rev]').value, row: document.querySelector('#modalRoot [data-stmt-revrow]').textContent,
+        opt: [...document.querySelectorAll('#modalRoot [data-stmt-rev] option')].map(o => o.textContent).find(t => /^새 금액으로 바꾸기/.test(t)) }));
+      assert.ok(other.val === '' && /고른 현장\(다솜빌라\)과 다른 현장의 견적이라 골라 주세요/.test(other.row) && /고른 현장과 다름/.test(other.opt), 'UI 다른 현장이면 기본값 없음 ' + JSON.stringify(other));
+      await page.selectOption('#modalRoot [data-stmt-proj="0"]', '가온아파트');
+      assert.match(await page.inputValue('#modalRoot [data-stmt-rev]'), /^r:/, 'UI 되돌리면 기본 바꾸기');
+      // 창을 연 뒤 그 옛 줄이 바뀌었으면(다른 기기에서 고침) [반영]이 막는다 — 화면에 보인 옛 금액(220,000)으로 대조
+      const stale0 = await page.evaluate(A => { const ga = STMTQ('가온아파트', A); ga.stmt.lines[0].amt = 230000; hjStmtReprice(ga); return SNAP(); }, A);
+      await page.click('#modalRoot .mfoot button.blue');
+      await page.waitForFunction(() => /다시 열어/.test(document.getElementById('toast').textContent) || !document.querySelector('#modalRoot .stmt-review'));
+      const st = await page.evaluate(b => ({ open: !!document.querySelector('#modalRoot .stmt-review'), same: SNAP() === b, toast: document.getElementById('toast').textContent }), stale0);
+      assert.ok(st.open && st.same && /다시 열어/.test(st.toast), 'UI 창을 연 뒤 바뀐 옛 줄 → 막고 자료 그대로 ' + JSON.stringify(st));
+      await page.evaluate(A => { const ga = STMTQ('가온아파트', A); ga.stmt.lines[0].amt = 220000; hjStmtReprice(ga); }, A);
       await page.click('#modalRoot .mfoot button.blue');
       await page.waitForFunction(() => !document.querySelector('#modalRoot .stmt-review'));
       const done = await page.evaluate(async () => ({ est: EST('가온아파트'), n: state.quotes.length, toast: document.getElementById('toast').textContent, snap: (await idbGetStrict('hj_snaps')).slice(-1)[0].label }));
@@ -284,8 +384,16 @@ const SEED = () => {
       const second = await page.evaluate(() => [...document.querySelectorAll('#modalRoot [data-stmt-rev] option')].map(o => o.value)[2]);
       await page.selectOption('#modalRoot [data-stmt-rev]', second);
       assert.match(await page.textContent('#modalRoot #stmtSummary'), /금액 바꾸는 줄 1개\(줄 금액 \+30,000원\)/);
+      // 반영 중(안전판을 찍는 동안)에는 Esc 로 창이 닫히지 않고 단추가 잠긴다
+      await page.evaluate(() => { window.__snapN = 0; hjSnapshot = () => { window.__snapN++; return new Promise(res => { window.__snapRes = res; }); }; });
       await page.click('#modalRoot .mfoot button.blue');
+      await page.waitForFunction(() => window.__snapN === 1);
+      await page.keyboard.press('Escape');
+      const busy = await page.evaluate(() => ({ open: !!document.querySelector('#modalRoot .stmt-review'), disabled: [...document.querySelectorAll('#modalRoot .mfoot button')].every(b => b.disabled), n: window.__snapN }));
+      assert.deepEqual(busy, { open: true, disabled: true, n: 1 }, 'UI 반영 중 잠김 ' + JSON.stringify(busy));
+      await page.evaluate(() => window.__snapRes(true));
       await page.waitForFunction(() => !document.querySelector('#modalRoot .stmt-review'));
+      await page.evaluate(() => { hjSnapshot = window.__realSnap; });
       assert.deepEqual(await page.evaluate(() => [STMTQ('다솜빌라', 'M.xlsx').stmt.lines.map(l => l.amt), EST('다솜빌라')]), [[100000, 150000], 250000]);
     });
 
