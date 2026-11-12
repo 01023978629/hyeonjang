@@ -16766,11 +16766,16 @@ function hjAsForSched(s){
   const log=state.asLog||[];
   return (s.asId&&log.find(a=>a&&a.id===s.asId))||log.find(a=>a&&a.visitSchedId&&a.visitSchedId===s.id)||null;
 }
-/* v594 AS 방문 일정의 날짜가 바뀌면 그 AS 방문일(visitAt)도 같은 날로 — 일정 날짜를 바꾸는 길은 모두 이 한 곳을 부른다.
-   예전에는 일정 창 저장(saveScheduleEdit, v331)만 따라가서 🔄 구글 캘린더 맞추기의 '날짜 옮김'(제미나이가 구글에서 방문을 옮긴 것)과
-   📥 캘린더 파일 가져오기(같은 uid 갱신)는 일정만 옮기고 AS 관리·현장 AS 카드·보증 화면·AS 이력 엑셀의 방문일은 옛 날짜로 남았다.
+/* v594 AS 방문 일정의 날짜가 바뀌면 그 AS 방문일(visitAt)도 같은 날로 — 잇는 규칙은 이 한 곳.
+   예전에는 일정 창 저장(saveScheduleEdit, v331)만 따라가서 🔄 구글 캘린더 맞추기의 '날짜 옮김'(제미나이가 구글에서 방문을 옮긴 것)은
+   일정만 옮기고 AS 관리·현장 AS 카드·보증 화면·AS 이력 엑셀의 방문일은 옛 날짜로 남았다. 부르는 곳: 일정 창 저장·맞추기 날짜 옮김,
+   그리고 📥 캘린더 파일 가져오기의 같은 uid 갱신(안전장치 — 앱이 만든 AS 방문 일정에는 icsUid·sourceUid 가 없어 지금은 이 길로 날짜가 바뀌지 않는다.
+   나중에 AS 방문 일정에 uid 를 붙이는 판이 생겨도 방문일이 어긋나지 않게).
+   AS 관리의 방문일 칸(asManage)은 반대 방향(AS → 일정)으로 둘 다 옮긴다. 🔁 뒤 일정 같이 옮기기는 AS 방문 일정을 후보에서 뺀다(v365), AI 도구에는 있는 일정의 날짜를 바꾸는 것이 없다.
+   부르지 못하는 곳(v567 부터의 한계): 맞추기가 21일(HJ_CALSYNC_MOVE) 넘게 떨어진 AS 방문을 날짜 옮김이 아니라 '새 일정'으로 넣으면 이어지지 않은 일정이 하나 더 생기고 방문일은 그대로다.
    잇는 기준은 hjAsForSched 와 같다 — AS 기록의 visitSchedId 가 이 일정이거나, 이 일정의 asId 가 가리키는 AS 기록.
    단 그 AS 의 visitSchedId 가 지금 있는 다른 일정을 가리키면 그쪽이 그 AS 의 방문 일정이라 건드리지 않는다(예전 방문 일정을 옮겨 새 방문일을 덮지 않게).
+   visitSchedId 가 지워진 일정을 가리키면(일정 삭제·맞추기 '앱에만' 지우기는 visitSchedId 를 비우지 않는다) 이 일정이 남은 방문 일정이라 따라간다.
    AS 방문 일정이 아니면 아무것도 바꾸지 않는다. 날짜가 바뀌었는지는 부르는 쪽이 본다(날짜를 안 바꾼 저장은 어긋난 옛 자료도 그대로 — v331).
    바꾼 AS 기록 수를 돌려준다. markDirty 는 부르는 쪽이 — 이 함수는 저장하지 않는다. */
 function hjAsVisitFollow(s){
@@ -41024,7 +41029,7 @@ function saveScheduleEdit(id,isNew,link,draftReport){
   if(asRec&&isNew){s.asId=asRec.id;asRec.visitSchedId=s.id;}
   /* v331 AS 에서 올린 방문 일정(AS 기록의 visitSchedId)의 날짜를 여기서 바꾸면 AS 방문일(visitAt)도 따라간다.
      반대 방향(AS 화면 → 일정)은 asManage 가 이미 옮긴다. 날짜를 바꾼 때만 — 다른 칸만 고친 저장은 AS 를 건드리지 않는다.
-     v594 맞추기·캘린더 파일 가져오기와 같은 규칙 한 곳(hjAsVisitFollow) — 일정의 asId 만 남은 옛 기록(visitSchedId 없음)도 따라간다. */
+     v594 맞추기 날짜 옮김과 같은 규칙 한 곳(hjAsVisitFollow) — 일정의 asId 만 남은 옛 기록(visitSchedId 없음·지워진 일정)도 따라간다. */
   if(!isNew&&prevDate!==date)asMoved=hjAsVisitFollow(s);
   if(asRec&&asRec.visitAt!==s.date)asRec.visitAt=s.date;
   markDirty();closeModal();render();toast('일정 저장됨'+(asMoved?' · AS 방문일도 '+date+' 로 맞췄습니다':''));if(isNew)hjGcalMaybeOpen(s);
@@ -41284,7 +41289,7 @@ async function importICS(text){
     if(i>=0){
       const prev=state.schedule[i].date;
       Object.assign(state.schedule[i],{date:e.date,time:e.time,title:e.title,memo:memo,icsUid:key});
-      if(prev!==e.date)hjAsVisitFollow(state.schedule[i]);   // v594 같은 uid 로 날짜가 바뀐 AS 방문 일정이면 AS 기록의 방문일도 따라간다
+      if(prev!==e.date)hjAsVisitFollow(state.schedule[i]);   // v594 안전장치 — 같은 uid 로 날짜가 바뀐 일정이 AS 방문이면 방문일도(앱이 만든 AS 방문 일정에는 지금 uid 가 없다)
       updated++;
     }else{
       state.schedule.push(Object.assign(newSchedule(),{date:e.date,time:e.time,title:e.title,memo:memo,hours:e.time?8:0,icsUid:key}));

@@ -1,17 +1,22 @@
-/* v594 AS 방문일은 일정 날짜를 따라간다 — 일정 날짜를 바꾸는 모든 길에서 (AGENTS v580~v587 '통합 검토' · v330 남은 것)
-   일정 창 저장(saveScheduleEdit, v331)만 AS 기록의 방문일(visitAt)을 옮겼다. 🔄 구글 캘린더 맞추기의 '날짜 옮김'(제미나이가 구글에서 AS 방문을 옮긴 것)과
-   📥 캘린더 파일 가져오기(같은 uid 갱신)는 일정만 옮겨, AS 관리·현장 AS 카드·보증 화면·AS 이력 엑셀의 방문일이 옛 날짜로 남았다.
-   이제 한 곳(hjAsVisitFollow)이 잇는 규칙을 갖고, 날짜를 바꾸는 길이 모두 그것을 부른다. 합성 자료(이름은 지어낸 것), 시계 2026-11-05 고정, 바깥 쓰기 0.
+/* v594 AS 방문일은 일정 날짜를 따라간다 — 구글 캘린더 맞추기에서도 (AGENTS v580~v587 '통합 검토' · v330 남은 것)
+   일정 창 저장(saveScheduleEdit, v331)만 AS 기록의 방문일(visitAt)을 옮겼다. 🔄 구글 캘린더 맞추기의 '날짜 옮김'(제미나이가 구글에서 AS 방문을 옮긴 것)은
+   일정만 옮겨, AS 관리·현장 AS 카드·보증 화면·AS 이력 엑셀의 방문일이 옛 날짜로 남았다.
+   이제 한 곳(hjAsVisitFollow)이 잇는 규칙을 갖고 일정 창 저장·맞추기 날짜 옮김이 부른다. 📥 캘린더 파일 가져오기의 같은 uid 갱신도 부르지만 안전장치다 —
+   앱이 만든 AS 방문 일정(AS 관리 [📅 방문 일정]·방문일 칸)에는 icsUid·sourceUid 가 없어 지금은 그 길로 날짜가 바뀌지 않는다(③ 은 uid 를 손으로 붙인 합성 꼴).
+   맞추기가 21일(HJ_CALSYNC_MOVE) 넘게 떨어진 AS 방문을 '새 일정'으로 넣는 것(이어지지 않음)은 v567 부터의 한계라 여기서 다루지 않는다.
+   합성 자료(이름은 지어낸 것), 시계 2026-11-05 고정, 바깥 쓰기 0.
    ① 맞추기 '날짜 옮김' — AS 방문 일정(asId + visitSchedId)이 옮겨지면 방문일도 구글 날짜로 · 같이 옮긴 보통 일정은 AS 기록을 안 건드림 · 결과 목록(list)·asMoved
       · 안전판 1회 · 오래된 창·미리보기 뒤 일정표 바뀜은 그대로 거부(일정·AS 모두 그대로) (CALSYNC)
-   ② 잇는 규칙 — 일정의 asId 만 남은 옛 기록(visitSchedId 없음)도 따라감 · 그 AS 의 방문 일정이 지금 있는 다른 일정이면(예전 일정을 옮김) 건드리지 않음
+   ② 잇는 규칙 — 일정의 asId 만 남은 옛 기록(visitSchedId 없음)도 따라감 · visitSchedId 가 지워진 일정을 가리키는 AS 도 남은 asId 일정을 따라감
+      · 그 AS 의 방문 일정이 지금 있는 다른 일정이면(예전 일정을 옮김) 건드리지 않음
       · 맞추기 창 [반영] 토스트에 'AS 방문일 n건도 맞춤' · 일정 창 저장도 같은 규칙(asId 만 남은 기록 따라감, 날짜 그대로인 저장은 손대지 않음) (LINK)
-   ③ 캘린더 파일 가져오기 — 같은 uid 로 날짜가 바뀐 AS 방문 일정은 방문일도 따라감 · 날짜가 같은 갱신은 어긋난 옛 자료도 그대로 · 보통 일정 갱신은 AS 그대로 (ICS)
+   ③ 캘린더 파일 가져오기(안전장치 · 합성 꼴) — 같은 uid 로 날짜가 바뀐 AS 방문 일정은 방문일도 따라감 · 날짜가 같은 갱신은 어긋난 옛 자료도 그대로 · 보통 일정 갱신은 AS 그대로 (ICS)
    ④ 폰 390 AS 관리 넘침 없음 · 핀 3곳 같음 · 페이지 오류 0 · 외부 쓰기 0 (PHONE)
    AI 도구에는 있는 일정의 날짜를 바꾸는 것이 없다(add_schedule·schedule_plan 은 새 일정, delete_schedule 은 지움) — 그래서 AI 길은 검사 대상이 없다.
    🔁 뒤 일정 같이 옮기기(hjCascadeCands)는 AS 방문 일정을 후보에서 뺀다(v365) — 옮겨지는 일 자체가 없다.
    HJ_V594_BASELINE=<commit> 은 ① 에서 실패해야 한다. HJ_V594_MUTATION — no-calsync(맞추기 날짜 옮김에서 따라가기 뺌)는 ①,
-   visit-only(visitSchedId 로만 잇기 — asId 만 남은 기록 무시)·no-live-guard(다른 일정이 방문 일정인 AS 도 덮음)는 ②,
+   visit-only(visitSchedId 로만 잇기 — asId 만 남은 기록 무시)·no-live-guard(다른 일정이 방문 일정인 AS 도 덮음)·
+   live-true(visitSchedId 가 지워진 일정이어도 '있는 다른 방문 일정'으로 봄 — 남은 asId 일정을 안 따라감)는 ②,
    no-ics(캘린더 파일 가져오기에서 따라가기 뺌)·ics-always(날짜가 같아도 맞춤)는 ③ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -28,6 +33,7 @@ const MUT = {
   'no-calsync': ['      if(old!==s.date)out.asMoved+=hjAsVisitFollow(s);', '      '],
   'visit-only': ['const mine=a.visitSchedId===s.id||(!!s.asId&&a.id===s.asId&&', 'const mine=a.visitSchedId===s.id||(false&&'],
   'no-live-guard': ['&&!(a.visitSchedId&&a.visitSchedId!==s.id&&live(a.visitSchedId)));', ');'],
+  'live-true': ['const live=id=>(state.schedule||[]).some(x=>x&&x.id===id);', 'const live=id=>true;'],
   'no-ics': ['      if(prev!==e.date)hjAsVisitFollow(state.schedule[i]);', '      '],
   'ics-always': ['      if(prev!==e.date)hjAsVisitFollow(state.schedule[i]);', '      hjAsVisitFollow(state.schedule[i]);']
 };
@@ -74,13 +80,15 @@ const SEED = () => {
     { id: 'as1', project: '가상현장A', date: '2026-11-02', text: '욕실 실리콘 들뜸', status: 'open', visitAt: '2026-11-06', visitSchedId: 'v1' },     // 둘 다 이어진 보통 꼴
     { id: 'as2', project: '가상현장B', date: '2026-11-03', text: '현관 문틀 벌어짐', status: 'open', visitAt: '2026-11-07' },                        // 일정의 asId 만 남은 옛 꼴
     { id: 'as3', project: '가상현장A', date: '2026-11-01', text: '주방 상부장 처짐', status: 'open', visitAt: '2026-11-12' },                        // 일정 연결 없음
-    { id: 'as4', project: '가상현장B', date: '2026-10-30', text: '베란다 배수구 역류', status: 'doing', visitAt: '2026-11-13', visitSchedId: 'v4b' }  // 방문 일정은 v4b(재방문) — v4a 는 예전 일정
+    { id: 'as4', project: '가상현장B', date: '2026-10-30', text: '베란다 배수구 역류', status: 'doing', visitAt: '2026-11-13', visitSchedId: 'v4b' },  // 방문 일정은 v4b(재방문) — v4a 는 예전 일정
+    { id: 'as5', project: '가상현장A', date: '2026-11-04', text: '싱크대 수전 누수', status: 'open', visitAt: '2026-11-08', visitSchedId: 'gone' }       // 방문 일정이던 'gone' 은 지워졌다 — 남은 v5(asId)가 방문 일정
   ];
   state.schedule = [
     { id: 'v1', date: '2026-11-06', time: '10:00', hours: 2, title: '🔧 AS 방문: 욕실 실리콘 들뜸', project: '가상현장A', asId: 'as1', memo: 'AS 접수 2026-11-02 — 욕실 실리콘 들뜸', crew: '' },
     { id: 'v2', date: '2026-11-07', time: '14:00', hours: 2, title: '🔧 AS 방문: 현관 문틀 벌어짐', project: '가상현장B', asId: 'as2', memo: '', crew: '' },
     { id: 'v4a', date: '2026-11-11', time: '', hours: 0, title: '🔧 AS 방문: 베란다 배수구 역류', project: '가상현장B', asId: 'as4', memo: '', crew: '' },
     { id: 'v4b', date: '2026-11-13', time: '10:00', hours: 2, title: '🔧 AS 재방문: 베란다 배수구', project: '가상현장B', asId: 'as4', memo: '', crew: '' },
+    { id: 'v5', date: '2026-11-08', time: '11:00', hours: 2, title: '🔧 AS 방문: 싱크대 수전 누수', project: '가상현장A', asId: 'as5', memo: '', crew: '' },
     { id: 't1', date: '2026-11-09', time: '09:00', hours: 8, title: '타일 시공', project: '가상현장A', memo: '', crew: '' }
   ];
   state.activeProject = null; state.tab = 'schedule'; state.editingQuote = null;
@@ -90,8 +98,9 @@ const SEED = () => {
 // 구글 캘린더 화면 글 — 제미나이가 AS 방문(욕실)과 타일을 하루씩 뒤로 옮겼다(@ 표시)
 const TEXT1 = ['오전 10시~오후 12시, @AS 방문: 욕실 실리콘 들뜸, 홍길동, 위치 없음, 2026년 11월 9일',
   '오전 9시~오후 5시, @타일 시공, 홍길동, 위치 없음, 2026년 11월 10일'].join('\n');
-// 현관(asId 만 남은 옛 기록)은 11/10 으로, 베란다 예전 방문 일정(v4a)은 11/12 로
+// 현관(asId 만 남은 옛 기록)은 11/10 으로, 싱크대(방문 일정이 지워지고 asId 일정만 남음)는 11/11 로, 베란다 예전 방문 일정(v4a)은 11/12 로
 const TEXT2 = ['오후 2시~오후 4시, @AS 방문: 현관 문틀 벌어짐, 홍길동, 위치 없음, 2026년 11월 10일',
+  '오전 11시~오후 1시, @AS 방문: 싱크대 수전 누수, 홍길동, 위치 없음, 2026년 11월 11일',
   '종일, @AS 방문: 베란다 배수구 역류, 홍길동, 위치 없음, 2026년 11월 12일'].join('\n');
 const ICS = ['BEGIN:VCALENDAR',
   'BEGIN:VEVENT', 'UID:as-uid-1@test', 'DTSTART:20261116T100000', 'SUMMARY:🔧 AS 방문: 욕실 실리콘 들뜸', 'END:VEVENT',
@@ -138,7 +147,7 @@ const ICS = ['BEGIN:VCALENDAR',
       assert.equal(g.as.as1, '2026-11-06', '거부되면 AS 방문일도 그대로');
     });
 
-    await test('② 잇는 규칙 — asId 만 남은 옛 기록은 따라감 · 다른 일정이 방문 일정인 AS 는 그대로 · 토스트 · 일정 창도 같은 규칙 (LINK)', async () => {
+    await test('② 잇는 규칙 — asId 만 남은 옛 기록·지워진 방문 일정 기록은 따라감 · 다른 일정이 방문 일정인 AS 는 그대로 · 토스트 · 일정 창도 같은 규칙 (LINK)', async () => {
       await page.evaluate(SEED);
       // 맞추기 창 [반영] — 실제 버튼 길(토스트까지)
       await page.evaluate(() => hjCalSyncView());
@@ -147,15 +156,16 @@ const ICS = ['BEGIN:VCALENDAR',
       await page.waitForFunction(() => { const b = document.getElementById('csApply'); return b && !b.disabled; });
       const rows = await page.evaluate(() => (window.__hjCalSyncPlan.rows || []).map((x, i) => [i, x.status, x.app && x.app.id, !!(document.querySelector('#modalRoot .csChk[data-i="' + i + '"]') || {}).checked]));
       const moves = rows.filter(x => x[1] === 'move');
-      assert.deepEqual(moves.map(x => [x[2], x[3]]), [['v2', true], ['v4a', true]], '전제: 두 줄 날짜 옮김·체크됨 ' + JSON.stringify(rows));
+      assert.deepEqual(moves.map(x => [x[2], x[3]]), [['v2', true], ['v5', true], ['v4a', true]], '전제: 세 줄 날짜 옮김·체크됨 ' + JSON.stringify(rows));
       await page.evaluate(() => document.querySelectorAll('#modalRoot .csChk').forEach(c => { const r = window.__hjCalSyncPlan.rows[+c.dataset.i]; c.checked = !!r && r.status === 'move'; c.dispatchEvent(new Event('change', { bubbles: true })); }));
       await page.click('#csApply');
       await page.waitForFunction(() => (state.schedule.find(s => s.id === 'v2') || {}).date === '2026-11-10');
       const a = await page.evaluate(() => ({ as: AS(), sch: SCH(), toast: window.__toasts.join(' | ') }));
-      assert.equal(a.sch.v2, '2026-11-10'); assert.equal(a.sch.v4a, '2026-11-12');
+      assert.equal(a.sch.v2, '2026-11-10'); assert.equal(a.sch.v5, '2026-11-11'); assert.equal(a.sch.v4a, '2026-11-12');
       assert.equal(a.as.as2, '2026-11-10', 'visitSchedId 없이 일정의 asId 만 남은 옛 기록도 방문일이 따라간다 ' + JSON.stringify(a.as));
+      assert.equal(a.as.as5, '2026-11-11', 'AS 의 visitSchedId 가 지워진 일정이면 남은 asId 일정(v5)이 방문 일정이라 따라간다 ' + JSON.stringify(a.as));
       assert.equal(a.as.as4, '2026-11-13', 'AS 의 방문 일정이 지금 있는 다른 일정(v4b)이면 예전 일정을 옮겨도 방문일은 그대로 ' + JSON.stringify(a.as));
-      assert.match(a.toast, /바꿈 2 · AS 방문일 1건도 맞춤/, '맞추기 토스트가 같이 맞춘 AS 를 말한다 ' + a.toast);
+      assert.match(a.toast, /바꿈 3 · AS 방문일 2건도 맞춤/, '맞추기 토스트가 같이 맞춘 AS 를 말한다 ' + a.toast);
       await page.evaluate(() => closeModal(true));
       // 일정 창 저장 — 같은 규칙(v331 + asId 만 남은 기록), 날짜 그대로인 저장은 어긋난 옛 자료도 손대지 않는다
       await page.evaluate(SEED);
@@ -169,16 +179,19 @@ const ICS = ['BEGIN:VCALENDAR',
       };
       await save('v2', () => { document.getElementById('schDate').value = '2026-11-14'; });
       await save('v4a', () => { document.getElementById('schDate').value = '2026-11-16'; });
+      await save('v5', () => { document.getElementById('schDate').value = '2026-11-15'; });
       await page.evaluate(() => { state.asLog.find(a => a.id === 'as1').visitAt = '2026-11-05'; });   // 이미 어긋나 있던 옛 자료
       await save('v1', () => { document.getElementById('schMemo').value = '가상 메모만'; });
       await save('t1', () => { document.getElementById('schDate').value = '2026-11-17'; });
       const e = await page.evaluate(() => ({ as: AS(), sch: SCH(), toast: window.__toasts.join(' | ') }));
-      assert.deepEqual(e.sch, { v1: '2026-11-06', v2: '2026-11-14', v4a: '2026-11-16', v4b: '2026-11-13', t1: '2026-11-17' });
-      assert.deepEqual(e.as, { as1: '2026-11-05', as2: '2026-11-14', as3: '2026-11-12', as4: '2026-11-13' }, '일정 창: asId 만 남은 기록 따라감 · 다른 방문 일정 AS 그대로 · 메모만 고친 저장은 그대로 · 보통 일정은 AS 안 건드림 ' + JSON.stringify(e.as));
+      assert.deepEqual(e.sch, { v1: '2026-11-06', v2: '2026-11-14', v4a: '2026-11-16', v4b: '2026-11-13', v5: '2026-11-15', t1: '2026-11-17' });
+      assert.deepEqual(e.as, { as1: '2026-11-05', as2: '2026-11-14', as3: '2026-11-12', as4: '2026-11-13', as5: '2026-11-15' }, '일정 창: asId 만 남은 기록·지워진 방문 일정 기록 따라감 · 다른 방문 일정 AS 그대로 · 메모만 고친 저장은 그대로 · 보통 일정은 AS 안 건드림 ' + JSON.stringify(e.as));
       assert.match(e.toast, /AS 방문일도 2026-11-14 로 맞췄습니다/, '일정 창 토스트 ' + e.toast);
     });
 
-    await test('③ 캘린더 파일 가져오기 — 같은 uid 로 날짜가 바뀐 AS 방문 일정은 방문일도 따라감 · 날짜 같은 갱신·보통 일정은 그대로 (ICS)', async () => {
+    await test('③ 캘린더 파일 가져오기(안전장치) — 같은 uid 로 날짜가 바뀐 AS 방문 일정은 방문일도 따라감 · 날짜 같은 갱신·보통 일정은 그대로 (ICS)', async () => {
+      // 합성 꼴: 앱이 만든 AS 방문 일정에는 icsUid 가 없다(AS 관리에서만 만들고, uid 는 가져오기·맞추기 '새 일정'만 붙인다) — 그래서 uid 를 손으로 붙인다.
+      // 지금은 이 길로 AS 방문 날짜가 바뀌지 않지만, 나중에 AS 방문 일정에 uid 가 붙어도 방문일이 어긋나지 않는지 지킨다.
       await page.evaluate(SEED);
       const r = await page.evaluate(async ics => {
         state.schedule.find(s => s.id === 'v1').icsUid = 'as-uid-1@test';
@@ -192,7 +205,7 @@ const ICS = ['BEGIN:VCALENDAR',
       assert.equal(r.sch.v1, '2026-11-16'); assert.equal(r.sch.v2, '2026-11-07'); assert.equal(r.sch.t1, '2026-11-18');
       assert.equal(r.as.as1, '2026-11-16', '날짜가 바뀐 AS 방문 일정은 방문일도 따라간다 ' + JSON.stringify(r.as));
       assert.equal(r.as.as2, '2026-11-08', '날짜가 같은 갱신은 AS 를 건드리지 않는다(v331 과 같음) ' + JSON.stringify(r.as));
-      assert.equal(r.as.as3, '2026-11-12'); assert.equal(r.as.as4, '2026-11-13');
+      assert.equal(r.as.as3, '2026-11-12'); assert.equal(r.as.as4, '2026-11-13'); assert.equal(r.as.as5, '2026-11-08');
     });
 
     await test('④ 폰 390 AS 관리 넘침 없음 · 핀 3곳 같음 · 페이지 오류 0 · 외부 쓰기 0 (PHONE)', async () => {
