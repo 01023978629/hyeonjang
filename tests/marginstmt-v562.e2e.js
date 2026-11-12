@@ -5,7 +5,8 @@
    합성 자료만, 바깥 쓰기 0. 날짜는 '지난달'(PYM).
    시드: 가온(견적서 3,300,000 + 내역서 220,000 · 장부 자재 50,000) · 나래(견적서 5,500,000 · 내역서 없음 · 자재 5,000,000 · 지난달 준공) ·
          다솜(내역서 1,100,000 · 인건 300,000 · 지난달 준공) · 라온(내역서 100,000 · 외주 150,000 — 적자).
-   ① 설정 없음 — 마진·총 마진·적자 경보·수익 분석은 예전 그대로(견적 기준, 금액 먼저) (DEFAULT)
+   ① 꺼 둠(salesBasis 'all') — 마진·총 마진·적자 경보·수익 분석은 예전 그대로(견적 기준, 금액 먼저) (DEFAULT)
+      (v589 부터 설정이 비어 있으면 내역서가 있는 자료는 저절로 내역서 기준이라, 예전 동작은 사람이 끈 'all' 로 지킨다)
    ② 켜면 마진 = 내역서 − 지출 · 내역서 없는 나래는 marginNA · est·bill·due 그대로 (STMT)
    ③ 화면 — 대시보드 '총 마진(내역서) 65% · 92만원' · 마진 표 칸 '77% · …(작업내역서 기준)'/'작업내역서 없음' · 파일철 · 건별 마진 (VIEW)
    ④ 합계·분석 — 마진 요약 · 수익 분석 · 수익성 순위 · 적자 경보 · 월말 결산 완료 현장에서 나래 빠짐 (TOTALS)
@@ -60,7 +61,7 @@ const SEED = () => {
   const PYM = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
   const P = (name, cost, doneAt) => ({ name, stage: doneAt ? 3 : 2, received: 0, phases: [], cost: Object.assign({ material: 0, labor: 0, outsource: 0 }, cost || {}), customer: { name: '', phone: '', addr: '' }, archived: false, doneAt: doneAt || null });
   state.projects = [P('가온'), P('나래', { material: 5000000 }, PYM + '-26'), P('다솜', { labor: 300000 }, PYM + '-25'), P('라온', { outsource: 150000 })];
-  state.quotes = []; state.schedule = []; state.notes = []; state.payLog = []; state._demo = false; state.dirHandle = null; state.goals = {};
+  state.quotes = []; state.schedule = []; state.notes = []; state.payLog = []; state._demo = false; state.dirHandle = null; state.goals = { salesBasis: 'all' };   // v589 예전 동작은 사람이 끈 'all' 로
   state.expenses = [{ id: 'X1', date: PYM + '-10', category: '자재', amount: 50000, project: '가온', memo: '' }];
   const est = (id, name, project, amount, day) => ({ id, name, ext: 'xlsx', kind: 'estimate', project, prefix: '_정리완료/' + project + '/견적서/', size: 1000 + amount % 997,
     est: { customer: name.replace(/\.xlsx$/, ''), amount, supply: Math.round(amount / 1.1), vat: amount - Math.round(amount / 1.1), date: PYM + '-' + day }, when: new Date(PYM + '-' + day + 'T09:00:00+09:00') });

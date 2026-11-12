@@ -3,6 +3,241 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-12 v590 · 일정 알림 watch-v6 — 다 받은 내역서의 현장 줄 남은 돈 숨김 · '[파수꾼]' → 매일 9시 '[일정 알림]' 내일 일정 요약
+
+대표 답(11/12, 아래 v588~v589 의 확인 대기 ①~③): ① "다 받은 현장 줄의 남은 돈은 숨겨" ② "구글에서 하루로 줄인 여러 날 공정은 지금처럼 '날짜 옮김'"(코드 그대로)
+③ Calendar API 사용 설정·데이터 액세스 민감한 범위 calendar.readonly 추가 — **대표가 마침**(앱 로그인 OAuth 프로젝트, 게시 상태 프로덕션·미인증 → 처음 바로 읽기 때 '확인되지 않은 앱' 경고, 고급 → 계속)
+④ "[파수꾼] 이름을 '일정 알림'으로. 매일 오전 9시에 다음날 일정을 요약, 다음날 일정이 없으면 안 보냄. hyeonjang #200 watch-v5 와 겹치니 같이 정리" ⑤ 병합 승인(manmool #223 먼저, 그다음 #162).
+**'[파수꾼]'이 11/4 뒤로 안 보인 까닭**: 운영 Apps Script 에 #200 watch-v5(병합 안 된 PR, 11/4 '파수꾼을 보내지 말고 실제 일정만')가 반영돼 있었다 — 매시간 도는 `dailyWatch` 가
+요약 대신 앱 일정 하나 = 캘린더 일정 하나('[현장명] 제목', 태그 hjKey)로 맞춘다(v567 이 11/10 본 '[현장명] 제목' 겹침도 이것). 오류가 아니라 설계였다. #200 은 이 판에 합치고 닫는다.
+
+**v590 📄 다 받은 내역서의 현장 줄 남은 돈 숨김** (`tests/stmtdone-v590.e2e.js` 3/3 · 변이 show-left·card-all)
+- 📄 내역서 보기(`hjStmtDetailView`): 머리가 '✓ 다 받음'(장부 셈 D.left=0)이면 현장 줄 `[data-sd-site-sum]` 에 '남은 돈'을 쓰지 않는다(현장 몫까지 다 받은 줄은 그대로 '✓ 다 받음'). 자료 `hjStmtDetailData().sites[].left` 는 그대로 — 화면만.
+- 현장 화면 '📑 이 현장 작업내역서'(`hjProjStmtData`): 남은 돈 = **아직 다 받지 않은 내역서만** 내역서마다 max(0, 이 현장 몫 − 이 현장으로 받은 그 내역서 입금). 합계·받은 돈 글자는 예전 그대로
+  (그래서 '합계 − 받은 돈'과 남은 돈이 다를 수 있다 — 다 받은 내역서의 현장 몫 차이·다른 내역서 초과 입금은 남은 돈에 안 섞는다).
+- 바뀐 옛 검사(의도): stmtdetail-v582 ③ — 다 받은 뒤 현장 줄 남은 돈 0줄(예전 2줄), 자료의 현장 몫 합 33,000 은 그대로.
+
+**일정 알림 watch-v6** (`apps-script/Watchdog.gs` — 서버 파일만, `tests/watchdog.unit.js` 34/34 · v6 변이 18종)
+- #200 watch-v5 를 그대로 가져왔다(앱 일정 → 기본 캘린더 매시간 맞추기: 태그 hjKey/hjSig 일정만 만들고·고치고·지움, 범위 −31~+180일, 넣을 것 0·지울 것 4↑이면 보류, 💰·세금·개인 일정·금액·출입 번호 제외).
+  `WATCH_CALSYNC=0` 이면 맞추기만 멈춘다(이미 넣은 태그 일정은 그대로 — 지우려면 따로). 예전 '[파수꾼]' 요약(WATCH_SUMMARY=1)도 선택 사항으로 그대로.
+- 새 기본: `watchAlertRun_` — 매시간 트리거가 **8~11시대**(ALERT_HOUR 기본 9, 한 시간 전~세 시간 뒤)에 하루 한 번, 기본 캘린더에 30분짜리 **'[일정 알림] 내일 M/D(요일) 일정 n건'** + 시작 시각 팝업.
+  8시대에 돌면 그날 9:00 시작으로 미리 꽂아 9시에 울리고, 9시가 지나 처음 돌면 5분 뒤 시작(지난 시각 일정은 폰이 안 울린다). 보냈는지는 스크립트 속성 `ALERT_SENT`(오늘 날짜) **또는** 오늘 캘린더의 '[일정 알림]' 일정.
+  **내일 일정이 없으면 보내지 않는다**(기록도 안 남겨, 창 안에서 다시 돌 때 생겼으면 그때 보낸다). `testWatchNow` = 시각 무관하게 다시 보냄(오늘 알림은 하나만 남김).
+- 내일 일정(`watchAlertItems_`) = 앱 작업 일정(시작일 = 내일 + 여러 날 공정 이어지는 날 'N/M일째', `watchWorkOk_` 로 💰·세금·개인 제외, 완료 보고면 이어지는 날 없음)
+  \+ 기본 캘린더 내일 일정(제미나이 '@'·개인 일정 등). 캘린더 쪽에서 빼는 것: 태그 hjKey(앱 일정으로 이미 셈) · '[일정 알림]'·'[파수꾼]' · 💰/수금 낱말 · 생일·근무지·부재중·집중 시간·메일 예약(getEventType) · 거절한 초대(getMyStatus 'NO').
+  같은 일정(`watchAlertSame_`): '@'·'[현장명]'·공정표 꼬리·'(N/M일째)' 를 뗀 핵심이 같거나 한쪽이 품고, 시각이 같거나 한쪽이 종일, 캘린더 제목의 '[현장명]'이 있으면 앱 현장과 맞을 때만.
+  자정을 넘겨 이어지는 오늘 시작 일정은 '(이어서)'. 본문은 제목·시각·현장·담당·장소만(장소가 출입 번호·금액처럼 보이면 뺌) — 메모·설명·고객 이름·전화·금액 없음. 30줄 넘으면 '…외 n건'.
+- 채널은 WATCH_CHANNEL 그대로(calendar 기본 · sheet → '일정 알림 현황판' · both · mail → 제목 '[일정 알림] …', 보내는 이름 '만물인테리어 일정 알림'). 알림을 끄려면 `ALERT_OFF=1`.
+- **앱 맞물림**: `hjCalSyncSkip`(index.html — 🔄 구글 캘린더 맞추기·v588 바로 읽기)이 '[일정 알림]'도 건너뛴다(안 그러면 알림이 앱 일정으로 들어온다) — 접두를 바꾸면 두 곳 같이(검사가 index.html 을 읽어 대조한다).
+  첫 화면 🛡 파수꾼 카드 부제의 '폰 캘린더로도 매일 아침 갑니다'(v5 뒤로 틀린 말)를 '이 카드는 앱에서만 — 폰 캘린더에는 매일 9시 「일정 알림」으로 내일 일정이 갑니다'로.
+- 서버 보호: `tests/office-ops-server-isolation.check.js` 의 Watchdog 허용을 watch-v6 정확한 본문 SHA-256 하나(`approvedWatchdogV6Sha256`)로(사용자 요청·승인 11/12). 커밋 전에는 HEAD(v4) 대조에서 떨어진다 — 커밋 뒤 통과.
+  변이는 `HJ_WATCHDOG_SRC=<사본>`·`HJ_INDEX_SRC=<사본>` 으로 돌린다(none-sends·no-dedupe·no-window·no-sent-check·cal-only-sent·start-now·no-tagged-skip·no-proj-check·no-money·no-self-skip·no-declined·no-type·
+  no-access-loc·no-calsync-off·no-alert-off·no-popup·old-tag·app-skip — 18종 모두 실패 확인).
+- 🅱 **운영 반영은 대표 손**: 병합만으로는 Apps Script 가 안 바뀐다. '만물인테리어 중계서버' 편집기 → Watchdog.gs 내용을 **메모장 등 프로젝트 밖에** 복사 보관(같은 프로젝트에 사본 .gs 를 두면 함수 이름이 겹친다)
+  → 새 Watchdog.gs 로 바꿔 저장 → 트리거가 이미 매시간(v5)이면 그대로, 아니면 `installDailyWatch` 실행 → 확인하려면 `testWatchNow`(내일 일정이 있으면 5분 뒤 '[일정 알림]'이 꽂힌다). 웹앱(중계) 배포 버전은 그대로.
+
+## 2026-11-12 v588~v589 — 📅 구글 캘린더에서 바로 읽기·구글 우선 맞추기 · 💰 매출 기준 기본값 = 작업내역서
+
+대표 답(11/12, 아래 v580~v587 의 확인 대기 ①~⑤): ① "구글 캘린더와 연동해서 사용할 거야" — 구글이 주인 ② "돈은 메모용이니 매출을 내역서 정리만 하면 돼"
+③ v583 소급 매출 — "세금계산서를 한 건으로 하니 신경 안 써도 돼"(그대로) ④ v585 약한 경고 — "안 끼워도 돼"(안 함) ⑤ 구글 캘린더 아이폰 월 보기 사진.
+같은 PR(#162)에 얹었다. **핀은 묶음 끝 번호 하나** `hyeonjang-v589-gcalstmt`. 두 갈래를 각자 작업 트리에서 만들고 → 갈래마다 세 관점(자료 무결성·보안/개인정보·현장 사용/검사 구멍)
+읽기 전용 검토 → 재현된 것만 고쳤다(캘린더 16건·매출 7건 고침, 1건 대표 확인으로 남김). 새 최상위 저장 키 없음, 구글에 쓰는 요청 없음, 고객 발송 없음.
+
+**v588 📅 구글 캘린더에서 바로 읽기 · 구글 우선** (`tests/calapi-v588.e2e.js` 6/6 · 변이 35종)
+- 맞추기 창 맨 위 `#csGoogle` → `getCalToken(interactive)`(getRoToken 꼴, GD_CLIENT_ID + `calendar.readonly`, **토큰은 메모리 `__calTok` 에만** — IDB·localStorage·저장본에 없음, 검사가 훑는다).
+  아이폰 팝업 때문에 **클릭 처리 안에서 await 전에** 부른다. `requestAccessToken({prompt:''})` — 처음 한 번만 동의 화면. 읽기 `hjCalApiFetch` 는 **GET 만**: 기본 캘린더 오늘−7일 ~ +60일,
+  singleEvents·startTime·250개·nextPageToken 최대 8쪽. `hjCalApiEvent(s)` 가 .ics 파서와 같은 꼴로(uid=iCalUID, 종일 end.date−1·60일 상한, 시각 오프셋 → 한국 시각, 설명 HTML 벗김 300자,
+  생일·근무지·부재중·집중·메일 예약·거절한 초대·날짜 없음 건너뜀, 응답 전 초대는 체크 해제·현장 미리 안 고름) → 기존 hjCalSyncPlan → hjCalSyncApply(안전판·오래된 창·stamp 가드 그대로).
+- 실패는 창 안 `#csGoogleMsg` 에만, 자료 무변경: 권한 거부·닫음 · **403 Calendar API 꺼짐**(켜는 곳 안내) · 403 권한 부족(토큰 버림) · 403 사용량 제한(`HJ_CALAPI_RATE_RE`, 토큰 유지) ·
+  401(토큰 버리고 한 번만 다시) · 오프라인 · 팝업 막힘('한 번 더 눌러 주세요' — 이 창에 없는 [이동 방식 로그인]을 가리키지 마라) · 창을 닫은 뒤 늦은 응답은 버림.
+- 직원 모드 `hjCalStaffBlocked()`: 창·바로 읽기·반영 막음, 일정 탭 단추 숨김, 직원 모드를 켜면 `hjCalApiDropToken()`(대표가 읽어 둔 토큰으로 대표 개인 캘린더가 보이던 것).
+- 구글 우선: 앱 기간을 **줄이는** '⏳ 기간 다름'도 체크된 채('구글 기간대로 줄여요'). 앱에만 있는 일정(지우기)은 여전히 체크 해제.
+- 짝 순서: **같은 구글 일정(uid) 먼저**(같은 날 → 가까운 날, ±21일 제한 없음, 'gcal:'·'nouid:' 합성 uid 는 안 봄) → 같은 날 → 이어지는 날 → 기간 안(inr)·옮김·새 일정.
+  uid 짝: 날짜 다르면 move(제목도 다르면 rename 실음), 같은 날 제목만 다르면 새 상태 **`rename`**(✏️, 결과 창에 옛 제목, 고객 안내 글에서 뺌). 그 날 같은 제목 앱 일정이 따로 있으면 uid 짝 안 지음.
+  완료 보고한 일정은 안 바꾸고, 그 구글 일정이 다른 날이면 체크 해제 새 줄('완료 보고한 …과 같은 구글 일정').
+- **이어지는 날**(제미나이 '@'가 여러 날 작업을 날마다 따로 만든다): 구글 하루짜리가 같은 열쇠의 앱 공정 **'반영 뒤 기간'(planned)** 의 이어지는 날이면 이미 같음 —
+  그 공정의 시작이 구글에서 짝을 찾았거나 시작이 읽은 기간보다 앞일 때만, '[현장명]' 이 같을 때만. 공정을 하루 늦춘 구글(16~18 → 17·18·19)은 첫 구글 날로 옮기고, 날마다 있으면 그 끝까지(같은 현장 날만).
+  **지금 기간으로 이어지는 날을 보지 마라** — 첫 판이 그렇게 해서 늦춘 공정이 마지막 날로 끌려가고 다음 읽기에서 같은 작업이 겹쳤다(검토 data-F1).
+- 구글 여러 날 vs 따로 된 앱 일정: 같은 현장이고 작업일(일요일 빼고)을 **다 덮을 때만** 짝. 끝만 비면 가장 늦게 끝나는 앱 일정을 구글 끝까지 늘리고, 가운데가 비면 늘린 뒤 겹치는 일정을 '앱에만 — 구글 여러 날 일정과 겹쳐요'(체크 해제).
+- 반복 일정: 새 회차는 한 줄 '🔁 반복 n회'(체크 해제, 체크하면 회차마다 하나, `icsRecur`), 회차는 날짜 옮김 후보가 아님. importICS 는 icsRecur 기록을 같은 날짜일 때만 갱신(같은 uid 의 RRULE 원본이 첫 회차를 덮지 않게).
+- **실제 구글과는 확인하지 못했다**(이 컨테이너는 바깥 요청 차단 — 가짜 GIS·가짜 API JSON). 🅱 대표: 운영 OAuth 클라이언트(GD_CLIENT_ID 의 구글 클라우드 프로젝트)에서 **Google Calendar API 사용 설정** +
+  동의 화면에 calendar.readonly 범위. 꺼져 있으면 403 안내만 뜬다. '확인되지 않은 앱' 경고는 고급 → 계속.
+- 바뀐 옛 검사(의도): calmulti-v580(짧아지는 기간 다름이 이제 체크·변이 span-shorter → shorter-unchecked, 몰딩 U·도배 W 씨앗은 원래대로 — 시작일이 구글에 없으면 다시 날짜 옮김) · calsync-v567(stats 에 api·cont) ·
+  calsyncdone-v581·calextras-v576(변이 기준 글만).
+
+**v589 💰 매출 기준 기본값 = 작업내역서 · 📄 내역서 보기 남은 돈은 장부 셈 하나** (`tests/salesdefault-v589.e2e.js` 9/9 · 변이 20종)
+- `hjSalesBasis()` = `hjSalesBasisPref()`('stmt'|'all'|'') — 'stmt' 내역서만, **'all' = 사람이 끈 것**(예전처럼 견적 포함), **'' = 저절로**: 내역서 견적(q.stmt.key)·가상 파일(_stmt)이 하나라도 있으면(`hjStmtDataExists()`) 내역서, 없으면 예전 그대로
+  (데모·내역서 없는 옛 검사는 숫자·글자 불변). `hjSalesBasisSet(false)` 는 키를 지우지 않고 **'all' 을 적는다**(지우면 다음에 열 때 저절로 다시 켜진다). 옛 판 기기는 'stmt' 만 보므로 'all' 도 예전과 같게 읽는다
+  — 다만 옛 판 기기에서 끄면 키를 지우므로, 모든 기기가 v589 가 되기 전에는 끈 것이 다시 켜질 수 있다.
+- `hjStmtDataExists` 는 견적 파일마다 불리므로 한 동기 실행 안에서만 기억(queueMicrotask 로 비움)하고, 그 사이에도 quotes·files **배열이 바뀌거나 길이가 달라지면** 다시 센다(길이만 보지 마라 — 변이 memo-len-only).
+- 이 기준을 따라 저절로 바뀌는 곳: 대시보드 매출 칸·월말 결산·부가세 준비·세무 엑셀·마진(v562)·브리핑·내역서 탭. 안내 글: 📑 탭 `[data-stmt-basis-hint]` 는 끈('all') 때만,
+  📊 매출 목표 체크는 실제 기준 + 저절로면 `[data-sales-basis-note]`(`hjSalesBasisAutoHtml()` 한 곳, 체크를 바꿀 때마다 다시 그림). 견적을 '매출에 반영'이라 하던 안내(오늘 챙길 일·견적 저장 알림·안 여러 개·안 확정·
+  예전 견적 화면 합계 칸·최종본 안내·📑 반영 창 집계 제외 상자)는 `hjEstSumWord()` 로 내역서 기준이면 '견적 합계'.
+- 증빙 묶음: '매출(내역서)' 줄은 **세무사용(o.internal)에만** — 고객용·보험용 00_목록·06_수금발행기록.xlsx 에 내부 지표가 나가던 것. `hjEvidenceLedgerRows(p,o)` 는 o 없이 부르면 예전처럼(세무사용).
+- 📄 내역서 한 장 보기: 머리 '남음' = 장부 셈 하나. 차이 경고 줄 `[data-sd-gap]` 과 그 셈(siteLeft·orphanPaid·overPaid·gap)을 뺐다 — v580~v587 의 "지워 숨기지 마라"는 대표 답 ②로 풀렸다.
+  현장별 받은 돈·남은 돈, '현장 목록에 없음'·'현장 미지정' 칸, `[data-sd-lines-off]` 는 그대로.
+- 바뀐 옛 검사(의도): salesbasis-v561·marginstmt-v562·stmtimport-v526·briefslim-v564 는 예전 숫자를 지키려고 시드에 salesBasis:'all' · stmttab-v565(저절로면 안내 줄 없음) · stmtdetail-v582(gap 없음, 변이 site-left-head) · dailyfix-v586 ②(미연결 견적 글).
+
+**대표 확인 대기(이 묶음 — 11/12 대표 답으로 풀림, 위 v590·watch-v6 첫 줄)**: ① 내역서 다 받은 뒤 머리는 '✓ 다 받음'인데 현장 줄에 '남은 돈'이 남는 경우(현장 미지정 입금 등) — 현장 줄의 남은 돈을 계속 보일지(검토 deferred, 셋 다 대표 결정과 부딪힘)
+② 시작일에 구글 일정이 없는 여러 날 공정(구글이 하루로만 보이게 옮긴 것)을 '날짜 옮김'으로 보는 지금 동작이 맞는지 ③ Google Calendar API 켜기(위 🅱).
+관찰(보고만): 11/12 대표 사진에서 '[파수꾼]' 아침 점검 일정이 11/4 뒤로 없다 — 작업이 있는 날(11/6·7·9…)에도 없어 시간 트리거가 멈췄거나 v4 수동 배포 뒤 오류일 수 있다(Apps Script 실행 기록 확인 필요, 저장소 코드는 안 바꿈).
+운영 메모: 11/12 대표가 "11/13 일정 3건 현장 웹에 추가"를 요청 — 이 세션은 기기·중계 접근이 없어 🔄 맞추기 창에 붙여 넣을 화면 글 3줄을 만들어 줬다. **같은 날 같은 제목은 맞추기가 한 줄로 합친다**
+(예: 두 현장의 '우수관 1개') — 그런 글을 만들 때는 제목에 동·호수를 넣어라. 시각만 있고 끝이 없으면 1시간으로 들어간다.
+
+## 2026-11-12 v580~v587 운영 묶음 — 🔄 캘린더 여러 날·바뀐 일정 알리기 · 📄 내역서 한 장 보기 · 📑 고친 내역서 다시 반영 · 🔍 확인필요 사진 크게 보기 · 📸 오늘 일정 현장 먼저 · 🤖 오늘 챙길 일·📤 이어지는 날 지시
+
+대표 지시(11/11 "최조본 확인 후 운영 관련 개발 진행", 11/12 "이어서"). v579 위에 같은 PR(#162)로 얹었다. **핀은 묶음 끝 번호 하나** `hyeonjang-v587-wodaymulti`(v580~v586 번호는 검사 파일 이름에 남는다).
+여섯 갈래를 각자 작업 트리에서 만들고(구현·새 검사·변이·기준선 실패 확인) → 갈래마다 두 관점(돈·자료 무결성 / 현장 사용·검사 구멍) 검토 → 찾은 46건을 고친 뒤 합쳤다. 합칠 때 충돌은 위임 셀렉터 한 줄뿐
+(`…,[data-stmtproof],[data-stmtdetail],#qmBathroom,…,#qmMeasure,[data-unbilled-photo]'` — 순서 고정 검사들 때문에 v582 는 `[data-stmtproof]` 뒤, v584 는 맨 끝). 새 최상위 저장 키 없음, 서버·고객 발송 변경 없음.
+
+**대표 확인 대기(이 묶음 — 11/12 대표 답으로 풀림, 위 v588~v589 첫 줄)**: ① v580 구글이 더 짧은 여러 날이면 '줄임'을 체크 해제로 제안 — 맞는지 ② v582 내역서 '남은 돈'을 장부 셈(합계 − 이 내역서로 받은 돈 전부)과 현장별 셈(현장마다 합계 − 그 현장이 받은 돈) 중 어느 쪽으로 할지 — 정하기 전에는 차이 한 줄 `[data-sd-gap]` 을 지워 숨기지 마라
+③ v583 금액 바꾸기는 옛 작성 월 매출·부가세 매출을 소급해 바꾼다 — 결산·신고를 마친 달이면 고친 날의 달로 옮길지 ④ v585 ⏱ 를 안 누르고 오늘 현장이 여럿인 날에도 약한 경고를 띄울지 ⑤ 실제 구글 캘린더 화면 글에 여러 날 종일 일정이 어떤 꼴로 나오는지(실물 미확인).
+
+**v580 🔄 구글 캘린더 맞추기 — 여러 날 일정의 기간 지키기** (`tests/calmulti-v580.e2e.js` 5/5 · 변이 8종 last-date·loose-last·no-inrange·span-reported·span-shorter·no-shift·ignore-to·move-own-ignored)
+- 문제: '날짜 옮김'이 s.date 만 바꿔 메모 머리 '시작~끝 (N일)'(HJ_RANGE_MEMO_RE)이 남의 날짜가 되고 hjSchSpan 이 3일 공정을 하루로 봤다(둘째·셋째 날이 대시보드·내 업무·달력·지연 점검에서 사라짐). 화면 글 '종일, …, 시작~끝' 은 끝 날짜를 시작일로 읽었고 '시작~끝, 제목, …' 은 안 읽었다.
+- 읽기 `hjCalSyncParseText`: 두 날짜(`HJ_CALSYNC_RANGE_HEAD_RE`·`HJ_CALSYNC_RANGE_TAIL_RE` → `hjCalSyncRangeOf` — 끝 연도·월 생략, 해·달 넘김). 끝은 종일만·그날 포함·60일 상한(.ics 와 같은 결과). 시각 있는 여러 날 줄은 .ics 처럼 하루.
+  **줄 끝(꼬리) 꼴**('종일/오전/오후, …, 위치…, 날짜~날짜')에 아는 꼴이 아닌 두 날짜(요일 괄호 '(월)~'·' - '·뒤에 ', 반복' — `HJ_CALSYNC_LOOSE_RANGE_RE`)가 오면 그 줄을 건너뛰고 '날짜를 못 읽은 줄 n개'(plan.stats.unread → `[data-cs-unread]`). 마지막 날짜를 시작일로 되돌리지 마라. 위치 칸 안의 날짜는 범위가 아니다.
+  **줄 머리 꼴**('날짜~날짜, 제목, …')은 '~·–' 만 읽고, 요일 괄호·하이픈이 붙은 머리 꼴은 v580 전처럼 `HJ_CALSYNC_LINE_RE` 에 안 걸려 세지도 않고 넘어간다 — 실제 구글 화면 글 꼴을 확인한 뒤(대표 확인 ⑤) 넓힐 일.
+- 계획: 구글 기간 [시작, 끝] 안에 같은 열쇠의 앱 일정이 있으면 짝 — 완료 보고면 '이미 같음', 아니면 날짜 옮김. v567~v579 맞추기가 끝 날짜로 넣은 바로 그 기록(icsUid 'gcal:끝|열쇠'·하루짜리·날짜 = 구글 끝)이면 r.fix '예전 맞추기가 끝 날짜로 넣은 일정 바로잡기'(이 단계를 빼면 '새 일정'으로 두 번 들어간다 — 변이 no-inrange).
+  '⏳ 기간 다름'(span)은 **구글이 끝 날짜를 줄 때만**, 완료 보고한 일정엔 만들지 않음, 앱 기간을 줄이는 쪽은 체크 해제('앱 기간보다 짧아요 — 맞으면 체크').
+- 반영: move 는 머리가 그 일정 것(`hjCalSyncMemoOwn` — 머리 없음 또는 시작 = 일정 날짜)이면 구글 끝으로(`hjCalSyncSpanMemo`), 없으면 v353 `hjShiftRangeMemo`. span 은 머리만 갈아 끼움(`HJ_RANGE_HEAD_RE`). **사람이 고친 머리(시작 ≠ 일정 날짜 — v567~v579 옮김이 남긴 낡은 머리 포함)는 건드리지 않는다**(미리보기 '메모의 기간은 손으로 고친 것이라 그대로 — 날짜만 옮겨요'). `hjCalSyncStamp` 에 메모 머리 기간도.
+
+**v581 맞추기 반영 뒤 '🔄 바뀐 일정 알리기'** (`tests/calsyncdone-v581.e2e.js` 6/6 · 변이 no-done·first-only·any-crew·no-escape·cust-archived·fix-cust)
+- `hjCalSyncApply` → `{…, ids, list}`(지운 것 빼고, 바뀌기 전·뒤 `hjCalSyncSnap`, '뒤' 는 모든 줄 반영 뒤에 찍음). 1건 이상이면 `hjCalSyncDone(r)` 창 `#hjCalSyncDone`: 현장별 `[data-csd-group]`·`[data-csd-row=new|time|span|move]`, [📤 바뀐 일정 팀에 공유], 현장마다 `.csdCust` [✉️ 고객 일정 안내](번호 없으면 글 복사). 보관 현장은 '(보관한 현장)' 만·단추 없음, fix 줄은 '🛠 … 앱 기록 바로잡기(고객 안내 글에서 뺌)'. 창은 아무것도 저장하지 않는다, 자동 발송 없음.
+- `hjSchShareView({ids,label,back})` 가 여러 일정을 받는다(예전 ids[0] 만). 번호는 **고른 일정이 모두 같은 한 사람 담당일 때만** 미리 채우고, 섞이면 비우고 '👥 팀원별로 보내기'(v360). 출입 번호는 v577 `hjMemoOut`.
+- 고객 글은 v353 `hjScheduleChangeText` 재사용(m.fromTime·toTime·fromEnd·toEnd·'(새 일정)' 칸, 없으면 v353 글 그대로).
+- 바뀐 옛 검사(의도된 변경): calsync-v567 — plan.stats 에 `unread: 0`, ④ 반영 뒤 결과 창 확인·닫기(단언 꼴, 시간 초과 아님).
+
+**v582 📄 내역서 한 장 보기** (`tests/stmtdetail-v582.e2e.js` 4/4 · 변이 wrong-paid·same-day-merge·no-unassigned·no-dun-fallback·no-entry·no-gap-note·no-lines-off·no-back·proof-noback·wide-head)
+- 📑 장부 줄 [📄 보기] `[data-stmtdetail]` → `hjStmtDetailData(src)`(읽기만) → `hjStmtDetailView(src,back)`: 머리 = 장부(`hjStmtLedger`)와 같은 값 + 경과일·원본 파일, 현장별 합계·받은 돈·남은 돈·📷(v568)·줄(날짜순 40줄), 입금 이력은 **stmtPay 묶음별**(같은 날 두 묶음은 두 줄, 묶음 id 없는 옛 기록은 날짜별).
+- **현장별 받은 돈은 이 내역서 입금(stmt===src)만**(hjStmtPayPlan 과 같은 셈 — 변이 wrong-paid). 줄에서 빠진 현장(집계 제외·견적 삭제)·현장 미지정 입금은 '현장 목록에 없음'·'현장 미지정' 칸 → 현장별 받은 돈 합 = 머리 받은 돈. '이름 바뀜'은 까닭이 아니다(hjProjectRefWalk 가 payLog 도 옮긴다).
+- 머리 '남음'(장부 셈)과 현장별 남은 돈 합이 갈리면(빠진 현장·미지정 입금·더 받은 현장) 머리에 `[data-sd-gap]` '⚠ 현장별 남은 돈을 더하면 …'. 반영 뒤 견적을 고쳐 줄 금액 합과 quoteCalc 가 1원 넘게 다르면 `[data-sd-lines-off]`.
+- `hjStmtPayView(src,back)`·`hjStmtProofView(src,back)`(v578) 는 back 이 있으면 '‹ 뒤로'·저장 뒤 back(), `hjStmtDunView(to,back)` 는 '‹ 뒤로'만(보내기 단추는 창을 닫는다). 기존 입구는 인자 하나 그대로. 장부 줄 📄·💰·🧾 단추에 aria-label('거래처 문서 M/D' + 같은 이름이면 파일 이름).
+  (증빙 저장 뒤 복귀는 통합 검토에서 더함 — 변이 proof-noback.)
+- 공통 `.modal h3`·장부 협력사 미수 줄에 `overflow-wrap:anywhere`(띄어쓰기 없는 긴 거래처 이름이 360px 를 넘었다 — mobile-more-sweep 위반 0 확인). 넘침 검사는 상자뿐 아니라 '상자 안 글자 넘침(scrollWidth > clientWidth)'도 본다.
+
+**v583 📑 고친 작업내역서 다시 반영 — 금액만 바뀐 줄을 두 번 더하지 않기** (`tests/stmtrevise-v583.e2e.js` 5/5 · 변이 20종)
+- 문제: 이미 들어간 줄을 [날짜,위치,작업명,금액]으로만 알아봐 금액만 고친 줄이 '새 줄'로 더해졌다(220,000 → 330,000 이면 매출 600,000 — 맞는 값 380,000). v579 초안 엑셀을 채워 반영한 뒤 고쳐 다시 넣는 흐름.
+- `hjStmtClassify(lines)`(읽기만): 이미 들어간 줄 / 금액만 다른 줄(`hjStmtLineKey` = 날짜·hjStmtKey(위치)·hjStmtKey(작업명), 옛 줄 하나는 한 번만 짝) / 새 줄. 반영(`hjStmtApply` → `hjStmtRevisePlan`)과 미리보기(`hjStmtRevisions`)가 같은 나누기.
+  줄마다 `[data-stmt-rev]` [새 금액으로 바꾸기|따로 더하기|넣지 않기]. 기본값은 **`hjStmtRevBlock(e,l,src,ctx)` 한 곳** — 손으로 고친 견적·집계 제외·지운 현장·보관 현장·그 줄 묶음에서 고른 현장과 다름·다른(또는 모르는) 거래처·날짜 없는 줄인데 다른 파일이면 기본값 없음(사람이 고르기 전엔 반영 안 함).
+- 바꾸기는 `hjStmtApplySafe(plan)`(막힐 것 먼저 확인 → `hjSnapshot('작업내역서 금액 수정 전',true,true)` → `hjStmtApply(plan,{snapped:true})`). snapped 없이 바꾸기를 부르면 거부. `hjStmtApply` 는 동기 그대로(v526 검사가 바로 부른다).
+  막는 것(그러면 아무것도 안 바뀜): 손으로 고친 견적(`hjStmtQuoteEdited` — 품목 이름·수량·순서·품목별 단가 대조, 허용 줄 수×2+2원) · **그 내역서·그 현장 입금(payLog.stmt===src && project===p)이 그 현장의 새 합계보다 큼**, 그다음 내역서 전체 · 견적 작성 화면에 열려 있음 · 미리보기 뒤 옛 줄이 바뀜(`cur.revAmt` 에 그릴 때 본 옛 금액 — 누르는 순간 state 를 다시 읽지 마라) · 같은 옛 줄 두 번.
+- 바꾸면 `stmt.lines[i].amt`·`hjStmtReprice`·`syncQuoteToProject`, 견적 비고에 '[금액 수정] 날짜 · 작업 옛→새원 · 원본 ‘파일’', **`stmt.revFiles`**(이 견적의 금액을 바꾼 파일, 마지막이 가장 최근, 20개까지)에 그 파일 — hjStmtFiles 가 stmt.src·stmt.file·revFiles 를 다 봐서 바꾸기만 한 수정본도 '반영함'. 확인 창 요약 '⚠ 옛 작성일(YYYY-MM) 매출이 바뀝니다'.
+  **`stmt.file` 은 처음 만든 원본 파일 그대로 둔다**(통합 검토 — 한 칸에 마지막 수정본을 덮어쓰면 앞선 수정본이 '아직 안 넣음'으로 되살아나고, 📄 내역서 보기의 '원본 파일'도 수정본 이름이 됐다). 이 견적에 이미 넣었던 파일(원본·revFiles)인데 그 뒤 다른 파일로 또 바꿨으면 `hjStmtRevBlock` 이 기본값을 비운다('이미 넣었던 옛 파일이라 골라 주세요' — 새 금액이 옛 금액으로 돌아가지 않게). 처음 보는 다음 수정본은 막지 않는다. 변이 rev-overwrite·no-oldfile. 새 파일에 없는 옛 줄은 `[data-stmt-missing]` 알림만(지우지 않음). 확인 창 [반영]은 async — 진행 중 `__modalCloseLocked`·단추 잠금.
+- 안 한 것: 같은 반영에서 그 내역서에 새 줄이 함께 붙어 합계가 다시 늘어나는 경우의 입금 셈(조심 쪽으로 막힘 — 두 번 나눠 반영), 이미 두 번 잡힌 옛 자료 정리, 작업명이 바뀐 줄.
+
+**v584 🔍 확인필요 사진을 창 안에서 크게 보기 · '내역서에 아직 없는 작업' 줄 사진** (`tests/photoview-v584.e2e.js` 6/6 · 변이 10종)
+- 🧹 AI 자동 정리(`[data-org-photo]`)·🧭 추측 배정(`[data-psr-photo]`) 미리보기를 `hjThumbStrip` 단추로(체크 label 밖, 44px), openModal 뒤 `hjThumbBind` → `hjThumbOpen(id, 그 묶음 ids)` → 창 위에 겹쳐 `openLightbox`(닫으면 창·체크·고른 현장 그대로, 초점은 그 썸네일). 내역서 줄(v566)에 `[data-unbilled-thumbs]` 3장 `[data-unbilled-photo]` + '+n'(#view 위임 셀렉터 **끝**). `hjUnbilledPlan` run.ids 는 날짜마다 `HJ_UNBILLED_DAY_IDS`(4)장, 복사 글·v579 초안엔 넣지 않는다.
+- **크게 보기로 넘기는 것은 '지금 보여 줄 수 있는 사진'뿐**(`hjThumbCanShow` = thumb·_driveId·동영상). `renderLightbox` 는 미리보기도 서버 사본도 없는 사진을 드라이브 전체에서 **같은 이름**으로 찾아 첫 것을 열고 `_driveId` 를 적고 markDirty 한다(엉뚱한 해의 IMG_1001 이 열리고 남의 Drive ID 가 저장된다 — 이번 검토가 재현). 그 함수는 손대지 않았다(다음 판 후보: 기기 원본 먼저, 크기가 정확히 하나로 맞을 때만 Drive ID).
+  원본만 있는 사진(`hjThumbLocal` — PC 스캔 직후 thumb:null·handle·_file·_heicFile)은 `hjThumbMake` 로 미리보기를 먼저 만든다(화면 메모리만, 누른 사진 + 묶음 앞 `HJ_THUMB_PREP_MAX` 24장, `queueHeicPreview` 셋째 인자 done 은 선택). 둘 다 아니면 `[data-thumb-none]` '미리보기 없음' 칸. **사진 확인 창에 새 썸네일 입구를 만들면 이 세 함수를 써라 — `openLightbox(id, 아무 ids)` 를 직접 부르지 마라**(빈 ids 면 전체 사진으로 떨어진다).
+- 창(#modalRoot)은 observeHeicLazy(#view 만 봄)가 못 보니 `hjThumbPrep` 이 보이는 썸네일부터. 창을 연 뒤 id 가 바뀐 사진은 넘겨 볼 목록에서 빼고, 누른 사진이 없으면 토스트.
+- 검사 시드 주의: thumb 있는 사진만 심으면 위 길을 안 지난다 — PC 스캔 모양과 폰의 PC 전용 모양을 같이 심어라. 폰(≤480px) 썸네일 44px, 글 칸(flex 1 1 150px) 줄바꿈 — 글 칸 ≥150px 를 잰다(현장 고르기 칸 폭은 글자 폭이라 재지 않는다).
+
+**v585 📸 촬영·현장 고르기에 '📅 오늘 일정 현장' 먼저 + 사진 추가 확인 창 경고** (`tests/todaysite-v585.e2e.js` 6/6 · 변이 11종)
+- `hjTodaySiteNames(ymd)` = ⏱ 작업 중 현장(`hjTodayWorkNames` — 그날 시작·out 없음, **팀 보고로 만든 기록(w.teamReport)은 세지 않음**) 먼저 + 그날 일정 현장(v571 `hjPlaceSchedNames`). **state.workLogs 는 읽기만** — `workData()` 는 빈 배열을 state 에 붙이므로 쓰지 마라(변이 workdata).
+- 현장 고르기(`openProjectSheet`)·촬영(`openCameraProjectSheet`) 목록 위 `hjTodaySiteStripHtml` 줄(`data-ps-today`·`data-camera-today`, `HJ_TODAY_SITE_SHOW` 6곳, 넘치면 `[data-today-more]`), 검색 중엔 숨김. **기존 `[data-psel]`·`.ps-row`·`[data-camera-project]` 목록·순서는 그대로**(project-scan-order·mobile-field-flow·field-search-recovery 가 고정) — 오늘 줄 단추에 그 속성을 붙이지 마라.
+- 사진 추가 확인 창 `#photoIntakeToday [data-intake-today]` 칩(칸 값만, '현장 검색'으로 줄어 있으면 비우고 change, 오류 글 지움) + `hjIntakeTodayWarn(source,picked,todayAll,todayWork)` → ''·'out'(오늘 일정 현장 밖)·'work'(오늘 현장이지만 ⏱ 작업 중 현장이 따로 있음). 촬영·공유만, **막지 않는다**. 판정·경고 글은 **자르지 않은 전체 목록**으로(칩만 6곳). `openCamera` 의 '골라져 있으면 바로 카메라'는 그대로.
+- 큰 글씨: 칩 이름은 전역 `body.a11y-bigN button` 이 키우고, px 고정 머리글·작은 글·경고는 1·2단계 크기를 따로(.ps-meta 방식).
+
+**v586 🤖 오늘 챙길 일 바로잡기** (`tests/dailyfix-v586.e2e.js` 4/4 · 변이 10종)
+- '🗓 오늘 일정 n건'은 `hjTodaySchRows(오늘)` = 오늘 시작 + `hjSchContinuing`(3일 공정 둘째·셋째 날이 빠졌다), 한 줄 글 `hjTodaySchLine`('(2/3일째)'). 한눈 보기·AI daily_check·**하단 캘린더 배지**가 같은 수.
+  '그날 일정' 화면용 `hjDaySchView(day,filter)` = 그날 시작 + 이어지는 날 복사본(제목 '(2/3일째)', date 그날, `_cont`, id 원본 그대로 — 원본은 안 바꿈): ☀️ 오늘의 브리핑(hjDailyBrief 오늘·내일·칩·복사 글)·🌅 aiBriefData·📊 bizDashData.todaySched·날씨 주의 모음.
+  아직 date===오늘만 세는 곳(다음 판 후보): get_overview·hjNotifyItems·todayScheduleBrief·aiActiveBriefData·ttsBriefText·aiPlannerScan·aiOpsDailyBrief·routeToday(🗺 오늘 동선)·aiOpsBrain(hjAlertTodayHtml 은 시작 시각 알림이라 그대로).
+- 견적 작성 탭으로 데려가는 줄('🧾 현장 미연결 견적' → `hjQuoteUnlinkedOpen`, v536 '30일 넘은 협력사 미수' → `hjStmtDunOpen`)은 `hjQuoteListGo(find, 없을 때 알림, 무엇을)` 한 길: **저장 안 한 작성 중 견적(quoteEditDirty)은 버리지 않고** 탭만 바꿔 알림, 직원 모드로 탭이 안 열리면 거기서 끝, 찾은 요소로 스크롤·테두리 2초·초점(tabindex -1). 새 줄도 editingQuote 를 그냥 비우지 말고 이 길로.
+- 🌅 오늘의 브리핑 창(hjMorningBrief — 단추로 열 때)·AI morning_brief 는 v564 뒤로 없어진 d.시공중현장을 읽어 TypeError 로 죽어 있었다 → `hjMorningData().doing`. aiBriefData 에서 칸을 빼면 그 칸을 읽는 곳도 찾아 고쳐라.
+  **아침 자동 창은 이것과 별개로 콜드 스타트에서 원래 안 뜬다**(오래된 결함) — 부팅 줄의 `hjMorningMaybe()` 가 기기 자료 복원(`__hjRestoreDone`)보다 먼저 돌아 `hjMorningShouldShow` 가 빈 state 로 false. 뜨게 하려면 복원 뒤로 옮기고, 1.2초 뒤 🤖 오늘의 브리핑(aiActiveBriefMaybe)이 같은 모달을 덮는 순서도 같이 정해야 한다(다음 판 후보).
+
+**v587 📤 내일 일정 팀에 보내기 — 이어지는 날도 지시에** (`tests/wodaymulti-v587.e2e.js` 5/5 · 변이 start-only·no-filter-cont·no-day-key·date-key·no-due-update·trim-drop)
+- `hjWoDaySchedules(day)` = 그날 시작 + `hjSchContinuing(day,hjWoDayOk)`(일요일·완료 보고 제외, 💰·세금·현장 없음·지운 현장('(삭제됨) …') 제외). 이어지는 날 지시 제목 '(2/3일째)', due 그날, items `{kind:'sched',ref,day,n,text}`.
+- **같은 지시인지는 달력 날짜가 아니라 '몇째 날'(items[].n — 시작일 1, 이어지는 날 hjSchContOn().day)로 본다**: 같은 날 다시 보내면 같은 번호, 다음 날은 새 번호, 보낸 뒤 일정을 옮겨도 같은 번호(v444 그대로 — 다시 보낼 때 due·date·items.day 도 새 날짜로). n 없는 옛 기록은 1. day===그날 대조로 되돌리지 마라(일정을 옮기면 팀 앱에 지시가 둘 — 변이 date-key).
+- 지시 기록 50개 상한은 `hjWoTrim(target,list)` 한 곳(hjWoRecordMany·hjWoRecord·hjWorkOrderLog): 밀려나는 지시의 팀 보고(wo.reports)는 p.teamReports 로 옮기고 order 에 지시 번호 — 팀 공수 정산·완료보고서 줄·hjWrApplied 가 그대로 읽는다. 지시 기록을 자르는 새 코드는 splice/slice 대신 이것을.
+
+**통합 검토(합친 판, 읽기만 하는 세 관점 + 반박) 뒤 고친 것**: 위 v582 증빙 복귀·v583 revFiles 와 함께 —
+- **오래된 창 가드 다섯 곳이 실제로는 꺼져 있었다**(v566 hjUnbilledSkip/Unskip · v567 hjCalSyncApply · v578 hjStmtProofSave 두 곳): `let __tabStale` 은 클래식 스크립트 최상위 let 이라 **window 속성이 아니다** — `window.__tabStale` 는 늘 undefined.
+  앱 다른 곳과 같은 꼴 `(typeof __tabStale!=='undefined'&&__tabStale)` 로 바꿨고, hjCalSyncApply 는 안전판을 기다린 뒤에도 한 번 더 본다(오래된 창에서 바꾸면 저장은 막히는데 '바뀐 일정 알리기'가 저장 안 된 날짜를 알리게 된다).
+  검사들도 `window.__tabStale = true` 로 앱과 다른 변수를 켜고 있어 통과했다 → page.evaluate 안에서 `__tabStale = true`(렉시컬). **새 코드·검사에 `window.__tabStale` 를 쓰지 마라.** 가드를 window 꼴로 되돌린 사본에서 unbilled-v566·stmtproof-v578·calsync-v567 이 실패하는 것을 확인.
+- 반박자들이 '갈래 안·기존 결함'으로 범위 밖이라 본 것(다음 판 후보): v587 날마다 지시는 일정 기간을 줄이거나 지워도 팀 앱에서 취소되지 않음(규격에 취소 없음) · v583 '[금액 수정]' 줄이 견적 비고라 견적서 PDF·엑셀 '비고'에 찍힘(v526 원본 줄과 같은 칸) · 맞추기 '날짜 옮김'이 AS 방문 일정의 asLog.visitAt 을 안 옮김(v567 부터) · 아침 자동 창(위).
+
+검사: 새 검사 8개 + 갈래마다 관련 검사(합쳐 100개 넘게 — 캘린더·일정 공유·내역서·사진 배정·폰 화면·팀 지시·브리핑) 통과, 정적 `*.check.js` 전부. 기준선 7bc7623 은 새 검사 8개 모두 ① 에서 실패.
+전체 run-all(합친 판, 이 컨테이너 · 동시 3 · 17분): 481개 중 475 통과 — 실패 6개는 main 에서도 같은 컨테이너 전용(한글 다운로드 파일 이름 5 · jsDelivr 차단 1). 통합 검토 고침 뒤 결과는 PR #162 본문.
+안 한 것: 시각 있는 여러 날 일정의 기간, renderLightbox 같은 이름 찾기 고침, 위 '아직 date===오늘' 9곳, v432 한 건 보내기 후보에 이어지는 날.
+
+## 2026-11-11 v577~v579 — 🔒 팀에게 나가는 메모의 출입 번호 · 🧾 내역서 입금 증빙 한 번에 · 📝 다음 작업내역서 초안(엑셀)
+
+대표 지시(11/11 "개발 진행"·"이어서 진행"). v572~v576 위에 같은 PR(#162)로 얹었다. **핀은 묶음 끝 번호 하나** `hyeonjang-v579-stmtdraft`(v577·v578 번호는 검사 파일 이름에 남는다).
+셋 다 결정 없이 할 수 있는 빈칸(AGENTS 의 '안 한 것'·'후속 후보')이고, 새 저장 키·서버·고객 발송 변경이 없다.
+
+**v577 🔒 팀에게 나가는 일정 메모에서 출입 번호 빼기** (`tests/memoscrub-v577.e2e.js` 5/5 · 변이 no-scrub)
+- v552 는 '작업자 캘린더로 보내기'만 걸렀다. 이제 📤 일정 공유 글·.ics·팀원별 글(v356·v360), 🔔 작업자 문안(`notifyDrafts`, 한 건·전체 묶음), 🔨 다음 공정 안내의 '전달 사항'(`hjHandoffText`)도 같은 규칙.
+- 규칙은 `hjMemoOut(t)` 한 곳 → `{text,cut}`: 줄·' / '·' · ' 토막 중 `hjLooksLikeAccessCode` 인 것을 빼고 ' · ' 로 잇고, 첫 토막의 공정표 기간을 뗀다. `hjSchShareMemo`·`hjSchCalSendItems` 가 이것을 쓴다.
+  공유 창 `[data-sh-cut]`·알림 카드 `[data-sn-cut]` 에 '🔒 … n곳은 뺐어요'.
+- **일정 메모 자체·대표 화면·내 폰 캘린더(🔔 알림 .ics `hjAlertIcsItems`)·구글 캘린더 추가 링크는 그대로** — 대표 본인 것이라 거르지 않는다(대표 결정 11/11 "그대로 둬", 검사 ⑤가 고정).
+
+**v578 🧾 내역서 입금 증빙 한 번에** (`tests/stmtproof-v578.e2e.js` 4/4 · 변이 no-recheck)
+- 협력사는 내역서 한 장에 세금계산서 한 장인데 입금은 현장마다 나눠 적혀(v527) 증빙도 줄마다 눌렀다(AGENTS v533 '안 한 것'). 📑 장부 줄 `[data-stmtproof]` '🧾 증빙 n건 아직' → `hjStmtProofView(src)`.
+- 대상 `hjStmtProofTargets(src)` = 그 내역서 입금 중 증빙 없음 · 견적 받은 돈과 이어진 기록(v543 `paid.payLogId`) 제외. 뜻은 `hjProofSet` 과 같게 `hjStmtProofInput` → `hjTaxIssueNormalize`·`hjTaxIssueApply`.
+- 저장 `hjStmtProofSave` 는 **한 번의 `durableLocalMutation`(안전판 1개)** — 줄마다 `hjTaxIssueSave` 를 부르면 안전판이 줄 수만큼 생겨 12칸을 밀어낸다. 연 뒤 입금 기록이 바뀌면(목록·stamp) 아무것도 적지 않는다. 데모는 화면에서만.
+- 위임 셀렉터의 `[data-stmtproof]` 는 `[data-stmtunit]` **뒤**에 둔다 — stmtpay-v527·bankstmt-v533·stmtdun-v535 가 `#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun]` 순서를 정규식으로 고정한다.
+
+**v579 📝 다음 작업내역서 초안(엑셀)** (`tests/stmtdraft-v579.e2e.js` 4/4 · 변이 amount-filled)
+- v566 '내역서에 아직 없는 작업' 칸 `[data-unbilled-draft]` → `hjStmtDraftView()` → `hjStmtDraftDownload(rows,to,date)`. 격자는 `hjStmtDraftGrid` — **[📑 작업내역서 반영](`hjStmtParse`)이 읽는 꼴 그대로**:
+  위에 '받는 분'·'작성일'·안내 한 줄, 머리글 '작업 날짜 | 위치 | 작업명 | 작업비용', 끝에 합계(D 칸 SUM 수식). 머리글 아래에 글을 넣지 마라(금액 없는 줄은 위 줄 작업명에 붙는다).
+- 작업비용은 비운다(금액은 사람이). 위치 = 그 현장의 지난 내역서 줄 위치(`hjStmtDraftLoc`), 없으면 현장 이름. 작업명 = 일정 제목(없으면 사진 작업명), 여러 날이면 '(11/5~11/6)'.
+- 파일 이름 `작업내역서초안_YYYYMMDD_거래처.xlsx`(`hjStmtDraftName` — 반영 때 이름에서도 거래처를 읽는다). 받는 분 기본값은 가장 최근 내역서 거래처(`hjStmtDraftPartners`). 읽기만, 고객 이름·전화 없음.
+- 검사 ②가 '금액을 채운 격자 → hjStmtParse → 같은 줄·거래처·작성일·합계', '안 채우면 매출 줄 0' 을 고정한다. 엑셀 라이브러리는 검사에서 가짜다.
+  실제 SheetJS(npm xlsx@0.18.5 = `_CDN.xlsx` 바이트)로 앱에서 한 번 만들어 확인(11/11): 시트 '작업내역서', 열 너비, D 합계 칸 `SUM(D6:D8)` 수식, 금액을 채운 파일을 `hjStmtReadFile` 로 읽으면 줄·거래처·작성일·합계(990,000) 일치.
+  그때 찾은 것: 빈칸 '' 을 그대로 넣으면 '빈 글자' 칸(t="str")이 된다 → aoa_to_sheet 전에 '' 를 null 로 바꿔 진짜 빈 칸으로 쓴다.
+- 알아둘 것: 초안 파일을 만물 폴더에 두면 `hjStmtFiles` 가 '아직 안 넣음'으로 보인다(이름에 '작업내역서'). 채운 뒤 [📑 반영]하면 되고, 안 채운 채 반영하면 0건이다.
+
+검사: 새 검사 3개 + 주변(schshare-v356·crew-v357·percrew-v360·calsend-v552·handoff-v374·multiday-v354·mwmat-v370·mobilealert-v443·stmtpay-v527·bankstmt-v533·bankmulti-v538·stmtdun-v535·stmtunit-v537·payproof-v348·vatproof-v349·taxmerge-v543·stmttab-v565·stmtphoto-v568·unbilled-v566·stmtimport-v526·healthline-v524) 통과, 정적 `*.check.js` 전부. 기준선 3305d36 은 세 검사 모두 ① 에서 실패. 전체 결과는 PR #162 본문.
+
+## 2026-11-11 v572~v576 한 묶음 — 📑 계약·확인 양식 9종 · 사진 뒷정리 3건 · 외부 스크립트 무결성·설치 QR 확인 · 리뷰 링크 기본값 · 캘린더 맞추기 덧붙임
+
+대표 지시(11/9 "문서 양식도 넣어주고 위내용 개발 진행" — 11/8 운영 분석 보고의 권장 순서, 11/10 "최종본을 확인하여 개발 진행"). 클라우드 세션이 갈래 다섯을
+v564 기준 작업 트리에서 만들고 main(v569, PC 쪽 v565~v569 병합 뒤) 위로 옮겼다. 갈래 번호는 검사 파일 이름에 남는다(핀은 아래 v577~v579 끝의 하나).
+**번호 다시 매김(11/11 저녁)**: PC 쪽이 v570(relayscan)·v571(placejudge)을 먼저 병합해 이 묶음의 옛 번호 v570~v577 이 겹쳤다 → main 을 합치고 v572~v579 로 한 칸씩 밀었다(옛 v570 = 새 v572 … 옛 v577 = 새 v579). 검사 파일 이름·`HJ_Vnnn_*` 변이 변수·주석도 같이. 대표에게 보고한 'v575~v577' 은 지금 v577~v579 다.
+이 세션이 같은 날 먼저 만든 'v565 캘린더 가져오기 보강'(importICS 쪽)은 main 의 v567·v569 와 겹쳐 접었다(옛 PR #162 내용 v328~v333 은 `archive/pr162-v333` 브랜치).
+
+**v572 📑 계약·확인 양식 9종** (`tests/forms-v572.e2e.js` 5/5 · 변이 9종)
+- 📎 서류 만들기 '보관' 앞 묶음 「📑 계약·확인 양식(9종)」(`data-act="form9:<key>"`) → `hjForm9View` 입력 → 기존 `hjDocDeliverView`(PDF·워드·HTML). 01 공사도급계약서 CT · 02 마감재 선택 확인서 FS ·
+  03 추가·변경 합의서 CO · 04 사진 활용 동의서 PC · 05 외주 발주·확인서 SW · 06 일용근로계약서 DL · 07 노임 지급 확인서 WP · 08 AS 처리 확인서 AF · 09 해제 합의서 CX.
+- 문구의 정본은 `docs/문서양식/`(대표가 준 docx·pdf — Pages 허용목록 밖). 앱 템플릿(`HJ_FORM9_HTML`)의 조항·안내문을 고치려면 원본과 같이 — 검사 ① PHRASES 가 글자를 고정한다.
+- `hjForm9Model`·`hjForm9View` 는 읽기 전용. 발행 기록은 실제로 가져갈 때만 `hjDoc433IssueQuiet`(p.docs, 접두는 `HJ_FORM9` 한 곳 + `HJ_DOC433_NO_RE`).
+- **06·07 주민등록번호·입금 계좌·소득세·지방소득세·실지급액, 09 받을 계좌는 모델에 칸 자체가 없다 — 입력칸을 만들지 마라.** 모르는 값은 빈칸, □ 는 근거가 있을 때만 ☑(자료 없는 현장은 ☑ 0개).
+- 인쇄 쪽수는 원본과 같다(계약서 2쪽·나머지 1쪽) — 조항 묶음을 통째로 keep 하면 3쪽이 된다.
+- 대표 확인 대기: 서명일 기본값이 오늘(비우면 손글씨) · 01 계약금액 출처(전자계약 서명 기록 → 청구 공사대금) · 02 견적 품목 미리 적기 기본 켜짐 · 워드에서 □·표가 실제로 어떻게 보이는지(Chromium 만 확인).
+
+**v573 사진 뒷정리 3건** (`tests/photosync-v573.e2e.js` 4/4 · 변이 5종)
+- 폰 머리 `#hjSyncAt` '☁ 서버 자료 HH:MM 받음'(오늘이 아니면 M/D HH:MM) — `__relay.syncAt` 을 **읽기만**. 경고 상태(offline·netfail·conflict·auth·qfail·stale)·`__tabStale`·중계 미설정이면 숨긴다
+  (안심시키는 줄이 실패를 가리면 안 된다). PC 머리에는 안 그린다. `relaySetStatus` 에서 `typeof relaySyncAtRender==='function'` 로 부른다(함수만 떼어 도는 단위 검사).
+- **Drive 에서 새 사진 기록을 만드는 길은 모두 정리 표시의 Drive ID 를 대조한다** — 중계 `relayLoadDriveFiles`(v560)·OAuth `__gdIngestOne`(v573). 이미 있는 기록에 잇는 길·되살린 표시(r>t)는 막지 않는다.
+  `__gdTombDrive()` 는 `state.photoTombs` 배열 신원+길이로 기억한다 — **photoTombs 를 제자리에서 push/splice 하지 말고 새 배열로 대입**하라.
+- 📤 PC 사진 올리기: 같은 원본('같은 경로+크기+수정 시각' 또는 같은 handle 객체)의 두 기록은 한 번만 올리고 Drive ID 를 둘 다에. 이름·크기·바이트가 같아 보여도 경로가 다르면 둘 다 올린다. 진행 글 '· 같은 원본 연결 n'.
+
+**v574 외부 스크립트 무결성 · pdf.js eval 끔 · 설치 QR 확인** (`tests/sri.check.js` 정적 · `sri-loader-v574` · `contract-qr-link-v574` · 변이 30종)
+- 외부 라이브러리 주소·sha384 는 `_CDN` 표 **한 곳**. jsDelivr `/npm/<패키지>@<x.y.z>/<경로>` 꼴 13항목, 줄마다 `// 패키지@버전 경로, N바이트`. cdnjs·버전 없는 주소 금지(exifr 는 7.1.3 고정).
+  로더는 `loadExtLib(_CDN.키, check)`·`_cdnScriptEl(_CDN.키)`. 실패는 재시도 없이 `CDN_SRI_FAIL_MSG` 토스트. head 의 exif-js·leaflet css 도 같은 주소·integrity + `crossorigin="anonymous"`.
+- **해시는 `npm pack` tarball 의 파일에서 계산했다. jsDelivr 가 그 바이트를 그대로 주는지는 개발 컨테이너에서 확인할 수 없다(바깥 주소 차단)** — PR 검사(`verify-release.yml`)의
+  `node tests/tools/sri-live.mjs --strict` 단계가 병합 전 확인이다. 해시가 다르면 그 라이브러리(엑셀·PDF·지도·OCR·HEIC·EXIF)는 폰에서 아예 실행되지 않는다. 버전을 올리면 해시·바이트를 다시 계산하고 그 단계를 통과시켜라.
+- 네트워크가 필요한 검사는 `tests/` 바로 아래 `*.check.js` 로 두지 마라(run-all 이 전부 돌린다) — `tests/tools/`.
+- CDN 주소를 가로채는 검사는 가짜 바이트가 막힌다 — 진짜 바이트를 주거나 `_CDN[k].sri` 를 그 바이트 해시로 바꾸고 응답에 `access-control-allow-origin: *`. `tests/fixtures/vendor/exif-js-2.3.0.js` 는 npm 바이트 그대로(주석도 붙이지 마라).
+- `pdfjsLib.getDocument` 는 전부 `isEvalSupported:false`, worker 주소는 `_CDN.pdfworker.src`(Worker 는 integrity 를 못 받는다 — 해시는 sri-live 가 대조).
+- `#hjcontract=` 설치 QR 링크: 다른 계약 서버가 이미 저장돼 있으면 거부(설정에서 직접), 아니면 배포 ID 뒤 4자리를 입력해야 저장. 바뀐 때는 IDB `contract_changed {at,via}`(직렬화 밖) → 설정 › 전자계약 '연결값 마지막 변경'.
+- integrity 를 못 단 것: Google api.js·GIS·카카오 지도 SDK(버전 없는 사업자 로더), tesseract 가 스스로 받는 worker·언어 자료, **`team-projects.js` 의 heic2any**(버전만 고정 — 위 v333 절의 '둘 다 integrity' 는 main 에 없는 커밋 이야기다).
+
+**v575 리뷰 링크 기본값 = 홈페이지 후기 페이지** (`tests/reviewlink-v575.e2e.js` 7/7 · 변이 5종 — PR #190 v426 을 다시 얹음)
+- 규칙은 `hjReviewLink()` 한 곳: 설정 링크(`hjReviewLinkCustom()`, https:// 로 시작하는 것만) → 없으면 `REVIEW_FALLBACK_URL`. **빈 문자열을 돌려주지 않는다** — `if(link)` 분기를 되살리지 마라, `__reviewUrl` 을 직접 읽지 마라.
+- 문자 세 입구(`hjReviewSms`·`reviewRequestSms`·`msgTemplate('review')`)는 링크 정확히 한 줄(자동 발송 없음). QR 카드·끝 QR 토글도 기본 주소로 나온다(칸이 사라지는 경우는 설정 링크가 213바이트를 넘을 때뿐).
+- 설정 저장은 https:// 값만, 빈 값 저장 = 기본으로 돌아감(키 입력칸의 '빈 값 = 안 바꿈' 과 다르다). 준공 카드 힌트는 `data-review-link-missing` 그대로(글자만 'ⓘ 홈페이지 후기 링크 — 설정').
+- **기본 주소는 manmool `review.html` 에 의존한다 — manmool PR #223 이 병합·배포되기 전에는 손님에게 404 다.** 이 묶음을 #223 보다 먼저 병합하면 안 된다(먼저 나가야 하면 `REVIEW_FALLBACK_URL` 을 홈페이지 첫 화면으로).
+  그쪽 경로를 바꾸면 상수와 검사 3개(reviewlink-v575·warranty-review·publicweb-v446)의 주소를 같이.
+
+**v576 🔄 구글 캘린더 맞추기 덧붙임** (`tests/calextras-v576.e2e.js` 5/5 · 변이 2종 — v567 '안 한 것' 두 가지)
+- 종일 여러 날: `hjCalSyncParseIcs` 가 DTEND(끝난 다음 날)에서 하루 뺀 날을 `to` 로(60일 넘으면 하루짜리), `hjCalSyncApply` 가 메모 머리를 공정표 꼴 `시작~끝 (N일)` 로 — `hjSchSpan`·`hjSchContOn`(v354)이 그대로 읽는다.
+  화면 글 붙여 넣기(`hjCalSyncParseText`)의 여러 날 줄과 '날짜 옮김' 줄의 기간은 아직 안 다룬다.
+- 🤖 제미나이 칩(`[data-schgemini]`, 일정표 제목 옆): `hjSchGemini(s)` = 레코드 `icsBy:'gemini'`(v576 부터 '@' 일정에) 또는 v567~v575 이 메모에 남긴 '(@ 제미나이 입력)' 글. 읽기만 — 메모에서 그 글을 지우면 옛 일정의 칩도 사라진다.
+
+검사: 묶음 새 검사 6개 + 주변 통과, 정적 `*.check.js` 전부. 전체 run-all·CI 결과는 PR #162 본문.
 ## 2026-11-11 v571 📍📅 사진 현장 판단 = 위치 + 그날 일정 — 🧹 AI 자동 정리가 '그날 일정 하나'로 고르던 것 고침, 🧭/👉 추천에 위치 확인
 
 - 대표 질문(11/11): "AI가 위치를 잘못 판단할 가능성은?" → 실자료(11/7 저장본, 위치 있는 사진 1,055장·현장 46곳)를 날짜 순으로 넣어 본 결과를 보고하고 규칙을 정함 → "이어서 진행".

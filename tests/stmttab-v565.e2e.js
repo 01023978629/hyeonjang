@@ -4,10 +4,12 @@
    ① 내역서 없음 + 매출 기준 견적 → 예전 '견적·정산' 그대로(탭·폰 하단·화면) (OFF)
    ② 내역서 있음 → 탭 '📑 내역서'·배지 = 장부 장 수·제목 · 숫자 칸(이번 달 1,320,000·2건 — 견적서·수주 앱 견적·집계 제외 빠짐 · 지난달 · 받을 돈 · 받은 돈 · 올해) · 장부 (KPI)
    ③ 월 줄 → 그 달 현장별 줄 · 현장 단추 → 현장 화면 · [💰 입금] 창이 이 탭에서도 열림 (MONTH)
-   ④ 예전 견적 화면은 접혀 있고 펼칠 때만 그림 · 다시 그려도 펼침 유지 · [매출은 작업내역서만] 켜기 → 안내 줄 사라짐 (OLD)
+   ④ 예전 견적 화면은 접혀 있고 펼칠 때만 그림 · 다시 그려도 펼침 유지 · 사람이 끈('all') 때만 안내 줄 → [매출은 작업내역서만] 켜기 → 안내 줄 사라짐 (OLD)
+      (v589 부터 설정이 비어 있으면 내역서가 있는 자료는 저절로 내역서 기준이라 ② 에는 안내 줄이 없다)
    ⑤ 폰 390 — 하단 '내역서'·가로 넘침 없음·단추 44px · 그리기만으로 자료 불변 (PHONE)
    ⑥ 소스·핀 3곳(v565 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0
-   HJ_V565_BASELINE=<commit> 은 ② 에서, HJ_V565_MUTATION=count-all(내역서 거르기 삭제) 도 ② 숫자에서 실패해야 한다. */
+   HJ_V565_BASELINE=<commit> 은 ② 에서, HJ_V565_MUTATION=count-all(내역서 거르기 삭제) 도 ② 숫자에서 실패해야 한다
+   (v589 부터 설정이 비어 있으면 저절로 내역서 기준이라, ② 는 끈('all') 상태의 숫자도 따로 본다). */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -98,7 +100,10 @@ const KPI = () => Object.fromEntries([...document.querySelectorAll('#view [data-
       assert.ok(k.paid.includes('100,000원'), '이번 달 받은 돈 — ' + k.paid);
       assert.ok(k.year.includes((D.sameYear ? 1650000 : 1320000).toLocaleString('ko-KR') + '원'), '올해 누계 — ' + k.year);
       const led = await page.evaluate(() => ({ rows: document.querySelectorAll('#view [data-stmt-ledger] [data-stmt-row]').length, hint: !!document.querySelector('#view [data-stmt-basis-hint]'), stmtBtn: !!document.querySelector('#view #qmStmt') }));
-      assert.deepEqual(led, { rows: 3, hint: true, stmtBtn: true }, '장부 3장 · 매출 기준 안내 · 반영 단추 — ' + JSON.stringify(led));
+      assert.deepEqual(led, { rows: 3, hint: false, stmtBtn: true }, '장부 3장 · 매출 기준 안내 없음(v589 설정 없음 = 저절로 내역서) · 반영 단추 — ' + JSON.stringify(led));
+      // 내역서 탭 숫자는 매출 기준과 상관없이 내역서만 — v589 부터 설정 없음이 저절로 내역서 기준이라, 끈('all') 상태에서도 같은 값인지 본다
+      const kAll = await page.evaluate(() => { hjSalesBasisSet(false); const cur = document.querySelector('#view [data-stmt-kpi="cur"]').innerText.replace(/\s+/g, ' ').trim(); delete state.goals.salesBasis; render(); return cur; });
+      assert.ok(kAll.includes('1,320,000원') && kAll.includes('내역서 2건'), '끈 상태(all)에서도 이번 달 매출(내역서)은 내역서만 — ' + kAll);
     });
     await test('③ 월 줄 → 그 달 현장별 줄 · 현장 단추 → 현장 화면 · [💰 입금] 창 (MONTH)', async () => {
       const a = await page.evaluate(() => ({ months: [...document.querySelectorAll('#view [data-stmt-ym]')].map(b => [b.dataset.stmtYm, b.getAttribute('aria-pressed'), b.innerText.replace(/\s+/g, ' ').trim()]),
@@ -129,6 +134,10 @@ const KPI = () => Object.fromEntries([...document.querySelectorAll('#view [data-
       assert.ok(b.open && b.stmt && b.names.includes('가온_견적서.xlsx'), '펼치면 견적서 목록 · 다시 그려도 펼침 — ' + JSON.stringify(b));
       await page.click('#view [data-stmt-old] > summary');
       await page.waitForFunction(() => !document.querySelector('#view .estimates-view'));
+      // v589 사람이 📊 매출 목표에서 끈 경우('all')에만 안내 줄 — 켜기 단추로 다시 켠다
+      const hint = await page.evaluate(() => { hjSalesBasisSet(false); const el = document.querySelector('#view [data-stmt-basis-hint]'); return { basis: state.goals.salesBasis, text: el ? el.innerText.replace(/\s+/g, ' ').trim() : '' }; });
+      assert.equal(hint.basis, 'all', '끄면 all');
+      assert.match(hint.text, /꺼 두셔서, 대시보드·월말 결산의 매출이 견적서까지 함께 세고 있어요\. 📑 매출은 작업내역서만 세기$/, '끈 때만 안내 — ' + hint.text);
       await page.click('#view [data-stmt-basis]');
       const c = await page.evaluate(() => ({ basis: state.goals.salesBasis, hint: !!document.querySelector('#view [data-stmt-basis-hint]'), tab: document.querySelector('#tabs .tab[data-tab="estimates"]').firstChild.textContent.trim() }));
       assert.deepEqual(c, { basis: 'stmt', hint: false, tab: '📑 내역서' }, '매출 기준 켜기 — ' + JSON.stringify(c));

@@ -13,7 +13,7 @@ try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); } cat
 const APP = process.env.HJ_TEST_APP || 'http://127.0.0.1:8299/index.html';
 const ORIGIN = new URL(APP).origin, TODAY = '2026-10-16', MONTH = '2026-10';
 const NOW = '2026-10-16T12:00:00+09:00';
-const XLSX_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';   // v574 앱과 같은 npm 경로 주소(_CDN.xlsx) — 바이트가 같다
 const INTERIOR = 'TEST_TAX_INTERIOR', LEAK = 'TEST_TAX_LEAK', BUSINESS = 'TEST_TAX_BUSINESS', UNKNOWN = 'TEST_TAX_UNKNOWN';
 const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
 const baseline = process.env.HJ_V428_BASELINE && execFileSync('git', ['show', process.env.HJ_V428_BASELINE + ':index.html'], { cwd: path.resolve(__dirname, '..'), encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });

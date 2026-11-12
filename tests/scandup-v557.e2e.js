@@ -26,7 +26,10 @@ const APP = process.env.HJ_TEST_APP || 'http://127.0.0.1:8299/index.html', ORIGI
 const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const EXIF_JS = fs.readFileSync(path.join(__dirname, 'fixtures', 'vendor', 'exif-js-2.3.0.js'), 'utf8');
+// exif-js 2.3.0 (MIT) 는 npm exif-js@2.3.0 의 exif.js 바이트 그대로(검사 전용 사본) — v574 부터 head <script> 에 integrity(sha384) 가 붙어
+// 한 바이트라도 다르면 브라우저가 실행을 거부한다. 그래서 문자열이 아니라 Buffer 로 읽어 그대로 내준다. tests/sri.check.js 가 이 파일의 해시를 _CDN 표와 대조한다.
+const EXIF_JS = fs.readFileSync(path.join(__dirname, 'fixtures', 'vendor', 'exif-js-2.3.0.js'));
+const EXIF_CDN = 'https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js';
 let html = process.env.HJ_V557_BASELINE ? execFileSync('git', ['show', process.env.HJ_V557_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 const MUT = {
   'no-path': ['&&__tombPath.has(hjTombPathOf(f))&&', '&&false&&'],
@@ -52,7 +55,7 @@ async function openPage() {
       return route.continue();
     }
     // 실제 PC 처럼 EXIF 라이브러리가 있어야 깨진 JPEG 멈춤이 재현된다 — 같은 판(2.3.0)을 검사 폴더에서 준다(바깥 요청 없음)
-    if (read && url.href === 'https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js') return route.fulfill({ status: 200, contentType: 'application/javascript', body: EXIF_JS });
+    if (read && url.href === EXIF_CDN) return route.fulfill({ status: 200, contentType: 'application/javascript', headers: { 'access-control-allow-origin': '*' }, body: EXIF_JS });
     if (!read) network.writes++;
     return route.abort('blockedbyclient');
   });

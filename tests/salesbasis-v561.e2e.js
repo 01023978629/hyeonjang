@@ -5,11 +5,12 @@
    합성 자료만, 바깥 쓰기 0. 날짜는 '지난달'(PYM)로 — 매출 추이(최근 3개월)에 들어가게.
    시드: 가온(견적서 파일 3,300,000 + 작업내역서 220,000) · 나래(견적서 파일 5,500,000) · 현장 없는 견적서 1,100,000 ·
          현장 없는 '수주' 앱 견적 770,000 → 기본 매출 합계 10,890,000.
-   ① 설정 없음 — 매출 한 벌·월말 결산·현장 견적 합계·대시보드 글자는 예전 그대로 (DEFAULT)
+   ① 꺼 둠(salesBasis 'all') — 매출 한 벌·월말 결산·현장 견적 합계·대시보드 글자는 예전 그대로 (DEFAULT)
+      (v589 부터 설정이 비어 있으면 내역서가 있는 자료는 저절로 내역서 기준 — 그건 salesdefault-v589 가 본다. 여기선 사람이 끈 'all' 로 예전 동작을 지킨다)
    ② 작업내역서 기준을 켜면 매출 한 벌은 내역서 220,000 만 — 월말 결산·부가세 준비·매출 추이·발행 대조 같은 값 (STMT)
    ③ 현장 숫자 — est·bill·due(청구·고객 숫자)는 그대로, sales 만 내역서 · 내역서 없는 현장 sales 0 (PROJ)
    ④ 화면 글자 — 대시보드 '총 견적' + '매출(내역서)' 칸 · 표 머리 · 월말 결산 문구 · 경영 현황 '월 매출' · 증빙 묶음 줄 (LABELS)
-   ⑤ 📊 매출 목표 화면의 켜기(44px)·끄기 · 저장본(serializeData→applyData)으로 기기 사이에 따라감 · 월·연 목표는 안 건드림 (TOGGLE)
+   ⑤ 📊 매출 목표 화면의 켜기(44px)·끄기('all' 로 남음 — v589) · 저장본(serializeData→applyData)으로 기기 사이에 따라감 · 월·연 목표는 안 건드림 (TOGGLE)
    ⑥ 소스·핀 3곳(v561 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0
    HJ_V561_BASELINE=<commit> 은 ② 에서, HJ_V561_MUTATION=no-filter(견적 파일 거르기 한 조각 삭제) 은 ② 에서 실패해야 한다. */
 'use strict';
@@ -63,7 +64,7 @@ const SEED = () => {
   const P = name => ({ name, stage: 1, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
   state.projects = [P('가온'), P('나래')];
   state.quotes = []; state.schedule = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null;
-  state.goals = { month: 10000000, year: 120000000 };
+  state.goals = { month: 10000000, year: 120000000, salesBasis: 'all' };   // v589 예전 동작은 사람이 끈 'all' 로
   const est = (id, name, project, amount, day) => ({ id, name, ext: 'xlsx', kind: 'estimate', project, prefix: project ? '_정리완료/' + project + '/견적서/' : '', size: 1000 + amount % 997,
     est: { customer: name.replace(/\.xlsx$/, ''), amount, supply: Math.round(amount / 1.1), vat: amount - Math.round(amount / 1.1), date: PYM + '-' + day }, when: new Date(PYM + '-' + day + 'T09:00:00+09:00') });
   state.files = [est('E_A', '가온_견적서.xlsx', '가온', 3300000, '05'), est('E_B', '나래_견적서.xlsx', '나래', 5500000, '08'), est('E_L', '미지정_견적서.xlsx', '', 1100000, '09')];
@@ -88,7 +89,7 @@ const numbers = (page, PYM) => page.evaluate(PYM => {
     const { context, page } = await open();
     const PYM = await page.evaluate(SEED);
     let base;
-    await test('① 설정 없음 — 매출 한 벌·월말 결산·현장 견적 합계·대시보드 글자는 예전 그대로 (DEFAULT)', async () => {
+    await test('① 꺼 둠(all) — 매출 한 벌·월말 결산·현장 견적 합계·대시보드 글자는 예전 그대로 (DEFAULT)', async () => {
       base = await numbers(page, PYM);
       assert.equal(base.total, 10890000, '기본 매출 = 견적서 3장 + 내역서 + 수주 앱 견적 — ' + JSON.stringify(base));
       assert.equal(base.n, 5, '매출 5건');
@@ -98,7 +99,7 @@ const numbers = (page, PYM) => page.evaluate(PYM => {
       const ui = await page.evaluate(() => ({ kpi: (document.querySelector('.kpis') || {}).innerText || '', salesKpi: !!document.querySelector('[data-sales-kpi]'),
         th: [...document.querySelectorAll('#dashboardMarginTable thead th')].map(th => th.innerText.trim()).slice(0, 2) }));
       assert.ok(ui.kpi.includes('총 견적(매출)'), '대시보드 글자 그대로 — ' + ui.kpi);
-      assert.equal(ui.salesKpi, false, '설정 없으면 매출(내역서) 칸 없음');
+      assert.equal(ui.salesKpi, false, '꺼 두면 매출(내역서) 칸 없음');
       assert.deepEqual(ui.th, ['현장', '견적(매출)'], '마진 표 머리 그대로');
     });
     let on;
@@ -118,7 +119,7 @@ const numbers = (page, PYM) => page.evaluate(PYM => {
       assert.deepEqual([on.B.est, on.B.bill, on.B.due], [base.B.est, base.B.bill, base.B.due], '나래 청구·고객 숫자 그대로');
       assert.deepEqual([on.A.sales, on.A.salesSupply], [220000, 200000], '가온 매출 = 내역서');
       assert.equal(on.B.sales, 0, '나래는 내역서가 없어 매출 0');
-      assert.deepEqual([base.A.sales, base.B.sales], [base.A.est, base.B.est], '설정이 없을 땐 sales = est');
+      assert.deepEqual([base.A.sales, base.B.sales], [base.A.est, base.B.est], '꺼 두면 sales = est');
     });
     await test('④ 화면 글자 — 대시보드 총 견적 + 매출(내역서) 칸 · 표 머리 · 월말 결산 문구 · 경영 현황 월 매출 · 증빙 묶음 줄 (LABELS)', async () => {
       const ui = await page.evaluate(PYM => {
@@ -147,7 +148,7 @@ const numbers = (page, PYM) => page.evaluate(PYM => {
         cb.click();
         const afterOn = { basis: hjSalesBasis(), goals: JSON.parse(JSON.stringify(state.goals)), toast: window.__toasts.slice() };
         const snap = JSON.parse(JSON.stringify(serializeData()));
-        state.goals = {}; const lost = hjSalesBasis();
+        state.goals = { salesBasis: 'all' }; const lost = hjSalesBasis();   // 끈 채로 있던 다른 기기(v589 — 빈 설정은 내역서가 있으면 저절로 켜진다)
         applyData(JSON.parse(JSON.stringify(snap)));
         const restored = hjSalesBasis();
         closeModal(true); goalManage();
@@ -166,7 +167,7 @@ const numbers = (page, PYM) => page.evaluate(PYM => {
       assert.equal(r.snapBasis, 'stmt', '저장본에 실림');
       assert.deepEqual([r.lost, r.restored], ['all', 'stmt'], '저장본을 받으면 같은 기준');
       assert.equal(r.checked2, true, '다시 열면 켜진 상태로 보임');
-      assert.deepEqual(r.afterOff, { basis: 'all', goals: { month: 10000000, year: 120000000 } }, '끄면 설정 키가 빠지고 목표는 그대로');
+      assert.deepEqual(r.afterOff, { basis: 'all', goals: { month: 10000000, year: 120000000, salesBasis: 'all' } }, '끄면 \'all\' 로 남고(다음에 저절로 다시 켜지지 않게 — v589) 목표는 그대로');
       const back = await numbers(page, PYM);
       assert.equal(back.total, 10890000, '끄면 예전 매출로 돌아옴');
     });

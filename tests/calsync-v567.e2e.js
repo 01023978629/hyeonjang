@@ -81,7 +81,7 @@ const SEED = () => {
   closeModal(true);
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
   state.projects = [P('가온아파트'), P('나래마을아파트'), P('다솜아파트'), P('라온그린아파트')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   state.files = [{ id: 'PH1', name: 'IMG_1.jpg', ext: 'jpg', kind: 'photo', project: '나래마을아파트', prefix: '현장사진/', size: 1001, when: new Date('2026-11-01T10:00:00+09:00') }];
   const S = (id, date, time, title, project, extra) => Object.assign({ id, date, time, title, project: project || '', workers: '', hours: 8, memo: '', report: null }, extra || {});
   state.schedule = [S('A', '2026-11-10', '09:00', '가온A 3동 1309호 앞베란다 우수관 방수', '가온아파트'), S('B', '2026-11-10', '12:00', '라온그린 104동 1503호 우수관 누수', '라온그린아파트'),
@@ -127,7 +127,7 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
       assert.deepEqual(r.extra[3].slice(0, 3), ['다솜아파트', 1, 'app'], '[현장명] 표시 → 그 현장 — ' + JSON.stringify(r.extra[3]));
       assert.deepEqual(r.extra[5], ['', 1, '', 'E'], '시간 다름은 앱 일정 E');
       assert.deepEqual(r.extra[6], ['', 2, '@', 'B'], "날짜 옮김: '@제목'과 제목이 같은 날 2번 → 한 줄 · 앱 일정 B — " + JSON.stringify(r.extra[6]));
-      assert.deepEqual(r.st, { read: 14, same: 3, skipped: 1, old: 2, gdup: 1 }, '같음 3(가온·벌곡·미장) · 파수꾼 1 · 지난 일정 2 · 구글 겹침 1 — ' + JSON.stringify(r.st));
+      assert.deepEqual(r.st, { read: 14, same: 3, skipped: 1, old: 2, gdup: 1, unread: 0, api: 0, cont: 0 }, '같음 3(가온·벌곡·미장) · 파수꾼 1 · 지난 일정 2 · 구글 겹침 1 · 못 읽은 줄 0(v580) · 구글에서 바로 읽음 0·이어지는 날 0(v588) — ' + JSON.stringify(r.st));
       assert.deepEqual([r.lo, r.hi, r.same], ['2026-11-10', '2026-11-16', true], '읽기만');
     });
     await test('④ 창 — 붙여 넣고 읽기 → 미리보기 → 현장 고르고 반영 → 안전판 1회 · 앱에만 있는 일정은 그대로 (APPLY)', async () => {
@@ -146,7 +146,11 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
       await page.selectOption('#csBody .csSel[data-i="4"]', '가온아파트');
       const snaps = await page.evaluate(() => { window.__snaps = []; const o = hjSnapshot; hjSnapshot = async (...a) => { window.__snaps.push(a[0]); return o(...a); }; return 0; });
       await page.click('#csApply');
-      await page.waitForFunction(() => !document.querySelector('#modalRoot .modal'));
+      // v581 부터 반영 뒤 '바뀐 일정 알리기' 창이 뜬다(맞추기 창은 닫힘) — 그 창을 닫고 본다
+      // 맞추기 창이 닫힐 때까지(실패면 오류 토스트) 기다린 뒤 결과 창을 단언한다 — 창이 안 뜨는 회귀가 시간 초과가 아니라 단언 실패로 떨어지게
+      await page.waitForFunction(() => !document.querySelector('#hjCalSync') || /안전판을 만들지 못해|바뀌었어요|체크하세요|오래된 창/.test(document.getElementById('toast').textContent));
+      const done = await page.evaluate(() => { const n = document.querySelectorAll('#modalRoot #hjCalSyncDone [data-csd-row]').length, open = !!document.querySelector('#hjCalSync'), t = document.getElementById('toast').textContent; closeModal(true); return { n, open, t }; });
+      assert.deepEqual([done.open, done.n], [false, 7], '반영 뒤 알릴 일정 7건(새 5 · 시간 1 · 옮김 1) — ' + JSON.stringify(done));
       const r = await page.evaluate(() => ({ snaps: window.__snaps, n: state.schedule.length, by: Object.fromEntries(state.schedule.map(s => [s.id, [s.date, s.time, s.project]])),
         added: state.schedule.filter(s => s.icsUid).map(s => [s.date, s.time, s.title, s.project, s.hours]).sort((a, b) => (a[0] + a[1]).localeCompare(b[0] + b[1])), memo: state.schedule.find(s => /세면대/.test(s.title)).memo }));
       assert.ok(r.snaps[0] === '구글 캘린더 맞추기 전' && r.snaps.filter(x => x === '구글 캘린더 맞추기 전').length === 1, '반영 전 안전판 1회(먼저) — ' + JSON.stringify(r.snaps));
@@ -161,7 +165,7 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
         const plan = () => hjCalSyncPlan(hjCalSyncParse(t)), sig = () => JSON.stringify(state.schedule), out = {};
         const tryIt = async (p, picks) => { const b = sig(); try { await hjCalSyncApply(p, picks); return 'applied'; } catch (e) { return (b === sig() ? 'same:' : 'CHANGED:') + e.message; } };
         const p0 = plan(); out.rows = p0.rows.map(r => r.status);
-        window.__tabStale = true; out.stale = await tryIt(p0, [{ i: 0 }]); window.__tabStale = false;
+        __tabStale = true; out.stale = await tryIt(p0, [{ i: 0 }]); __tabStale = false;
         const real = hjSnapshot; hjSnapshot = async () => false; out.snap = await tryIt(p0, [{ i: 0 }]); hjSnapshot = real;
         const f = state.schedule.find(s => s.id === 'F'), keep = f.title; f.title = '바뀐 제목'; out.stamp = await tryIt(p0, [{ i: 0 }]); f.title = keep;
         out.none = await tryIt(plan(), []);

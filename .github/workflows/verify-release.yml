@@ -47,6 +47,11 @@ jobs:
           export PLAYWRIGHT_EXECUTABLE="$CHROME"
           node tests/run-all.js
 
+      - name: Verify CDN integrity hashes against live bytes
+        # _CDN 표의 sha384 가 jsDelivr 가 실제로 주는 바이트와 같은지(다르면 엑셀·PDF·지도·OCR 가 폰에서 멈춘다).
+        # 개발 컨테이너는 바깥 주소가 막혀 못 돌린다 — 네트워크가 되는 이 단계가 병합 전 확인이다.
+        run: node tests/tools/sri-live.mjs --strict
+
       - name: Verify selected-sharing protection mutations
         run: node tests/biz-select.mutations.js
 

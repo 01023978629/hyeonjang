@@ -55,7 +55,7 @@ const SEED = withStmt => {
   const today = localDate(), YM = today.slice(0, 7), d1 = YM + '-01', d2 = hjAddDays(d1, 1), far = hjAddDays(d1, 12);
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
   state.projects = [P('가온'), P('나래'), P('다솜')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.schedule = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.schedule = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   try { __hjUnbilledMemo = null; } catch (_) {}
   let n = 0;
   const ph = (project, day) => ({ id: 'PH' + (++n), name: 'IMG_' + n + '.jpg', ext: 'jpg', kind: 'photo', project, prefix: '현장사진/', size: 1000 + n, when: new Date(day + 'T10:00:00+09:00') });

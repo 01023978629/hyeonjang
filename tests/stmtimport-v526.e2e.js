@@ -113,6 +113,7 @@ const GRID_FT = () => [HDR, [SER('2026-10-05'), '가온아파트 1-101', '우수
     state.projects = [P('보람아파트', [['2', '204'], ['3', '408']]), P('솔동보람아파트', [['3', '408']]), P('평화로운아파트'), P('은빛신동아파트', [['6', '502']]), P('하늘타운아파트', [['10', '707']]),
       P('푸른마을아파트 1단지', [['101', '904']]), P('푸른마을아파트 3단지', [['315', '1404']]), P('대전'), P('가람센트럴'), P('공주 소담한빛아파트')];
     state.files = []; state.quotes = []; state.expenses = []; state.payLog = [];
+    state.goals = { salesBasis: 'all' };   // v589 내역서가 있으면 매출이 저절로 내역서만 — '체크한 견적만 집계 제외'는 견적을 함께 세는 'all' 에서 본다
     // 사진: 보람 3장, 나머지 실제 현장 1장씩 — '솔동보람아파트'·'대전'은 빈 현장(10/31 실자료의 빈 중복 현장과 같은 모양)
     const ph = (id, project) => state.files.push({ id, name: id + '.jpg', ext: 'jpg', kind: 'photo', project, when: new Date('2026-09-11T01:00:00Z'), _virtual: true });
     for (let i = 0; i < 3; i++) ph('PH' + i, '보람아파트');
@@ -226,6 +227,8 @@ const GRID_FT = () => [HDR, [SER('2026-10-05'), '가온아파트 1-101', '우수
       const plan = { src: p.file, file: p.file, doc: '작업내역서', to: p.to, date: p.date, vat: 'included', groups, exclude: ['E1'] };
       const r1 = hjStmtApply(plan);
       const after1 = { quotes: state.quotes.length, sales: hjSalesEntries().reduce((s, e) => s + e.amount, 0), ex: state.files.filter(f => f.exSum).map(f => f.id).sort(), projects: state.projects.map(x => x.name).filter(n => n === '모란아파트'), dirty: state.dirty };
+      // v589 설정이 비어 있으면(정하지 않음) 내역서가 생긴 순간 매출은 내역서만 — 보람 견적 300,000 은 매출에서 빠진다
+      const g0 = state.goals; state.goals = {}; after1.autoBasis = hjSalesBasis(); after1.autoSales = hjSalesEntries().reduce((s, e) => s + e.amount, 0); state.goals = g0;
       const r2 = hjStmtApply(plan);
       const sj = state.quotes.find(q => q.project === '하늘타운아파트');
       return { choices: groups.map(g => [g.loc, g.choice]), existing, r1: { n: r1.quotes.length, total: r1.total, newP: r1.newProjects, excluded: r1.excluded, skipped: r1.skipped }, after1,
@@ -238,6 +241,7 @@ const GRID_FT = () => [HDR, [SER('2026-10-05'), '가온아파트 1-101', '우수
     assert.deepEqual(r.r1.newP, ['모란아파트']);
     assert.deepEqual(r.after1.ex, ['E1', 'E1P'], 'APPLY only checked estimate (and its copy) excluded ' + JSON.stringify(r.after1));
     assert(r.after1.sales === 3610000 + 300000 && r.after1.dirty === true, 'APPLY sales = statement + untouched 보람 견적 ' + JSON.stringify(r.after1));
+    assert(r.after1.autoBasis === 'stmt' && r.after1.autoSales === 3610000, 'APPLY v589 설정 없음 = 내역서만 ' + JSON.stringify(r.after1));
     assert(r.r2.n === 0 && r.r2.appended === 0 && r.r2.dup === 7 && r.quotesAfter2 === 5 && r.r2.skipped.every(w => w === '이미 반영된 줄'), 'APPLY re-run adds nothing ' + JSON.stringify(r.r2));
     assert(r.sj.items === 2 && r.sj.place === '하늘아파트 10-707 / 하늘아파트 15-707' && r.sj.total === 440000 && r.sj.acct === null && r.sj.lines === 2, 'APPLY two locations → one quote ' + JSON.stringify(r.sj));
     assert.equal(r.boramSales, 270000 + 300000, 'APPLY 보람 270,000 exact + 기존 견적 유지');
