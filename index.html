@@ -4293,6 +4293,10 @@ function gdLoginRedirect(){
     }
   }
 }catch(_){}})();
+// v592 #hjreq=(작업 요청)·#hjcontract=(전자계약 QR)로 들어온 첫 화면 — 아래 두 즉시 함수가 주소에서 지우기 전에 읽어 둔다.
+// 그 첫 화면에는 하루 자동 창(🌅 브리핑 등)을 띄우지 않는다(hjBootAutoAfterRestore).
+const HJ_BOOT_LINK_RE=/[#&](?:hjreq|hjcontract)=/;
+const __hjBootLinkEntry=HJ_BOOT_LINK_RE.test(location.hash||'');
 // 전자계약 설치 QR. 비밀값은 서버에 전송되지 않는 # 조각으로만 받고,
 // 읽기 전에 주소창에서 즉시 지운다. 저장은 대표가 배포 ID 뒤 4자리를 쳐서 확인했을 때만 한다(v574 — 전엔 [확인] 한 번이면 서버 주소·토큰이 덮였다).
 //   ⓐ 이 기기에 이미 **다른** 계약 서버 주소가 있으면 링크로는 바꾸지 않는다 — 누가 보낸 QR 한 장으로 고객 계약이 남의 서버로 나가는 길을 막는다.
@@ -21354,8 +21358,11 @@ function hjMorningBrief(opts){
   if(ask)ask.onclick=()=>{closeModal();try{aiAgent();setTimeout(()=>{const inp=document.getElementById('aiInput');if(inp){inp.value='오늘 뭐부터 하면 좋을까?';inp.focus();}},200);}catch(e){}};
   return {할일:sorted.length,오늘일정:d.오늘일정.length};
 }
+// v592 띄우지 않고 계획만 돌려준다 — 띄우기·표시는 부팅 자동 창 한 곳(hjBootAutoAfterRestore, 복원 뒤·창 하나).
+// 🌅 와 🤖 오늘의 브리핑은 같은 '오늘 브리핑'이라 하나가 뜨면 다른 쪽도 오늘 본 것으로 적는다(하루에 브리핑 두 번 금지).
 function hjMorningMaybe(){
-  try{if(hjMorningShouldShow())setTimeout(()=>{try{hjMorningBrief();}catch(e){}},700);}catch(e){}
+  try{if(hjMorningShouldShow())return {k:'morning',marks:{hj_morning_shown:localDate(),hj_active_brief:localDate()},open:()=>hjMorningBrief()};}catch(e){}
+  return null;
 }
 
 /* ═══════════ 📈 매출 추이 차트 — 월별 매출·수금 흐름 (SVG, 오프라인 작동) ═══════════ */
@@ -22922,8 +22929,10 @@ function weekBriefShouldShow(){
   if(!(state.projects||[]).length)return false;
   return localStorage.getItem('hj_weekbrief_shown')!==localDate();
 }
+// v592 계획만 — 다른 창이 먼저 떠서 건너뛴 날은 표시하지 않는다(그날 나중에 열 때 다시 고른다)
 function weekBriefMaybe(){
-  try{if(weekBriefShouldShow()){localStorage.setItem('hj_weekbrief_shown',localDate());setTimeout(()=>{try{weekBrief();}catch(e){}},1000);}}catch(e){}
+  try{if(weekBriefShouldShow())return {k:'week',marks:{hj_weekbrief_shown:localDate()},open:()=>weekBrief()};}catch(e){}
+  return null;
 }
 
 /* ═══════════ 💳 간편 지출 장부 — 현금·카드 지출 빠른 기록 ═══════════ */
@@ -24349,16 +24358,15 @@ async function aiActiveBrief(auto){
   };
   return {오늘할일:d.parts.length,급한일:d.urgent.length};
 }
-// 부팅 시 하루 1회 자동(데이터 있을 때만)
+// 부팅 시 하루 1회 자동(데이터 있을 때만) — v592 계획만 돌려준다(🌅 아침 브리핑이 먼저, 뜨면 🌅 도 오늘 본 것으로)
 function aiActiveBriefMaybe(){
   try{
-    if(!(state.projects||[]).length&&!(state.schedule||[]).length)return;
-    if(localStorage.getItem('hj_active_brief')===localDate())return;
+    if(!(state.projects||[]).length&&!(state.schedule||[]).length)return null;
+    if(localStorage.getItem('hj_active_brief')===localDate())return null;
     const d=aiActiveBriefData();
-    if(!d.hasWork&&!d.urgent.length)return;  // 브리핑할 게 없으면 조용히
-    localStorage.setItem('hj_active_brief',localDate());
-    setTimeout(()=>{try{aiActiveBrief(true);}catch(e){}},1200);
-  }catch(e){}
+    if(!d.hasWork&&!d.urgent.length)return null;  // 브리핑할 게 없으면 조용히
+    return {k:'active',marks:{hj_active_brief:localDate(),hj_morning_shown:localDate()},open:()=>aiActiveBrief(true)};
+  }catch(e){return null;}
 }
 
 /* ═══════════ 🤖 AI 자동 실행 — 안전한 작업은 승인 없이 ═══════════ */
@@ -24572,18 +24580,17 @@ function opsReportNotifyItems(){
   }catch(e){}
   return items;
 }
-// 부팅 시 리포트 자동 표시(주말·월말 하루 1회)
+// 부팅 시 리포트 자동 표시(주말·월말 하루 1회) — v592 계획만(다른 창에 밀린 날은 표시하지 않는다)
 function opsReportMaybe(){
   try{
-    const due=opsReportDue();if(!due)return;
-    if(!(state.projects||[]).length)return;
+    const due=opsReportDue();if(!due)return null;
+    if(!(state.projects||[]).length)return null;
     const key='hj_ops_report_'+due;
-    if(localStorage.getItem(key)===localDate())return;
+    if(localStorage.getItem(key)===localDate())return null;
     const d=opsReportData(due);
-    if(!(d.income>0||d.spend>0||d.done>0))return;  // 활동 없으면 조용히
-    localStorage.setItem(key,localDate());
-    setTimeout(()=>{try{opsReport(due);}catch(e){}},1600);
-  }catch(e){}
+    if(!(d.income>0||d.spend>0||d.done>0))return null;  // 활동 없으면 조용히
+    return {k:'ops',marks:{[key]:localDate()},open:()=>opsReport(due)};
+  }catch(e){return null;}
 }
 
 /* ═══════════ 💬 고객 응대 AI — 문자 초안 자동 작성 ═══════════ */
@@ -53696,7 +53703,50 @@ var __hjLead=/[#&]lead=/.test(location.hash);
 /* v411 상담에서 돌아온 첫 방문은 인입 확인이 온보딩에 가려지지 않게 한다. */
 var __hjBathArrival=!!hjBathHandoffRead();
 hjBathHandoffBoot();
-try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead&&!__hjBathArrival&&!__hjShareEntry.view){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+/* v592 첫 안내·하루 자동 창은 기기 자료 복원(__hjRestoreDone) 뒤에 정한다.
+   예전 이 줄은 복원보다 먼저 돌아 늘 빈 state 를 봤다 — 🌅 아침 브리핑·🤖 오늘의 브리핑·📅 주간 브리핑·📊 운영 리포트가 콜드 스타트에서 한 번도 안 떴고(v586 기록),
+   🔔 알림은 빈 목록으로 '오늘 보냄'을 적어 그날 알림을 막았고, 자료가 IDB 에만 있는 기존 사용자(hj_onboard_done 없음)에게는 첫 안내가 떴다.
+   규칙: 부팅 한 번에 자동 창은 하나 · 이미 떠 있는 창 위에는 띄우지 않고 건너뜀(openModal 은 열린 창을 통째로 갈아 끼운다) ·
+   리드(#lead=)·욕실 상담·공유·작업 요청(#hjreq=)·전자계약 QR(#hjcontract=)·바로가기(?view=)로 들어온 첫 화면에는 하루 창을 띄우지 않음.
+   hjBootExtras(Cowork 기본 작업·바로가기 화면·한눈 보기)는 복원 전 자리 그대로 — 복원 뒤로 옮기면 유상 저장본에 기본값을 끼워 넣는다.
+   예전에는 첫 안내가 뜰 갈래에서 hjBootExtras 를 건너뛰었는데, 그 갈래가 '빈 state' 로 정해져 기존 사용자도 건너뛰었다 — 이제 늘 부른다. */
+const HJ_DAILY_AUTO_DELAY=700;
+const __hjBootView=new URLSearchParams(location.search).get('view')||'';   // hjBootExtras 가 주소에서 지우기 전에 읽는다
+function hjBootHasUserData(){return ['projects','files','quotes'].some(k=>Array.isArray(state[k])&&state[k].length>0);}   // 첫 안내 판단 — 부팅이 넣는 기본 일정(전우철 시험 일정)·세금 일정은 사용자 자료가 아니다
+function hjDailyAutoBusy(){
+  // 이미 떠 있는 창·사진 크게 보기·시트(AI 비서·현장 고르기·촬영)·사진 넣는 중·새 버전 띠 — 그 위에는 하루 창을 띄우지 않는다
+  const b=document.body?document.body.classList:null;
+  return !!(document.querySelector('#modalRoot .modal')||document.getElementById('lightbox')||document.getElementById('hjShareInbox')||document.getElementById('hjVerNew')
+    ||(b&&(b.contains('ai-sheet-open')||b.contains('mobile-sheet-open')||b.contains('camera-sheet-open')))||(typeof photoIntakePending==='function'&&photoIntakePending()));
+}
+function hjDailyAutoPick(){
+  // 우선순위: 🌅 아침 브리핑 → 🤖 오늘의 브리핑 → 📅 주간 브리핑(월요일) → 📊 운영 리포트(일요일·월말). 첫 후보 하나만 고른다.
+  const list=[()=>hjMorningMaybe(),()=>aiActiveBriefMaybe(),()=>weekBriefMaybe(),()=>opsReportMaybe()];
+  for(const f of list){let p=null;try{p=f();}catch(e){}if(p&&typeof p.open==='function')return p;}
+  return null;
+}
+async function hjBootAutoAfterRestore(entry){
+  let restored=null;try{restored=await Promise.resolve(window.__hjRestoreDone);}catch(e){}
+  const ok=!(restored&&restored.ok===false);   // 복원이 실패했으면 state 가 비었거나 반쪽 — 첫 안내·브리핑·알림 모두 건너뛴다
+  try{if(ok&&localStorage.getItem('hj_onboard_done')!=='1'&&!hjBootHasUserData()&&!entry.lead&&!entry.bath&&!entry.share){setTimeout(()=>{try{hjOnboardShow();}catch(e){}},400);return {k:'onboard'};}}catch(e){}
+  if(!ok)return {k:'',why:'restore'};
+  try{if(hjNotifyEnabled())setTimeout(()=>{try{hjNotifyFire();}catch(e){}},1400);}catch(e){}   // 시스템 알림은 창이 아니라 들어온 길과 상관없이
+  if(entry.lead||entry.bath||entry.share||entry.link||entry.view)return {k:'',why:'entry'};
+  // 자동화 브라우저는 하루 창을 띄우지 않는다 — v443 일정 알림 타이머와 같은 이유(복원 뒤 뜨는 창이 기존 검사들의 화면을 가린다).
+  // 검사는 navigator.webdriver 를 false 로 바꿔 진짜 브라우저처럼 돈다(morningboot-v592).
+  if(navigator.webdriver)return {k:'',why:'webdriver'};
+  const plan=hjDailyAutoPick();if(!plan)return {k:''};
+  // 공유받은 사진 수신함(사용자 자료)이 뜰지 먼저 본다 — 뜨면 아래 '이미 떠 있는 창' 으로 건너뛴다. 오래 걸리면 기다리지 않는다.
+  try{await Promise.race([Promise.resolve(window.__hjShareInboxBootDone).catch(()=>null),new Promise(r=>setTimeout(r,3000))]);}catch(e){}
+  await new Promise(r=>setTimeout(r,HJ_DAILY_AUTO_DELAY));
+  if(hjDailyAutoBusy())return {k:plan.k,shown:false,why:'busy'};   // 표시를 남기지 않는다 — 다음에 열 때 다시 고른다
+  const now=hjDailyAutoPick();if(!now||now.k!==plan.k)return {k:plan.k,shown:false,why:'changed'};   // 그 사이 다른 탭이 띄워 표시가 바뀌었으면 건너뜀
+  try{Object.keys(now.marks||{}).forEach(k=>localStorage.setItem(k,now.marks[k]));}catch(e){}
+  try{Promise.resolve(now.open()).catch(()=>{});}catch(e){return {k:now.k,shown:false,why:'error'};}
+  return {k:now.k,shown:true};
+}
+try{hjBootExtras();}catch(e){}
+try{window.__hjBootAutoDone=hjBootAutoAfterRestore({lead:__hjLead,bath:__hjBathArrival,share:!!__hjShareEntry.view,link:__hjBootLinkEntry,view:!!__hjBootView});}catch(e){}
 /* 리드 인입은 로컬 복원(__hjRestoreDone) 완료 후 실행 — 늦은 applyData가 등록분을 덮어쓰거나 중복검사가 빈 notes를 보는 경합 방지 */
 try{if(__hjLead)Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);});}catch(e){}
 /* 앱이 이미 열린 탭에서 #lead= 링크로 재진입(주소만 변경, 재로드 없음)해도 인입되도록 */
