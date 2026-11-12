@@ -9633,7 +9633,7 @@ function syncMobileNav(){
     badge.hidden=n===0;
   };
   setBadge('photos',(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.project).length,'현장사진',n=>'미배정 '+n+'장');
-  setBadge('schedule',(state.schedule||[]).filter(s=>s&&s.date===localDate()).length,'캘린더',n=>'오늘 일정 '+n+'건');   // v550 '일정표' → '캘린더'(보이는 글자와 같게)
+  setBadge('schedule',hjTodaySchRows(localDate()).length,'캘린더',n=>'오늘 일정 '+n+'건');   // v586 🤖 오늘 챙길 일과 같은 수(여러 날 공정의 이어지는 날 포함)   // v550 '일정표' → '캘린더'(보이는 글자와 같게)
 }
 const __mobileTabScroll=Object.create(null); // 탭별 위치는 현재 실행 중 메모리에만 보관(데이터 저장 안 함)
 let __mobileTabRestore=null;
@@ -11457,8 +11457,8 @@ function hjDailyBrief(){
   const tomorrow=localDate(new Date(now.getFullYear(),now.getMonth(),now.getDate()+1));
   const sch=Array.isArray(state.schedule)?state.schedule:[];
   const byTime=(a,b)=>String(a.time||'').localeCompare(String(b.time||''));
-  const todaySch=sch.filter(s=>s&&s.date===today).slice().sort(byTime);
-  const tmrSch=sch.filter(s=>s&&s.date===tomorrow).slice().sort(byTime);
+  const todaySch=hjDaySchView(today).sort(byTime);   // v586 여러 날 공정의 이어지는 날 포함(🤖 오늘 챙길 일·캘린더 배지와 같은 수)
+  const tmrSch=hjDaySchView(tomorrow).sort(byTime);
   const acts=(state.projects||[]).filter(p=>p&&!p.archived);
   // 🔥 진행 중 현장: 완료(3) 제외. 시공(2) 우선 → 실측(1) → 상담(0). 다음 공정 = 사진(_phase) 아직 없는 첫 공정.
   const doing=acts.filter(p=>(p.stage||0)<3).map(p=>{
@@ -13398,7 +13398,7 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'settle_docs':{const ms=a.query?projectResolve(a.query):[];if(a.query&&!ms.length)throw new Error('"'+a.query+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 정확한 이름으로 다시.'};setTimeout(()=>{try{settleDocs(ms[0]||null);}catch(e){}},60);return {결과:'정산 문서 화면을 열었습니다',현장:ms[0]||'(선택 대기)'};}
     case 'send_settle_doc':{const ms=projectResolve(a.query);if(!ms.length)throw new Error('"'+String(a.query||'')+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 정확한 이름으로 다시.'};const k=a.kind||'statement';if(!HJ_SETTLE_DOCS[k])throw new Error('문서 종류는 '+Object.keys(HJ_SETTLE_DOCS).join('/')+' 중 하나여야 합니다.');const r=await settleDocShare(ms[0],k);return Object.assign({현장:ms[0],문서:HJ_SETTLE_DOCS[k].t},r);}
     case 'revenue_trend':{const m=[3,6,12].includes(Math.round(num(a.months)))?Math.round(num(a.months)):6;const d=revenueTrendData(m);setTimeout(()=>{try{revenueTrend(m);}catch(e){}},60);return {결과:'매출 추이 차트를 열었습니다',개월:m,월별:d.rows.map(r=>({월:r.mm+'월',매출원:r.est,수금원:r.recv,완료:r.done})),추세퍼센트:d.trend};}
-    case 'morning_brief':{const r=hjMorningData();setTimeout(()=>{try{hjMorningBrief();}catch(e){}},60);return {결과:'오늘의 브리핑을 열었습니다',오늘일정:r.d.오늘일정.length,챙길일:r.checks.length,시공중:r.d.시공중현장.length};}
+    case 'morning_brief':{const r=hjMorningData();setTimeout(()=>{try{hjMorningBrief();}catch(e){}},60);return {결과:'오늘의 브리핑을 열었습니다',오늘일정:r.d.오늘일정.length,챙길일:r.checks.length,시공중:r.doing};}
     case 'biz_dashboard':{const d=bizDashData();setTimeout(()=>{try{bizDashboard();}catch(e){}},60);return {결과:'경영 대시보드를 열었습니다',이번달수금원:d.monthRecv,진행중현장:d.inProgress.length,오늘일정:d.todaySched.length,미처리AS:d.asOpen,이번달완료:d.doneThisMonth.length};}
     case 'onboarding':{setTimeout(()=>{try{hjOnboardShow(true);}catch(e){}},60);return {결과:'시작 가이드를 열었습니다'};}
     case 'import_wizard':{
@@ -13862,9 +13862,9 @@ async function aiAgentSend(text){
 function aiBriefData(){
   const today=localDate();
   const acts=state.projects.filter(p=>!p.archived);
-  const ts=(state.schedule||[]).filter(s=>s.date===today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const ts=hjDaySchView(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v586 이어지는 날 포함 — daily_check 와 같은 수
   const tmr=hjBriefTomorrow(today);   // v563 예전 nextDayYmd 는 'YYYYMMDD'(구글 캘린더용)라 일정 날짜와 안 맞아 내일 일정이 늘 비었다
-  const tms=(state.schedule||[]).filter(s=>s&&s.date===tmr).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const tms=hjDaySchView(tmr).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   // v564 🌅 브리핑도 오늘의 브리핑 카드와 같은 구성(날씨·일정·이번 달 매출(작업내역서)) — 시공 중 현장·미배정 사진은 뺐다
   let sales=null;try{sales=hjStmtMonthSales(today.slice(0,7));}catch(e){}
   let wx=null;try{wx=hjBriefWeatherNow();}catch(e){}
@@ -14817,6 +14817,14 @@ function hjTodaySchRows(today){
   return (state.schedule||[]).filter(s=>s&&s.date===d).map(s=>({s,c:null})).concat(hjSchContinuing(d))
     .sort((a,b)=>String(a.s.time).localeCompare(String(b.s.time)));
 }
+/* v586 '그날 일정' 목록(정렬 전) — 그날 시작하는 일정 + 이어지는 날. 이어지는 날은 복사본: 제목 꼬리 '(N일차 시작)' 를 떼고 '(2/3일째)',
+   date 는 그날(날씨 표시가 그날 예보를 보게), _cont 에 {day,days,from,to}. 원본 일정은 바꾸지 않는다(id 그대로 — 누르면 그 일정).
+   ☀️ 오늘의 브리핑·🌅 브리핑(aiBriefData)·📊 경영 현황·날씨 주의 모음이 같이 써서 🤖 오늘 챙길 일·하단 캘린더 배지와 같은 수가 된다. */
+function hjDaySchView(day,filter){
+  const ok=typeof filter==='function'?filter:()=>true;
+  return (state.schedule||[]).filter(s=>s&&s.date===day&&ok(s)).concat(hjSchContinuing(day,s=>!!s&&ok(s)).map(x=>Object.assign({},x.s,{date:day,
+    title:(String(x.s.title||'').replace(HJ_PLAN_SUFFIX_RE,'')||'작업')+' ('+x.c.day+'/'+x.c.days+'일째)',_cont:x.c})));
+}
 // 한 줄 글 — 이어지는 날이면 공정표 꼬리 '(N일차 시작)' 를 떼고 '(2/3일째)' 를 붙인다
 function hjTodaySchLine(r,tn,pn){
   const s=r.s,t=r.c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,''):s.title;
@@ -14826,15 +14834,28 @@ function hjTodaySchLine(r,tn,pn){
    막다른 길이었다. ✍ 견적 작성 탭의 첫 '현장 미연결' 진행 견적 카드(data-qcard-unlinked)로 데려가 잠깐 테두리를 두른다.
    작성 중인(저장 안 한) 견적이 있으면 버리지 않고 탭만 바꿔 알린다. 아무것도 저장하지 않는다. */
 function hjQuoteUnlinkedOk(q){return !!q&&!q.project&&hjQuoteOpenForFollow(q)&&quoteCalc(q).total>0;}
-function hjQuoteUnlinkedOpen(){
-  if(state.editingQuote&&quoteEditDirty()){state.tab='quotemaker';render();toast('작성 중인 견적이 있어요 — [저장] 또는 [목록으로] 뒤에 현장 미연결 견적을 볼 수 있어요');return false;}
-  state.tab='quotemaker';state.editingQuote=null;render();
-  const el=document.querySelector('#view [data-qcard-unlinked]');
-  if(!el){toast('현장 미연결 견적이 없어요');return false;}
+/* ✍ 견적 작성 탭 목록의 한 곳(find()가 고른 요소)으로 데려간다 — 🤖 오늘 챙길 일의 '현장 미연결 견적'·'30일 넘은 협력사 미수' 줄이 같이 쓴다.
+   · 작성 중인(저장 안 한) 견적은 버리지 않고 탭만 바꿔 알린다(예전 v536 줄은 editingQuote 를 그냥 비워 쓰던 견적이 사라졌다).
+   · 탭이 바뀌지 않았으면(👷 직원 모드는 render 가 대시보드로 돌린다 — 그 화면이 알림을 띄운다) '없어요' 알림으로 덮지 않고 끝낸다.
+   · 찾은 요소로 스크롤·잠깐 테두리·초점(tabindex -1 — 키보드·화면읽기도 어디로 왔는지 안다). 아무것도 저장하지 않는다. */
+function hjQuoteListGo(find,emptyMsg,what){
+  const dirty=!!(state.editingQuote&&quoteEditDirty());
+  state.tab='quotemaker';if(!dirty)state.editingQuote=null;render();
+  if(state.tab!=='quotemaker')return false;
+  if(dirty){toast('작성 중인 견적이 있어요 — [저장] 또는 [목록으로] 뒤에 '+what+' 볼 수 있어요');return false;}
+  let el=null;try{el=find();}catch(_){el=null;}
+  if(!el){toast(emptyMsg);return false;}
   try{el.scrollIntoView({block:'center'});}catch(_){}
+  el.setAttribute('tabindex','-1');try{el.focus({preventScroll:true});}catch(_){}
   el.style.outline='3px solid var(--clay)';el.style.outlineOffset='3px';
   setTimeout(()=>{el.style.outline='';el.style.outlineOffset='';},2000);
   return true;
+}
+function hjQuoteUnlinkedOpen(){return hjQuoteListGo(()=>document.querySelector('#view [data-qcard-unlinked]'),'현장 미연결 견적이 없어요','현장 미연결 견적을');}
+// v536 '30일 넘은 협력사 미수' 줄 — 📑 장부의 30일 넘은 협력사 미수 줄(없으면 장부 머리)로
+function hjStmtDunOpen(){
+  return hjQuoteListGo(()=>[...document.querySelectorAll('#view [data-stmt-ledger] [data-stmt-dun]')].find(r=>{const a=r.querySelector('[data-stmt-age]');return !!a&&Number(a.dataset.stmtAge)>=30;})||document.querySelector('#view [data-stmt-ledger]'),
+    '📑 장부에 남은 협력사 미수가 없어요','📑 장부를');
 }
 function dailyCheckData(){
   const items=[];
@@ -14843,7 +14864,7 @@ function dailyCheckData(){
   if(todaySch.length){const f=todaySch[0];items.push({ic:'🗓',t:'오늘 일정 '+todaySch.length+'건 — '+hjTodaySchLine(f,14,8),act:"state.tab='schedule';render()",w:2});}
   const asN=asOpenList().length;
   if(asN)items.push({ic:'🔧',t:'미처리 AS '+asN+'건 — 하자 연락 확인',act:"asManage()",w:2.5});
-  try{const old=hjStmtLedger().filter(s=>s.left>0&&hjStmtAgeDays(s,today)>=30);if(old.length)items.push({ic:'📑',t:'30일 넘은 협력사 미수 '+old.length+'장 · '+won(old.reduce((a,s)=>a+s.left,0))+' — 📑 장부에서 미수 안내 글',act:"state.tab='quotemaker';state.editingQuote=null;render()",w:2.8});}catch(e){}   // v536
+  try{const old=hjStmtLedger().filter(s=>s.left>0&&hjStmtAgeDays(s,today)>=30);if(old.length)items.push({ic:'📑',t:'30일 넘은 협력사 미수 '+old.length+'장 · '+won(old.reduce((a,s)=>a+s.left,0))+' — 📑 장부에서 미수 안내 글',act:"hjStmtDunOpen()",w:2.8});}catch(e){}   // v536 · v586 작성 중 견적은 지키고 그 미수 줄로
   const noRep=(state.schedule||[]).filter(s=>{const wk=new Date();wk.setDate(wk.getDate()-7);return s.date<today&&s.date>=localDate(wk)&&s.project&&num(s.hours)>0&&!s.report&&!/^💰/.test(s.title||'');}).length;
   if(noRep)items.push({ic:'📋',t:'최근 작업일지 미작성 '+noRep+'건',act:"state.tab='schedule';render()",w:3});
   const un=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
@@ -21143,7 +21164,7 @@ function bizDashData(){
   const weekSched=(state.schedule||[]).filter(s=>s.date>=weekStart&&s.date<=weekEnd&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.date+a.time).localeCompare(String(b.date+b.time)));
   // 오늘 일정
   const todayStr=localDate();
-  const todaySched=weekSched.filter(s=>s.date===todayStr);
+  const todaySched=hjDaySchView(todayStr,s=>!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v586 이어지는 날 포함
   // 챙길 일
   const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
   // 이번 달 신규 견적/매출 추정
@@ -21257,7 +21278,9 @@ function hjMorningData(){
   const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
   const hour=new Date().getHours();
   const greet=hour<6?'늦은 밤이네요':hour<12?'좋은 아침입니다':hour<18?'좋은 오후입니다':'수고 많으셨어요';
-  return {d,checks,greet};
+  // v586 시공 중 현장 수 — v564 뒤 aiBriefData 에 시공중현장이 없어 hjMorningBrief·AI morning_brief 가 TypeError 로 죽었다(창이 아예 안 뜸)
+  const doing=(state.projects||[]).filter(p=>p&&!p.archived&&(p.stage||0)===2).length;
+  return {d,checks,greet,doing};
 }
 function hjMorningShouldShow(){
   // 하루 1회(자정 기준), 데이터가 있을 때만
@@ -21267,7 +21290,7 @@ function hjMorningShouldShow(){
 }
 function hjMorningBrief(opts){
   opts=opts||{};
-  const {d,checks,greet}=hjMorningData();
+  const {d,checks,greet,doing}=hjMorningData();
   localStorage.setItem('hj_morning_shown',localDate());
   const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
   const now=new Date();
@@ -21278,7 +21301,7 @@ function hjMorningBrief(opts){
     : '<div style="font-size:13px;color:var(--muted);padding:3px 0">🗓 오늘 등록된 일정이 없습니다</div>';
   // 핵심 숫자
   const numLine='<div style="display:flex;gap:8px;margin:10px 0">'+
-    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">시공 중</div><div style="font-size:16px;font-weight:800;color:#1d6fd8">'+d.시공중현장.length+'곳</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">시공 중</div><div style="font-size:16px;font-weight:800;color:#1d6fd8">'+doing+'곳</div></div>'+
     '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">오늘 일정</div><div style="font-size:16px;font-weight:800;color:'+(d.오늘일정.length?'#b45309':'var(--muted)')+'">'+d.오늘일정.length+'건</div></div>'+
     '</div>';
   // 할 일 제안(실행 버튼)
@@ -25273,7 +25296,7 @@ function weatherRisksForDate(dateStr,precip,humidity){
   const risks=[];
   const rainy=precip>=50;const humid=humidity>=80;
   if(!rainy&&!humid)return risks;
-  const sch=(state.schedule||[]).filter(s=>s.date===dateStr&&!/^💰/.test(s.title||''));
+  const sch=hjDaySchView(dateStr,s=>!/^💰/.test(s.title||''));   // v586 여러 날 공정의 이어지는 날도(그날 비면 둘째 날 타일도 주의)
   sch.forEach(s=>{
     const title=(s.title||'')+' '+(s.project||'');
     WEATHER_SENSITIVE.forEach(w=>{
