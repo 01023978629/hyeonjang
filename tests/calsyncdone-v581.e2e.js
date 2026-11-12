@@ -26,9 +26,9 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'no-done': ['\n        if(r.list.length)hjCalSyncDone(r);}', '}'],
   'any-crew': ["const fixedOne=crewSets.length&&crewSets.every(l=>l.length===1&&l[0]===crewSets[0][0])?crewSets[0][0]:'';", "const fixedOne=(u=>u.length===1?u[0]:'')([...new Set(crewSets.flat())]);"],
-  'no-escape': ["'+icon(x)+' '+escapeHtml(nm(x))+' · '+", "'+icon(x)+' '+nm(x)+' · '+"],
+  'no-escape': ["':'')+escapeHtml(nm(x))+' · '+", "':'')+nm(x)+' · '+"],   // v588 앞에 옛 제목(<s>) 자리가 생겨 기준 글을 옮김
   'cust-archived': ["(p&&!arch&&cust?'<button", "(p&&cust?'<button"],
-  'fix-cust': ['const custRows=g=>g.rows.filter(x=>!x.fix);', 'const custRows=g=>g.rows;'],
+  'fix-cust': ['const custRows=g=>g.rows.filter(x=>!x.fix&&!titleOnly(x));', 'const custRows=g=>g.rows.filter(x=>!titleOnly(x));'],   // v588 제목만 바뀐 줄도 고객 글에서 빼서 기준 글을 옮김
   'first-only': ['const picked=ids.map(id=>(state.schedule||[]).find(s=>s&&s.id===id)).filter(Boolean);', 'const picked=ids.slice(0,1).map(id=>(state.schedule||[]).find(s=>s&&s.id===id)).filter(Boolean);']
 };
 let html = process.env.HJ_V581_BASELINE ? execFileSync('git', ['show', process.env.HJ_V581_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;

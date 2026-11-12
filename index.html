@@ -41370,9 +41370,15 @@ function hjCalSyncSpanMemo(memo,from,to){
   if(HJ_RANGE_HEAD_RE.test(t))return head?t.replace(HJ_RANGE_HEAD_RE,head):t.replace(HJ_RANGE_HEAD_RE,'').replace(/^[ \t]*\r?\n/,'');
   return head?head+(t?'\n'+t:''):t;
 }
+// 미리보기 줄 순서 — v588 '✏️ 제목 바뀜'(rename) 은 기간 다름과 날짜 옮김 사이
+const HJ_CALSYNC_RANK={new:0,time:1,span:2,rename:3,move:4,apponly:5};
+/* v588 같은 구글 일정(uid)으로 짝을 지을 때 보지 않는 합성 uid — 'gcal:날짜|열쇠'(v567 맞추기가 uid 없는 화면 글 일정에 붙인 것)·'nouid:'(📥 importICS) */
+const HJ_CALSYNC_SYNTH_UID_RE=/^(?:gcal|nouid):/;
 function hjCalSyncPlan(events,opts){
   const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
-  const stats={read:0,same:0,skipped:0,old:0,gdup:0,unread:(events&&events.unread)|0};
+  // v588 events.skipped = 구글 캘린더에서 바로 읽을 때 건너뛴 자동 일정(생일·근무지·메일에서 온 예약 등), events.api = 구글에서 받은 일정 수
+  const typeSkip=(events&&events.skipped)|0;
+  const stats={read:typeSkip,same:0,skipped:typeSkip,old:0,gdup:0,unread:(events&&events.unread)|0,api:(events&&events.api)|0,cont:0};
   const groups=new Map();
   (Array.isArray(events)?events:[]).forEach(e=>{
     if(!e||!ISO.test(String(e.date||'')))return;stats.read++;
@@ -41383,7 +41389,8 @@ function hjCalSyncPlan(events,opts){
     if(!g){g={date:e.date,key,list:[]};groups.set(gk,g);}
     g.list.push(Object.assign({},e,t));
   });
-  const apps=(state.schedule||[]).filter(s=>s&&ISO.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid).map(s=>({s,key:hjCalSyncKey(hjCalSyncTitle(s.title).title),used:false}));
+  const apps=(state.schedule||[]).filter(s=>s&&ISO.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid).map(s=>{const u=String(s.icsUid||'');
+    return {s,key:hjCalSyncKey(hjCalSyncTitle(s.title).title),uid:u&&!HJ_CALSYNC_SYNTH_UID_RE.test(u)?u:'',used:false};});
   const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name);
   const rows=[];let lo='',hi='';
   const gs=[...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key));
@@ -41392,21 +41399,53 @@ function hjCalSyncPlan(events,opts){
     // 대표 한 건: 시각이 있는 것 → 위치가 있는 것 → 먼저 읽은 것. 같은 날 같은 제목이 여러 번이면 '구글에 n번'
     const rep=g.list.slice().sort((a,b)=>(b.time?1:0)-(a.time?1:0)||(b.location?1:0)-(a.location?1:0))[0];
     if(g.list.length>1)stats.gdup+=g.list.length-1;
-    const tag=(g.list.find(x=>x.tag)||{}).tag||'',marks=[...new Set(g.list.map(x=>x.mark).filter(Boolean))];
-    const base={date:g.date,time:rep.time,to:(g.list.find(x=>x.to)||{}).to||'',hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
-    const same=apps.find(a=>!a.used&&a.s.date===g.date&&a.key===g.key);
-    if(same){same.used=true;
-      /* v580 같은 날·같은 제목이어도 구글의 끝 날짜가 앱 기간과 다르면 '⏳ 기간 다름'(구글이 끝 날짜를 줄 때만, 사람이 고친 메모 머리면 안 봄).
-         완료 보고한 일정은 기간을 견주지 않는다(끝난 공정의 메모를 바꾸지 않게). 앱 기간을 줄이는 기간 다름은 체크 해제로 — 사람이 보고 고른다
-         (시간 다름 줄에는 줄이는 기간을 싣지 않고 따로 체크 해제 줄로). 구글이 하루로만 보이면 아예 견주지 않는 것과 같은 쪽(줄이지 않음)이다. */
-      const sp=hjSchSpan(same.s),app={id:same.s.id,date:same.s.date,time:same.s.time||'',to:sp.days>1?sp.to:''};
-      const span=!!(base.to&&base.to>g.date&&base.to!==sp.to&&hjCalSyncMemoOwn(same.s)&&!hjSchReported(same.s)),shorter=span&&sp.days>1&&base.to<sp.to;
-      const timeDiff=!!(rep.time&&String(same.s.time||'')!==rep.time);
-      if(timeDiff)rows.push(Object.assign({},base,{status:'time',check:true,span:span&&!shorter,app}));
-      if(span&&(shorter||!timeDiff))rows.push(Object.assign({},base,{status:'span',check:!shorter,span,shorter,app}));
-      if(!timeDiff&&!span)stats.same++;
-      return;}
-    g._base=base;
+    const marks=[...new Set(g.list.map(x=>x.mark).filter(Boolean))];
+    g._rep=rep;g._uids=new Set(g.list.map(x=>String(x.uid||'')).filter(Boolean));g._uidsOne=new Set(g.list.filter(x=>!x.series).map(x=>String(x.uid||'')).filter(Boolean));
+    g._base={date:g.date,time:rep.time,to:(g.list.find(x=>x.to)||{}).to||'',hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||''};
+  });
+  const appOf=a=>{const sp=hjSchSpan(a.s);return {id:a.s.id,date:a.s.date,time:a.s.time||'',to:sp.days>1?sp.to:''};};
+  /* v588 같은 구글 일정(uid)으로 먼저 짝 — 앱 일정의 icsUid 가 구글 일정의 uid(iCalUID)와 같으면 제목·날짜와 상관없이 같은 일정이다
+     (구글에서 제미나이가 이름을 고치거나 날짜를 멀리 옮겨도). 같은 날 것을 먼저 짓고(반복 일정은 같은 uid 가 여러 날로 온다), 남은 것은 가장 가까운 날.
+     날짜 옮김의 ±21일(HJ_CALSYNC_MOVE) 제한은 두지 않는다 — 같은 구글 일정이라는 것을 이미 안다.
+     반복 일정(series — 구글에서 바로 읽을 때 recurringEventId 가 있는 것)은 같은 uid 가 날마다 오므로 같은 날 짝만 짓는다(지난 회차를 다음 회차로 옮기지 않게). */
+  const byUid=apps.filter(a=>a.uid);
+  byUid.forEach(a=>{const g=gs.find(x=>!x._pair&&x.date===a.s.date&&x._uids.has(a.uid));if(g){g._pair=a;a.used=true;}});
+  byUid.forEach(a=>{if(a.used)return;
+    const g=gs.filter(x=>!x._pair&&x._uidsOne.has(a.uid)).sort((x,y)=>Math.abs(hjDaysBetween(a.s.date,x.date))-Math.abs(hjDaysBetween(a.s.date,y.date))||x.date.localeCompare(y.date))[0];
+    if(g){g._pair=a;a.used=true;}});
+  /* 같은 날 짝(제목 열쇠 또는 같은 uid) — 시간 다름·기간 다름 또는 이미 같음.
+     v580 같은 날·같은 제목이어도 구글의 끝 날짜가 앱 기간과 다르면 '⏳ 기간 다름'(구글이 끝 날짜를 줄 때만, 사람이 고친 메모 머리면 안 봄).
+     완료 보고한 일정은 기간을 견주지 않는다(끝난 공정의 메모를 바꾸지 않게). 구글이 하루로만 보이면 견주지 않는다(줄이지 않음).
+     v588 구글이 기준(대표 11/12) — 앱 기간을 줄이는 기간 다름도 체크된 채로 둔다(구글 기간대로 줄임). 시간 다름 줄과는 따로 줄이라 줄이기만 빼고 고를 수 있다.
+     v588 구글 여러 날 일정의 기간 안에 같은 제목의 다른 앱 일정이 이미 있으면(예전 맞추기가 날마다 따로 넣은 것) 기간을 늘리지 않고 그 일정들을 짝(이미 같음)으로 본다
+     — 늘리면 그 날이 두 번 된다. 완료 보고한 일정도 그 날을 덮고 있으니 짝으로 본다. */
+  const sameDay=(g,base,rep,a)=>{
+    a.used=true;let covered=false;
+    if(base.to>g.date)apps.forEach(o=>{if(!o.used&&o.key===g.key&&o.s.date>g.date&&o.s.date<=base.to){o.used=true;covered=true;stats.same++;}});
+    const sp=hjSchSpan(a.s),app=appOf(a);
+    const span=!covered&&!!(base.to&&base.to>g.date&&base.to!==sp.to&&hjCalSyncMemoOwn(a.s)&&!hjSchReported(a.s)),shorter=span&&sp.days>1&&base.to<sp.to;
+    const timeDiff=!!(rep.time&&String(a.s.time||'')!==rep.time);
+    if(timeDiff)rows.push(Object.assign({},base,{status:'time',check:true,span:span&&!shorter,app}));
+    if(span&&(shorter||!timeDiff))rows.push(Object.assign({},base,{status:'span',check:true,span,shorter,app}));
+    if(!timeDiff&&!span)stats.same++;
+  };
+  gs.forEach(g=>{
+    const base=g._base,rep=g._rep,a=g._pair;
+    if(a){g._base=null;
+      if(a.s.date===g.date&&a.key===g.key)return sameDay(g,base,rep,a);
+      if(hjSchReported(a.s)){stats.same++;return;}   // 완료 보고한 일정은 날짜·제목을 바꾸지 않는다
+      const app=Object.assign(appOf(a),{title:String(a.s.title||'')}),ren=a.key!==g.key;
+      if(a.s.date!==g.date){rows.push(Object.assign(base,{status:'move',check:true,own:hjCalSyncMemoOwn(a.s),rename:ren,uidPair:true,app}));return;}
+      // 같은 날·제목만 바뀜(구글에서 이름을 고침) — 시각·기간도 구글대로 같이 싣는다
+      const sp=hjSchSpan(a.s),timeChg=!!(rep.time&&String(a.s.time||'')!==rep.time),span=!!(base.to&&base.to>g.date&&base.to!==sp.to&&hjCalSyncMemoOwn(a.s));
+      rows.push(Object.assign(base,{status:'rename',check:true,timeChg,span,shorter:span&&sp.days>1&&base.to<sp.to,app}));return;}
+    const same=apps.find(x=>!x.used&&x.s.date===g.date&&x.key===g.key);
+    if(same){g._base=null;return sameDay(g,base,rep,same);}
+    /* v588 이어지는 날 — 구글의 하루짜리 일정이 같은 제목의 앱 여러 날 일정의 이어지는 날(시작일 < 그 날 ≤ 끝)에 있으면 이미 같음.
+       제미나이는 여러 날 작업을 날마다 따로 만든다(11/13·11/14 각각) — 앱에 13~14 공정이 있으면 14 를 새 일정으로 또 넣지 않고, 그 공정을 날짜 옮김 후보로도 쓰지 않는다.
+       used 는 바꾸지 않는다: 그 앱 일정은 시작일의 구글 일정과(같은 날 짝이든, 시작이 옮겨졌으면 날짜 옮김이든) 여전히 짝이 될 수 있어야 한다.
+       완료 보고한 공정도 그 날을 덮고 있으니 이미 같음이다(새로 넣으면 끝난 일이 다시 생긴다). */
+    if(!base.to&&apps.some(x=>x.key===g.key&&x.s.date<g.date&&g.date<=hjSchSpan(x.s).to)){g._base=null;stats.same++;stats.cont++;return;}
   });
   /* v580 구글 여러 날 일정의 기간 안에 같은 제목의 앱 일정이 있으면 짝으로 본다 — v567~v579 맞추기는 화면 글 '종일, …, 시작~끝' 의 끝 날짜를
      시작일로 읽어 넣었다. 이제 시작일로 읽으므로 그 일정과 같은 날 짝이 없어져 '새 일정'으로 한 번 더 들어갈 뻔했다(완료 보고한 일정은 날짜 옮김
@@ -41435,7 +41474,7 @@ function hjCalSyncPlan(events,opts){
   if(lo){const a0=lo>from?lo:from;
     apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
       rows.push({status:'apponly',check:false,date:a.s.date,time:a.s.time||'',title:String(a.s.title||''),key:a.key,dupN:0,marks:[],location:'',memo:'',app:{id:a.s.id,date:a.s.date,time:a.s.time||''},project:a.s.project||''});});}
-  const rank={new:0,time:1,span:2,move:3,apponly:4};
+  const rank=HJ_CALSYNC_RANK;
   rows.sort((a,b)=>rank[a.status]-rank[b.status]||a.date.localeCompare(b.date)||String(a.time).localeCompare(String(b.time))||a.key.localeCompare(b.key));
   return {rows,stats,from,lo,hi,stamp:hjCalSyncStamp()};
 }
@@ -41452,7 +41491,8 @@ async function hjCalSyncApply(plan,picks){
   if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
   const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,ids:[],list:[]};
-  const note=(s,kind,from,fix)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);out.list.push({id:s.id,kind,fix:!!fix,title:String(s.title||''),project:String(s.project||''),from,to:null,_s:s});};
+  const note=(s,kind,from,fix,t0)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);const t=String(s.title||'');
+    out.list.push({id:s.id,kind,fix:!!fix,title:t,fromTitle:t0!=null&&String(t0)!==t?String(t0):'',project:String(s.project||''),from,to:null,_s:s});};
   sel.forEach(({r,project})=>{
     if(r.status==='new'){
       // v576 여러 날 일정은 메모 머리를 공정표 꼴 '시작~끝 (N일)' 로 — hjSchSpan 이 읽어 이어지는 날(v354)·달력 막대가 생긴다. '@' 는 레코드에 icsBy 로도 남긴다(🤖 칩).
@@ -41463,18 +41503,20 @@ async function hjCalSyncApply(plan,picks){
       state.schedule.push(rec);
       out.added++;note(rec,'new',null);return;}
     const s=state.schedule.find(x=>x&&x.id===r.app.id);if(!s)return;
-    const before=hjCalSyncSnap(s),changed0=out.changed;
+    const before=hjCalSyncSnap(s),t0=String(s.title||''),changed0=out.changed;
     if(r.status==='time'){s.time=r.time;if(r.span&&hjCalSyncMemoOwn(s))s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
     else if(r.status==='span'){if(!hjCalSyncMemoOwn(s))return;s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
+    // v588 같은 구글 일정(uid)인데 구글에서 제목이 바뀜 — 제목(과 같이 실은 시각·기간)을 구글대로
+    else if(r.status==='rename'){s.title=r.title;if(r.timeChg)s.time=r.time;if(r.span&&hjCalSyncMemoOwn(s))s.memo=hjCalSyncSpanMemo(s.memo,s.date,r.to);out.changed++;}
     else if(r.status==='move'){
-      const old=s.date,sp=hjSchSpan(s),own=hjCalSyncMemoOwn(s);s.date=r.date;if(r.time)s.time=r.time;
+      const old=s.date,sp=hjSchSpan(s),own=hjCalSyncMemoOwn(s);s.date=r.date;if(r.time)s.time=r.time;if(r.rename)s.title=r.title;   // v588 같은 uid·제목도 바뀜
       // v580 기간 머리도 같이: 구글 끝 날짜가 있으면 그 끝으로, 없으면 v353 처럼 작업일 수만큼(일요일로 옮겨 어긋나면 같은 작업일 수로 다시 쓴다)
       if(own){if(r.to&&r.to>r.date)s.memo=hjCalSyncSpanMemo(s.memo,r.date,r.to);
         else if(sp.days>1){let nm=hjShiftRangeMemo(s.memo,old,hjWorkDaysBetween(old,r.date));const m=nm&&nm.match(HJ_RANGE_MEMO_RE);
           if(!m||m[1]!==r.date)nm=hjCalSyncSpanMemo(s.memo,r.date,hjShiftWorkDays(r.date,sp.days-1));s.memo=nm;}}
       out.changed++;}
     else if(r.status==='apponly'){state.schedule.splice(state.schedule.indexOf(s),1);out.removed++;}
-    if(out.changed>changed0)note(s,r.status,before,r.fix);
+    if(out.changed>changed0)note(s,r.status,before,r.fix,t0);
   });
   // 한 일정을 두 줄(시간 다름 + 기간 다름)이 바꿀 수 있어 '바뀐 뒤'는 다 바꾼 다음에 찍는다
   out.list.forEach(x=>{x.to=hjCalSyncSnap(x._s||{});delete x._s;});
@@ -41486,10 +41528,13 @@ function hjCalSyncRowText(r){
   const when=hjMdDow(r.date)+' '+(r.time||'종일');
   const spanTxt=()=>' 기간 '+(r.app.to?'~'+hjMdDow(r.app.to):'하루')+' → ~'+hjMdDow(r.to);
   if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time+(r.span?' ·'+spanTxt():'');
-  if(r.status==='span')return when+' '+r.title+' —'+spanTxt()+(r.shorter?' (앱 기간보다 짧아요 — 맞으면 체크)':'');
+  // v588 구글이 기준 — 앱 기간보다 짧아도 구글대로 줄이는 쪽(체크된 채)
+  if(r.status==='span')return when+' '+r.title+' —'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':'');
+  const ttl=()=>' 제목 ‘'+hjCut(String((r.app&&r.app.title)||'').trim()||'일정',30)+'’ → ‘'+hjCut(r.title,30)+'’';
+  if(r.status==='rename')return when+' '+r.title+' —'+ttl()+(r.timeChg?' · 시간 '+(r.app.time||'종일')+' → '+r.time:'')+(r.span?' ·'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':''):'');
   // v580 사람이 고친 메모 기간은 반영하지 않으므로 구글 끝 날짜를 약속하지 않는다
   if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date)+(r.to&&r.to>r.date?(r.own===false?' (메모의 기간은 손으로 고친 것이라 그대로 — 날짜만 옮겨요)':' ~ '+hjMdDow(r.to)):'')+
-    (r.fix?' · 예전 맞추기가 끝 날짜로 넣은 일정 바로잡기':'');
+    (r.fix?' · 예전 맞추기가 끝 날짜로 넣은 일정 바로잡기':'')+(r.rename?' ·'+ttl():'');
   if(r.status==='apponly')return when+' '+r.title+' — 구글 캘린더에 없음(체크하면 앱에서 지움)';
   return when+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'')+' '+r.title+(r.location?' · '+r.location:'');
 }
@@ -41509,8 +41554,10 @@ function hjCalSyncDone(res){
   list.forEach(x=>{const k=x.project||'';let g=groups.find(y=>y.project===k);if(!g){g={project:k,rows:[]};groups.push(g);}g.rows.push(x);});
   groups.sort((a,b)=>(a.project?0:1)-(b.project?0:1)||a.project.localeCompare(b.project,'ko'));
   groups.forEach(g=>g.rows.sort((a,b)=>(a.to.date+(a.to.time||'')).localeCompare(b.to.date+(b.to.time||''))));   // 현장 안에서는 새 날짜 순
-  const K={new:'🆕',time:'⏰',span:'⏳',move:'📆'},icon=x=>x.fix?'🛠':K[x.kind],proj=name=>name?(state.projects||[]).find(p=>p&&p.name===name):null;
-  const custRows=g=>g.rows.filter(x=>!x.fix);
+  const K={new:'🆕',time:'⏰',span:'⏳',rename:'✏️',move:'📆'},icon=x=>x.fix?'🛠':(K[x.kind]||'🔄'),proj=name=>name?(state.projects||[]).find(p=>p&&p.name===name):null;
+  // v588 제목만 바뀐 일정(날짜·시각·기간 그대로)은 고객에게 알릴 '일정 변경'이 아니다 — 앱 기록 바로잡기처럼 고객 글에서 뺀다
+  const titleOnly=x=>!!x.from&&hjCalSyncWhen(x.from)===hjCalSyncWhen(x.to);
+  const custRows=g=>g.rows.filter(x=>!x.fix&&!titleOnly(x));
   const nm=x=>hjCut(String(x.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'일정',30);
   const hasTel=p=>!!hjSmsUrl([((p&&p.customer)||{}).phone],'');
   const body='<div id="hjCalSyncDone" style="min-width:0;overflow-wrap:anywhere">'+
@@ -41518,10 +41565,10 @@ function hjCalSyncDone(res){
     groups.map((g,gi)=>{const p=proj(g.project),arch=!!(p&&p.archived),cust=custRows(g).length;
       return '<div data-csd-group="'+escapeAttr(g.project)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px">'+
         '<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+(g.project?'🏗 '+escapeHtml(g.project):'현장 없이')+' · '+g.rows.length+'건'+(arch?' <span data-csd-archived style="font-weight:400;color:var(--muted)">(보관한 현장)</span>':'')+'</div>'+
-        g.rows.map(x=>'<div data-csd-row="'+escapeAttr(x.kind)+'" data-id="'+escapeAttr(x.id)+'"'+(x.fix?' data-csd-fix':'')+' style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line-soft)">'+icon(x)+' '+escapeHtml(nm(x))+' · '+
-          (x.from?escapeHtml(hjCalSyncWhen(x.from))+' → ':'새 일정 ')+'<b>'+escapeHtml(hjCalSyncWhen(x.to))+'</b>'+(x.fix?' <span style="color:var(--muted)">· 앱 기록 바로잡기(고객 안내 글에서 뺌)</span>':'')+'</div>').join('')+
+        g.rows.map(x=>'<div data-csd-row="'+escapeAttr(x.kind)+'" data-id="'+escapeAttr(x.id)+'"'+(x.fix?' data-csd-fix':'')+' style="font-size:12.5px;padding:5px 0;border-top:1px dashed var(--line-soft)">'+icon(x)+' '+(x.fromTitle?'<s>'+escapeHtml(hjCut(x.fromTitle,30))+'</s> → ':'')+escapeHtml(nm(x))+' · '+
+          (x.from?escapeHtml(hjCalSyncWhen(x.from))+' → ':'새 일정 ')+'<b>'+escapeHtml(hjCalSyncWhen(x.to))+'</b>'+(x.fix?' <span style="color:var(--muted)">· 앱 기록 바로잡기(고객 안내 글에서 뺌)</span>':(titleOnly(x)?' <span data-csd-titleonly style="color:var(--muted)">· 제목만 바뀜(고객 안내 글에서 뺌)</span>':''))+'</div>').join('')+
         (p&&!arch&&cust?'<button type="button" class="ghost csdCust" data-g="'+gi+'" style="width:100%;min-height:44px;margin-top:6px">✉️ 고객 일정 안내'+(hasTel(p)?'':' (번호 없음 — 글 복사)')+'</button>':'')+
-        (p&&!arch&&!cust?'<div data-csd-nocust class="hint" style="margin-top:4px">앱 기록만 바로잡은 일정이라 고객 안내 단추를 두지 않았어요.</div>':'')+'</div>';}).join('')+
+        (p&&!arch&&!cust?'<div data-csd-nocust class="hint" style="margin-top:4px">날짜·시각이 바뀌지 않은 일정(앱 기록 바로잡기·제목만 바뀜)이라 고객 안내 단추를 두지 않았어요.</div>':'')+'</div>';}).join('')+
     '<div class="hint" style="margin-top:4px">팀·고객에게는 자동으로 보내지 않아요. 공유 창·문자 앱에서 확인한 뒤 보내세요. 되돌리려면 🛡 안전판.</div></div>';
   openModal('🔄 바뀐 일정 알리기',body,[
     {label:'📤 바뀐 일정 팀에 공유',cls:'clay',fn:()=>hjSchShareView({ids:list.map(x=>x.id),label:'바뀐 일정 '+list.length+'건',back:()=>hjCalSyncDone(res)})},
@@ -41539,12 +41586,12 @@ function hjSchGemini(s){return !!s&&(s.icsBy==='gemini'||HJ_GEMINI_MEMO_RE.test(
 function hjCalSyncRender(plan){
   const box=document.getElementById('csBody');if(!box)return;
   window.__hjCalSyncPlan=plan;
-  const L={new:'🆕 새 일정',time:'⏰ 시간 다름',span:'⏳ 기간 다름',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
+  const L={new:'🆕 새 일정',time:'⏰ 시간 다름',span:'⏳ 기간 다름',rename:'✏️ 제목 바뀜',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
   const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
   const sel=(r,i)=>'<select class="csSel" data-i="'+i+'" aria-label="'+escapeAttr(r.title)+' 현장" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 없이</option>'+
     [...new Set((r.project?[r.project]:[]).concat(r.cands||[],live))].map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===r.project?' selected':'')+'>'+escapeHtml(nm)+((r.cands||[]).includes(nm)||nm===r.project?' (추천)':'')+'</option>').join('')+'</select>';
-  box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+(n('span')?' · 기간 다름 '+n('span'):'')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+' · 앱에만 '+n('apponly')+
-      (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(파수꾼·💰·생일·'+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+
+  box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">'+(st.api?'<span data-cs-api>📅 구글 캘린더에서 '+st.api+'개 읽음</span> · ':'')+'읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+(n('span')?' · 기간 다름 '+n('span'):'')+(n('rename')?' · 제목 바뀜 '+n('rename'):'')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+(st.cont?' <span data-cs-cont>(여러 날 공정의 이어지는 날 '+st.cont+'건 포함)</span>':'')+' · 앱에만 '+n('apponly')+
+      (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(파수꾼·💰·생일·'+(st.api?'근무지·메일에서 온 예약·':'')+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+
       (st.unread?' · <span data-cs-unread>날짜를 못 읽은 줄 '+st.unread+'개(두 날짜 꼴이 낯설어 건너뜀 — 구글 캘린더에서 확인)</span>':'')+'</p>'+
     (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
       :'<div data-cs-clean class="empty" style="margin-top:8px"><b>✓ 앱 일정표가 구글 캘린더와 같아요</b>넣거나 바꿀 일정이 없습니다.</div>')+
@@ -41556,9 +41603,137 @@ function hjCalSyncRead(text){
   if(!evs.length){toast(evs.unread?'날짜 꼴이 낯선 줄 '+evs.unread+'개를 건너뛰어 읽은 일정이 없어요 — 구글 캘린더 내보내기 .ics 파일을 넣어 주세요':'일정을 읽지 못했어요 — 구글 캘린더 내보내기 .ics 파일이나 캘린더 화면의 글을 넣어 주세요');return null;}
   const plan=hjCalSyncPlan(evs);hjCalSyncRender(plan);return plan;
 }
+/* v588 📅 구글 캘린더에서 바로 읽기 — 대표(11/12) "구글 캘린더와 연동해서 사용할 거야". 예전에는 .ics 파일이나 캘린더 화면 글을 붙여 넣어야 했다.
+   · 읽기만: 기본 캘린더(primary)의 지난 HJ_CALSYNC_BACK 일 ~ 앞으로 HJ_CALAPI_AHEAD 일을 GET 으로만 읽는다. 구글에 쓰는 요청(POST·PUT·PATCH·DELETE)은 없다.
+   · 권한은 calendar.readonly — 드라이브 읽기(getRoToken)와 같은 OAuth 클라이언트·같은 꼴. 토큰은 이 창의 메모리(__calTok)에만 — IDB·localStorage·저장본에 남기지 않는다.
+     아이폰은 버튼을 누른 그 순간(클릭 제스처 안)에 권한 창을 바로 띄워야 막히지 않는다 — hjCalApiRead 는 await 전에 getCalToken 을 부른다.
+   · 읽은 일정은 .ics 와 같은 꼴 {uid,date,time,to,hours,raw,location,memo,cancelled} 로 바꿔 기존 미리보기(hjCalSyncPlan)·반영(hjCalSyncApply)으로 —
+     안전판·오래된 창·미리보기 뒤 바뀜 가드는 그대로. uid = iCalUID(.ics 의 UID 와 같은 값이라 예전에 파일로 넣은 일정과 짝이 맞는다).
+     종일 end.date 는 '끝난 다음 날'이라 하루 뺀 날이 마지막 날(60일 넘으면 하루짜리 — hjCalSyncParseIcs 와 같은 규칙). 시각은 어떤 오프셋이든 한국 시각(+9)으로.
+     생일·근무지·부재중·집중 시간·메일에서 온 예약(항공·호텔)은 건너뛰고 '건너뜀'에 센다(eventType). 반복 일정 회차는 series 로 표시(uid 짝은 같은 날만).
+   · 실패(권한 창 닫음·거부·API 꺼짐 403·만료 401·오프라인·네트워크)는 창 안(#csGoogleMsg)에 알리고 자료는 바꾸지 않는다. 401 은 토큰을 버리고 한 번만 다시.
+     토큰·일정 글은 콘솔에 찍지 않는다. */
+const HJ_CALAPI_SCOPE='https://www.googleapis.com/auth/calendar.readonly',HJ_CALAPI_AHEAD=60,HJ_CALAPI_PAGES=8;
+const HJ_CALAPI_URL='https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const HJ_CALAPI_SKIP_TYPES=['birthday','workingLocation','outOfOffice','focusTime','fromGmail'];
+const HJ_CALAPI_TZ_RE=/(?:Z|[+-]\d{2}:?\d{2})$/i,HJ_CALAPI_WALL_RE=/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/,HJ_CALAPI_DAY_RE=/^\d{4}-\d{2}-\d{2}$/;
+const HJ_CALAPI_BR_RE=/<\s*(?:br|\/p|\/div|\/li)\s*\/?\s*>/gi,HJ_CALAPI_TAG_RE=/<[^>]*>/g;
+const HJ_CALAPI_OFF_RE=/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i;
+let __calTok=null,__calExp=0,__calClient=null,__calP=null,__calReadSeq=0;
+function getCalToken(interactive){
+  if(__calTok&&Date.now()<__calExp-60000)return Promise.resolve(__calTok);
+  if(__calP)return __calP;
+  __calP=new Promise((res,rej)=>{
+    const fail=x=>{const e=new Error(explainAuthError(x));e.kind='auth';rej(e);};
+    const fire=()=>{
+      if(!__calClient)__calClient=google.accounts.oauth2.initTokenClient({client_id:GD_CLIENT_ID,scope:HJ_CALAPI_SCOPE,callback:()=>{}});
+      __calClient.callback=resp=>{if(resp&&resp.access_token){__calTok=resp.access_token;__calExp=Date.now()+((resp.expires_in||3600)*1000);res(__calTok);}else fail(resp&&resp.error?{error:resp.error}:'권한 실패');};
+      __calClient.error_callback=e=>fail(e);
+      try{__calClient.requestAccessToken({prompt:interactive?'consent':''});}catch(e){fail(e);}
+    };
+    if(window.google&&google.accounts&&google.accounts.oauth2){try{fire();}catch(e){fail(e);}}   // 아이폰: 클릭 제스처 안에서 즉시
+    else gdLoadGIS().then(fire).catch(fail);
+  }).finally(()=>{__calP=null;});
+  return __calP;
+}
+function hjCalApiDropToken(){__calTok=null;__calExp=0;}
+function hjCalApiRange(today){const t=today||localDate();return {timeMin:hjAddDays(t,-HJ_CALSYNC_BACK)+'T00:00:00+09:00',timeMax:hjAddDays(t,HJ_CALAPI_AHEAD)+'T23:59:59+09:00'};}
+// RFC3339 시각 → 한국 날짜·시각. 오프셋이 없는 글(드묾)은 적힌 벽시계 그대로.
+function hjCalApiKst(v){
+  const s=String(v||'');
+  if(!HJ_CALAPI_TZ_RE.test(s)){const m=s.match(HJ_CALAPI_WALL_RE);return m?{date:m[1],time:m[2]+':'+m[3]}:null;}
+  const t=Date.parse(s);if(!isFinite(t))return null;
+  const k=new Date(t+9*3600000),p2=n=>String(n).padStart(2,'0');
+  return {date:k.getUTCFullYear()+'-'+p2(k.getUTCMonth()+1)+'-'+p2(k.getUTCDate()),time:p2(k.getUTCHours())+':'+p2(k.getUTCMinutes())};
+}
+// 구글 일정 설명(HTML 이 섞여 온다) → 글. 줄바꿈 태그는 줄바꿈으로, 나머지 태그는 지우고, 흔한 글자 엔티티만 되돌린다.
+function hjCalApiText(html){
+  return String(html||'').replace(HJ_CALAPI_BR_RE,'\n').replace(HJ_CALAPI_TAG_RE,'').replace(/&nbsp;/gi,' ').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>')
+    .replace(/&quot;/gi,'"').replace(/&#0?39;|&#x27;/gi,"'").replace(/&amp;/gi,'&').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function hjCalApiEvent(ev){
+  if(!ev||typeof ev!=='object')return null;
+  const st=ev.start||{},en=ev.end||{};let s=null,e=null;
+  if(HJ_CALAPI_DAY_RE.test(String(st.date||''))){s={date:String(st.date),time:''};e=HJ_CALAPI_DAY_RE.test(String(en.date||''))?{date:String(en.date),time:''}:null;}
+  else if(st.dateTime){s=hjCalApiKst(st.dateTime);e=en.dateTime?hjCalApiKst(en.dateTime):null;}
+  if(!s||!isRealIsoDate(s.date))return null;
+  // 종일 여러 날: end.date 는 끝난 다음 날 — 하루 뺀 날이 마지막 날. 60일 넘으면 하루짜리로 둔다.
+  const last=!s.time&&e&&!e.time&&e.date>s.date?hjAddDays(e.date,-1):'',to=last>s.date&&hjDaysBetween(s.date,last)<=60?last:'';
+  return {uid:String(ev.iCalUID||ev.id||''),date:s.date,time:s.time,to,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,
+    raw:String(ev.summary||''),location:String(ev.location||''),memo:hjCalApiText(ev.description).slice(0,300),cancelled:ev.status==='cancelled',series:!!ev.recurringEventId};
+}
+// 구글이 준 items → 읽은 일정 목록. .skipped = 건너뛴 자동 일정(eventType)·날짜를 못 읽은 것, .api = 받은 수
+function hjCalApiEvents(items){
+  const list=Array.isArray(items)?items:[],out=[];let skipped=0;
+  list.forEach(ev=>{if(ev&&HJ_CALAPI_SKIP_TYPES.includes(ev.eventType)){skipped++;return;}const x=hjCalApiEvent(ev);if(x)out.push(x);else skipped++;});
+  out.skipped=skipped;out.api=list.length;
+  return out;
+}
+async function hjCalApiFetch(tok){
+  const r0=hjCalApiRange(),enc=encodeURIComponent;
+  const base=HJ_CALAPI_URL+'?timeMin='+enc(r0.timeMin)+'&timeMax='+enc(r0.timeMax)+'&singleEvents=true&orderBy=startTime&maxResults=250';
+  let items=[],page='',n=0;
+  do{
+    let res;
+    try{res=await fetch(base+(page?'&pageToken='+enc(page):''),{method:'GET',headers:{Authorization:'Bearer '+tok},cache:'no-store'});}
+    catch(_){const err=new Error('net');err.kind='net';throw err;}
+    if(!res.ok){let j=null;try{j=await res.json();}catch(_){}
+      const er=(j&&j.error)||{},why=[].concat(er.errors||[],er.details||[]).map(x=>String((x&&x.reason)||'')).filter(Boolean);
+      const err=new Error('calendar '+res.status);err.status=res.status;err.reasons=why;err.detail=String(er.message||'');throw err;}
+    let j=null;try{j=await res.json();}catch(_){const err=new Error('bad');err.kind='bad';throw err;}
+    if(j&&Array.isArray(j.items))items=items.concat(j.items);
+    page=String((j&&j.nextPageToken)||'');n++;
+  }while(page&&n<HJ_CALAPI_PAGES);
+  return {items,more:!!page};
+}
+function hjCalApiErrText(e){
+  const st=e&&e.status;
+  if(e&&e.kind==='auth')return '구글 권한을 받지 못했어요 — '+(e.message||'권한 실패')+'. 다시 누르거나, 아래 .ics 파일·붙여 넣기로 맞출 수 있어요.';
+  if((e&&e.kind==='net')||(typeof navigator!=='undefined'&&navigator.onLine===false))return '인터넷에 연결되지 않아 구글 캘린더를 읽지 못했어요 — 연결을 확인하고 다시 누르거나, 아래 .ics 파일·붙여 넣기로 하세요.';
+  if(st===403&&HJ_CALAPI_OFF_RE.test([].concat((e&&e.reasons)||[],[(e&&e.detail)||'']).join(' ')))
+    return '구글 클라우드 프로젝트에서 ‘Google Calendar API’가 꺼져 있어요. 대표 계정으로 Google Cloud 콘솔 › API 및 서비스 › 라이브러리에서 ‘Google Calendar API’를 사용 설정한 뒤 다시 누르세요. 그동안은 아래 .ics 파일·붙여 넣기로 맞출 수 있어요.';
+  if(st===403)return '캘린더를 볼 권한이 허용되지 않았어요 — 다시 눌러 구글 권한 창에서 캘린더 보기를 허용해 주세요.';
+  if(st===401)return '구글 로그인이 만료됐어요 — 다시 눌러 주세요.';
+  if(st===429||st>=500)return '구글 캘린더가 잠시 응답하지 않아요(상태 '+st+') — 잠시 뒤 다시 누르세요.';
+  return '구글 캘린더를 읽지 못했어요'+(st?'(상태 '+st+')':'')+' — 아래 .ics 파일·붙여 넣기로 맞출 수 있어요.';
+}
+// [📅 구글 캘린더에서 바로 읽기] — 읽어서 미리보기까지(반영은 기존 [체크한 일정 반영]). 창이 닫히거나 다시 열리면 늦은 응답은 버린다.
+function hjCalApiRead(){
+  const btn=document.getElementById('csGoogle');
+  if(!document.getElementById('hjCalSync')||!btn||btn.disabled)return Promise.resolve(null);
+  const say=(t,k)=>{const m=document.getElementById('csGoogleMsg');if(m){m.textContent=t;m.dataset.state=k||'';m.style.color=k==='error'?'var(--hj-danger-fg)':'';}};
+  if(typeof navigator!=='undefined'&&navigator.onLine===false){say(hjCalApiErrText({kind:'net'}),'error');return Promise.resolve(null);}
+  const seq=++__calReadSeq,live=()=>seq===__calReadSeq&&!!document.getElementById('hjCalSync');
+  btn.disabled=true;say('구글 권한을 확인하는 중…','busy');
+  const tokP=getCalToken(true);   // await 전에 — 아이폰에서 권한 창이 막히지 않게
+  return (async()=>{
+    try{
+      let tok=await tokP;if(!live())return null;
+      say('구글 캘린더를 읽는 중…','busy');
+      let got;
+      try{got=await hjCalApiFetch(tok);}
+      catch(e){if(!(e&&e.status===401))throw e;   // 만료 — 토큰을 버리고 한 번만 다시
+        hjCalApiDropToken();tok=await getCalToken(false);if(!live())return null;got=await hjCalApiFetch(tok);}
+      if(!live())return null;
+      const evs=hjCalApiEvents(got.items),more=got.more?' — 일정이 많아 앞쪽 '+got.items.length+'개만 읽었어요':'';
+      if(!evs.length){window.__hjCalSyncPlan=null;const body=document.getElementById('csBody');if(body)body.innerHTML='';const go=document.getElementById('csApply');if(go){go.disabled=true;go.textContent='반영할 일정 없음';}
+        say(got.items.length?'구글 캘린더에서 '+got.items.length+'개 읽었지만 모두 생일·근무지·메일에서 온 예약 같은 자동 일정이라 맞출 일정이 없어요.':'구글 캘린더(기본 캘린더)의 지난 '+HJ_CALSYNC_BACK+'일 ~ 앞으로 '+HJ_CALAPI_AHEAD+'일에 일정이 없어요.','ok');return null;}
+      const plan=hjCalSyncPlan(evs);hjCalSyncRender(plan);
+      say('📅 구글 캘린더에서 '+got.items.length+'개 읽었어요'+more+'. 아래 미리보기에서 체크한 것만 반영돼요(구글 캘린더는 바꾸지 않아요).','ok');
+      return plan;
+    }catch(e){
+      if(e&&(e.status===401||(e.status===403&&!HJ_CALAPI_OFF_RE.test([].concat(e.reasons||[],[e.detail||'']).join(' ')))))hjCalApiDropToken();   // API 꺼짐(403)은 토큰 탓이 아니라 그대로 둔다
+      if(live())say(hjCalApiErrText(e),'error');
+      return null;
+    }finally{const b=document.getElementById('csGoogle');if(b&&seq===__calReadSeq)b.disabled=false;}
+  })();
+}
 function hjCalSyncView(){
-  window.__hjCalSyncPlan=null;
+  window.__hjCalSyncPlan=null;__calReadSeq++;   // v588 다시 열면 앞 창의 늦은 구글 응답은 버린다
   openModal('🔄 구글 캘린더 맞추기','<div id="hjCalSync"><p class="hint" style="margin:0 0 8px">구글 캘린더의 일정을 읽어 앱 일정표와 견줍니다. <b>미리보기에서 체크한 것만</b> 앱에 넣고, 구글 캘린더는 바꾸지 않습니다. 제목 앞 ‘@’(제미나이)·‘[현장명]’ 표시는 떼고 비교해요.</p>'+
+    '<div data-cs-google style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin:0 0 8px"><button type="button" class="clay" id="csGoogle" style="min-height:44px;width:100%">📅 구글 캘린더에서 바로 읽기</button>'+
+    '<p class="hint" style="margin:6px 0 0">기본 캘린더의 지난 '+HJ_CALSYNC_BACK+'일 ~ 앞으로 '+HJ_CALAPI_AHEAD+'일을 <b>읽기만</b> 해요. 처음엔 구글 권한 확인 창이 떠요 — ‘확인되지 않은 앱’ 경고가 나오면 고급 → 계속.</p>'+
+    '<p id="csGoogleMsg" role="status" aria-live="polite" style="margin:6px 0 0;font-size:12.5px;overflow-wrap:anywhere"></p></div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px"><button type="button" class="blue tiny" id="csFile" style="min-height:44px">📂 캘린더 파일(.ics) 고르기</button><button type="button" class="ghost tiny" id="csRead" style="min-height:44px">📋 아래 붙여 넣은 글 읽기</button></div>'+
     '<textarea id="csText" rows="4" aria-label="구글 캘린더 글 붙여 넣기" placeholder="구글 캘린더 화면에서 복사한 글(또는 .ics 내용)을 여기에 붙여 넣으세요" style="width:100%;box-sizing:border-box;font-size:16px;border:1px solid var(--line);border-radius:10px;padding:8px"></textarea>'+
     '<div id="csBody"></div></div>',
@@ -41575,6 +41750,7 @@ function hjCalSyncView(){
   const root=document.getElementById('hjCalSync');if(!root)return;
   const go=[...document.querySelectorAll('#modalRoot .mfoot button')].pop();if(go){go.id='csApply';go.disabled=true;}
   root.querySelector('#csRead').onclick=()=>hjCalSyncRead(root.querySelector('#csText').value);
+  root.querySelector('#csGoogle').onclick=()=>{hjCalApiRead();};   // v588 — 누른 그 순간 권한 창(아이폰)
   root.querySelector('#csFile').onclick=()=>{const inp=document.createElement('input');inp.type='file';inp.accept='.ics,text/calendar,.txt,text/plain';
     inp.onchange=async()=>{const f=inp.files&&inp.files[0];if(!f)return;try{hjCalSyncRead(await f.text());}catch(e){toast('파일을 읽지 못했습니다: '+(e&&e.message||e));}};inp.click();};
 }
