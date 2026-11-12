@@ -38990,7 +38990,7 @@ function viewQuoteMaker(){
         <label>안 (비교표)<select id="qmTier">${hjQuoteTierOptions(q.tier||'')}</select></label>
         <label>입금 계좌<select id="qmAcct">${acctOpts}</select></label>
         <label>연결 현장<select id="qmProj">${projOpts}</select>${q.bathroomImport&&!q.project?'<span class="hint">현장을 골라 연결하세요</span>':''}</label>
-        <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
+        <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금">${hjQuoteMemoOut(q.memo)!==String(q.memo==null?'':q.memo)?'<span class="hint" data-qm-memo-hint>‘[금액 수정]’ 기록은 앱 안 기록이라 견적서·엑셀에는 나가지 않아요</span>':''}</label>
       </div>
       ${hjQuoteCostHintHtml(q)}<div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="ghost tiny" id="qmMeasure" aria-label="실측 노트의 방 면적을 품목으로 가져오기"${hjQuoteMeasureRooms(q).length?'':' hidden style="display:none"'}>📐 실측에서 가져오기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
       <div class="qm-quick">${['철거','방수','타일,기구','도배(실크)','씽크대','화장실','몰딩','장판','인건비','식대,부자재','폐기물','NEGO'].map(n=>`<button class="qm-chip" data-qadd="${escapeAttr(n)}" title="품목 빠른 추가">+ ${escapeHtml(n)}</button>`).join('')}</div>
@@ -40572,16 +40572,24 @@ function parseQuoteFromGrid(grid,filename){
    · hjQuoteMemoOut(memo) 한 곳 — 밖으로 나가는 견적서(quoteHTML → PDF·인쇄, exportQuoteXlsx)가 쓴다. 저장된 비고는 손대지 않는다:
      견적 작성 화면 비고 칸·세무사용 증빙의 '비고(내부)'·📦 현장 ZIP(보관·세무·분쟁 대비용 — 고객 연락처·미수까지 담긴 내부 묶음)의 '앱견적' 은 기록을 그대로 본다.
      거래명세서·청구서·고객 페이지·카톡 카드·공사 스토리는 원래 비고를 싣지 않는다.
-   · '[금액 수정]' 으로 시작하는 줄은 통째로 뺀다(손으로 적었어도 내부 표시). 견적 작성 화면의 비고 칸은 한 줄 입력이라 고쳐 저장하면 줄바꿈이 사라져
-     기록이 앞 글에 붙는다 — 그래서 줄 가운데의 기록도 v583 이 쓰는 꼴 그대로(HJ_REVMEMO_ENTRY_RE) 찾아 뺀다. 그 밖의 줄(v526 '원본:' 줄 포함)은 그대로. */
-const HJ_REVMEMO_LINE_RE=/^\s*\[금액 수정\]/;
-const HJ_REVMEMO_ENTRY_RE=/\[금액 수정\] \d{4}-\d{2}-\d{2} · .*?-?[\d,]+→-?[\d,]+원 · 원본 ‘[^’]*’/g;
+   · 빼는 것은 v583 이 쓰는 꼴('[금액 수정] YYYY-MM-DD · …원 · 원본 ‘파일’')뿐이다. 견적 작성 화면의 비고 칸은 한 줄 입력이라 고쳐 저장하면 줄바꿈이 사라져
+     기록이 앞뒤 글에 붙는다 — 그래서 줄 머리가 아니라 기록 하나하나(HJ_REVMEMO_ENTRY_RE)를 먼저 찾아 빼고 남은 글은 살린다(검토 고침: 줄 머리로 줄째 빼면
+     비고가 기록으로 시작할 때 그 뒤에 적은 '계약금 선입금' 같은 글까지 견적서에서 말없이 사라졌다).
+   · 파일 이름에 ’ 가 들어 있어도 끝을 맞게 찾는다: 내역서 확장자(.xlsx·.xls·.xlsm·.csv) 바로 뒤의 ’ → 없으면 뒤가 빈칸·다음 기록·줄 끝인 ’ → 없으면 첫 ’.
+     어느 것도 다음 '[금액 수정]' 을 넘지 않는다(사이에 적은 글을 같이 먹지 않게).
+   · 손으로 고쳐 꼴이 깨진 기록(날짜 머리 '[금액 수정] YYYY-MM-DD · ' 는 남음 — HJ_REVMEMO_STAMP_RE)은 끝을 알 수 없으니 그 머리부터 줄 끝까지 뺀다
+     (옛 금액·파일 이름이 나가는 것보다 낫다). 날짜 머리가 없는 '[금액 수정] …' 은 대표가 고객에게 쓴 글일 수 있어 그대로 둔다(v597 전처럼 찍힌다).
+     그 밖의 줄(v526 '원본:' 줄 포함)도 그대로.
+   · 견적 작성 화면 비고 칸에는 기록이 그대로 보이니, 빠지는 글이 있으면 칸 아래에 '견적서·엑셀에는 나가지 않아요' 한 줄(data-qm-memo-hint)로 알린다
+     — 칸만 보고는 무엇이 나가는지 알 수 없다(검토 고침). */
+const HJ_REVMEMO_STAMP_RE=/\[금액 수정\] \d{4}-\d{2}-\d{2} · /;
+const HJ_REVMEMO_ENTRY_RE=/\[금액 수정\] \d{4}-\d{2}-\d{2} · (?:(?!\[금액 수정\]).)*?-?[\d,]+→-?[\d,]+원 · 원본 ‘(?:(?:(?!\[금액 수정\]).)*?\.(?:xlsx|xlsm|xls|csv)’|(?:(?!\[금액 수정\]).)*?’(?=\s|\[금액 수정\]|$)|(?:(?!\[금액 수정\])[^’])*’)/gi;
 const HJ_REVMEMO_GAP_RE=/\s{2,}/g;
 function hjQuoteMemoOut(memo){
   const out=[];
   String(memo==null?'':memo).split('\n').forEach(l=>{
-    if(HJ_REVMEMO_LINE_RE.test(l))return;
-    const t=l.replace(HJ_REVMEMO_ENTRY_RE,'');
+    let t=l.replace(HJ_REVMEMO_ENTRY_RE,'');
+    const k=t.search(HJ_REVMEMO_STAMP_RE);if(k>=0)t=t.slice(0,k);
     if(t===l){out.push(l);return;}
     const u=t.replace(HJ_REVMEMO_GAP_RE,' ').trim();   // 기록만 있던 자리는 남기지 않는다
     if(u)out.push(u);
