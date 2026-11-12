@@ -127,7 +127,7 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
       assert.deepEqual(r.extra[3].slice(0, 3), ['다솜아파트', 1, 'app'], '[현장명] 표시 → 그 현장 — ' + JSON.stringify(r.extra[3]));
       assert.deepEqual(r.extra[5], ['', 1, '', 'E'], '시간 다름은 앱 일정 E');
       assert.deepEqual(r.extra[6], ['', 2, '@', 'B'], "날짜 옮김: '@제목'과 제목이 같은 날 2번 → 한 줄 · 앱 일정 B — " + JSON.stringify(r.extra[6]));
-      assert.deepEqual(r.st, { read: 14, same: 3, skipped: 1, old: 2, gdup: 1 }, '같음 3(가온·벌곡·미장) · 파수꾼 1 · 지난 일정 2 · 구글 겹침 1 — ' + JSON.stringify(r.st));
+      assert.deepEqual(r.st, { read: 14, same: 3, skipped: 1, old: 2, gdup: 1, unread: 0 }, '같음 3(가온·벌곡·미장) · 파수꾼 1 · 지난 일정 2 · 구글 겹침 1 · 못 읽은 줄 0(v580) — ' + JSON.stringify(r.st));
       assert.deepEqual([r.lo, r.hi, r.same], ['2026-11-10', '2026-11-16', true], '읽기만');
     });
     await test('④ 창 — 붙여 넣고 읽기 → 미리보기 → 현장 고르고 반영 → 안전판 1회 · 앱에만 있는 일정은 그대로 (APPLY)', async () => {
