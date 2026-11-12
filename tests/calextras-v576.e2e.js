@@ -19,7 +19,7 @@ const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone',
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
-  'no-span': ["const span=r.to&&r.to>r.date?r.date+'~'+r.to+' ('+(hjWorkDaysBetween(r.date,r.to)+1)+'일)':'';", "const span='';"],
+  'no-span': ["const span=o.to&&o.to>o.date?o.date+'~'+o.to+' ('+(hjWorkDaysBetween(o.date,o.to)+1)+'일)':'';", "const span='';"],   // v588 검토: 반복 회차(occ)마다 넣느라 r → o
   'no-chip': ["function hjSchGemini(s){return !!s&&(s.icsBy==='gemini'||HJ_GEMINI_MEMO_RE.test(String(s.memo||'')));}", 'function hjSchGemini(s){return false;}']
 };
 let html = process.env.HJ_V576_BASELINE ? execFileSync('git', ['show', process.env.HJ_V576_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
