@@ -26,6 +26,9 @@
   같이 돌림: leakintake-v419 7/7 · leakreport-v422 7/7 · leaksms-v424 9/9 · board-v351 4/4 · health-board 11/11 · warranty-review 12/12 · mobile-more-tools 16(126 클릭) · reviewlink-v575 7/7 · settings-tabs 11 ·
   offlinequeue-cache-v425 8/8 · offlinequeue-v425 13/13. 정적 syntax·version-sync·serialized-keys·sw-cache·dead-endpoint·cost-honesty·ai-tools-count·sri 통과(`office-ops-server-isolation` 은 얕은 클론에 19657c3 이 없어 환경 실패). 전체 run-all·CI 는 PR.
 - 병합 순서: manmool #223 → hyeonjang #162 → 이 PR. 이 커밋은 #162 머리 위에 있다 — #162 보다 먼저 병합하면 안 된다.
+- 화면 문구 2건(대표 승인 2026-10-23, 둘째 커밋): 문자 센터 '🔑 작업자 출입 안내'가 빈 문안으로 열리던 것(`msgCenterView` 상황 목록에는 있는데 `msgTemplate` 에 `access` 키가 없었다)에
+  출입번호를 담지 않는 안내 문안(작업자 소속·현장 책임자·작업 시간, 출입번호는 문자로 주고받지 않고 전화로만)을 넣었고, '📊 연간 결산'(`annualReport`) 도움말이 🏆 연말 결산(`yearReport`)에만 있는
+  성장률·베스트 현장·AI 총평을 설명하던 것을 사실대로 고쳤다(두 항목의 자리는 #162 에서도 그대로였다). `tests/warranty-review.e2e.js` 12번째 검사가 두 문구를 지킨다(문안 제거·도움말 되돌림·출입번호 포함 변이 검출).
 
 ## 2026-11-12 v590 · 일정 알림 watch-v6 — 다 받은 내역서의 현장 줄 남은 돈 숨김 · '[파수꾼]' → 매일 9시 '[일정 알림]' 내일 일정 요약
 
