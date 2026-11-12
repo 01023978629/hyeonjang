@@ -283,6 +283,17 @@
   .ps-current-tag{display:inline-block;margin-top:5px;padding:2px 7px;border-radius:6px;background:var(--blueprint);color:#fff;font-size:12px;font-weight:700}
   .ps-chevron{flex-shrink:0;color:var(--muted);font-size:22px}
   body.a11y-big2 .ps-name{font-size:17px}body.a11y-big2 .ps-meta{font-size:14px}
+  /* v585 📅 오늘 일정 현장 — 현장 고르기 시트·촬영 시트 맨 위 줄, 사진 추가 확인 창의 칩 */
+  .hj-today-strip{margin:2px 0 8px;padding:8px 10px;border:1.5px solid var(--blueprint);border-radius:12px;background:var(--paper-2);min-width:0}
+  .hj-today-strip[hidden]{display:none}
+  .hj-today-h{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 6px}
+  .hj-today-list{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+  .hj-today-chip{display:inline-flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;min-height:44px;min-width:44px;max-width:100%;padding:7px 12px;margin:0;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;font-size:15px;font-weight:700;line-height:1.35;text-align:left;white-space:normal;overflow-wrap:anywhere}
+  .hj-today-chip small{display:block;font-size:12px;font-weight:400;color:var(--muted)}
+  .hj-today-chip[aria-pressed="true"]{border:2px solid var(--blueprint);padding:6px 11px}
+  .hj-today-chip:hover,.hj-today-chip:focus-visible{background:var(--paper-2);color:var(--ink);transform:none}
+  .hj-today-warn{margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--hj-warn-bg,#fff7ed);color:var(--hj-warn-fg,#9a3412);font-size:14px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
+  .hj-today-warn[hidden]{display:none}
   .more-sheet h4{margin:4px 0 10px;font-size:13px;color:var(--blueprint)}
   .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .more-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);cursor:pointer;font-size:11.5px;color:var(--ink)}
@@ -5066,10 +5077,14 @@ function openPhotoIntake(files,context){
   const selected=projects.findIndex(p=>p.name===context.project);
   const options=projects.map((p,i)=>`<option value="${i+1}"${i===selected?' selected':''}>${escapeHtml(p.name)}${p.archived?' (보관 현장)':''}</option>`).join('');
   const total=picked.reduce((n,f)=>n+(Number(f.size)||0),0);
+  // v585 📅 오늘 일정 현장 칩 — 누르면 위 칸 값만 바꾼다(저장 없음). 촬영·공유 사진인데 고른 현장이 오늘 현장 밖이면 한 줄 경고(막지 않음).
+  const todayNames=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)).slice(0,HJ_TODAY_SITE_SHOW);
+  const todayChips=todayNames.length?`<div id="photoIntakeToday" class="hj-today-strip" role="group" aria-labelledby="photoIntakeTodayH" style="margin:-4px 0 10px"><div id="photoIntakeTodayH" class="hj-today-h">📅 오늘 일정 현장 — 누르면 위 칸에 들어가요</div><div class="hj-today-list">${todayNames.map(n=>`<button type="button" class="hj-today-chip" data-intake-today="${escapeAttr(n)}" aria-pressed="false"><span class="hj-today-n">${escapeHtml(n)}</span></button>`).join('')}</div></div>`:'';
   openModal('사진 추가 확인',`<div id="photoIntakeForm" style="min-width:0;overflow-wrap:anywhere">
     <p><b>${picked.length}장 선택</b> · ${(total/1048576).toFixed(1)}MB · ${context.source==='camera'?'촬영한 사진':context.source==='share'?'공유받은 사진':'갤러리 사진'}</p>
     <label for="photoIntakeProject">사진을 추가할 현장</label>
-    <select id="photoIntakeProject" aria-describedby="photoIntakeIssue" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"><option value="">현장을 선택해 주세요</option>${options}<option value="none">미배정으로 추가 (나중에 배정)</option></select>
+    <select id="photoIntakeProject" aria-describedby="photoIntakeIssue photoIntakeTodayWarn" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"><option value="">현장을 선택해 주세요</option>${options}<option value="none">미배정으로 추가 (나중에 배정)</option></select>
+    ${todayChips}<p id="photoIntakeTodayWarn" class="hj-today-warn" data-intake-today-warn role="status" aria-live="polite" hidden></p>
     <label for="photoIntakeUnit">동·호수 / 공용부 (선택)</label>
     <select id="photoIntakeUnit" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"></select>
     <div id="photoIntakeLeakTags" role="group" aria-label="누수 사진 태그" hidden style="display:flex;gap:6px;flex-wrap:wrap;min-width:0;margin:8px 0"></div>
@@ -5123,7 +5138,23 @@ function openPhotoIntake(files,context){
     unitSelect.disabled=!units.length;
     if(initial&&units.some(u=>u.id===context.unitId))unitSelect.value=context.unitId;
   };
-  projectSelect.onchange=()=>refreshUnits(false);refreshUnits(true);
+  // v585 오늘 일정 현장 — 칩 눌림 표시와 경고 줄을 고른 현장에 맞춘다(화면만)
+  const refreshToday=()=>{
+    const target=projects[Number(projectSelect.value)-1],name=target?target.name:'';
+    document.querySelectorAll('#photoIntakeToday [data-intake-today]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intakeToday===name)));
+    const warn=document.getElementById('photoIntakeTodayWarn');if(!warn)return;
+    const show=hjIntakeTodayWarn(context.source,name,todayNames);
+    warn.hidden=!show;warn.textContent=show?'⚠ 오늘 일정 현장은 '+hjTodaySiteListText(todayNames)+' — 고른 현장이 맞는지 확인해 주세요':'';
+  };
+  document.querySelectorAll('#photoIntakeToday [data-intake-today]').forEach(b=>b.onclick=()=>{
+    const i=projects.findIndex(p=>p.name===b.dataset.intakeToday);if(i<0)return;
+    // 현장 칸 위 '현장 검색'(bindProjectSearch)이 목록을 줄여 놓았으면 먼저 비운다 — 줄어든 목록엔 고를 현장이 없을 수 있다
+    const q=projectSelect.closest('.project-select-search')?.querySelector('input[type="search"]');
+    if(q&&q.value){q.value='';q.dispatchEvent(new Event('input'));}
+    projectSelect.value=String(i+1);projectSelect.dispatchEvent(new Event('change'));   // onchange(동·호수·태그·경고) 그대로
+    const issue=document.getElementById('photoIntakeIssue');if(issue)issue.textContent='';
+  });
+  projectSelect.onchange=()=>{refreshUnits(false);refreshToday();};refreshUnits(true);refreshToday();
   if(context.onCancel)window.__modalOnClose=()=>{Promise.resolve(context.onCancel()).catch(()=>{});};
   // v419: preserve the share cancellation hook before composing the leak continuation.
   hjPhotoIntakeCloseHook(context.onClose);
@@ -8365,6 +8396,39 @@ function hjPlaceSchedNames(ymd){
   });
   return out;
 }
+/* v585 오늘 일정 현장 — 하루 두세 현장을 도는 날, 앞 현장이 골라진 채 다음 현장에서 찍으면 사진이 엉뚱한 현장으로 들어갔다.
+   = 지금 ⏱ 작업 중인 현장(오늘 시작·아직 안 끝냄) 먼저 + 그날 일정 현장(hjPlaceSchedNames — 💰·세금 자동·개인 일정 제외,
+   여러 날 공정의 이어지는 날 포함). 보관·없는 현장은 뺀다. 읽기만 — workData() 는 state.workLogs 에 빈 배열을 붙이므로 쓰지 않는다. */
+function hjTodayWorkNames(ymd){
+  ymd=ymd||localDate();
+  const live=new Set((state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name)),out=[];
+  (Array.isArray(state.workLogs)?state.workLogs:[]).forEach(w=>{if(w&&w.project&&w.date===ymd&&!w.out&&live.has(w.project)&&!out.includes(w.project))out.push(w.project);});
+  return out;
+}
+function hjTodaySiteNames(ymd){
+  ymd=ymd||localDate();
+  const out=hjTodayWorkNames(ymd);
+  hjPlaceSchedNames(ymd).forEach(n=>{if(!out.includes(n))out.push(n);});
+  return out;
+}
+/* 사진 추가 확인 창의 경고 — 촬영·공유 사진(지금 그 자리에서 찍은 것)인데 고른 현장이 오늘 일정 현장 밖일 때만. 갤러리(지난 사진)는 경고 없음.
+   현장을 안 골랐거나(빈칸) 미배정을 고른 때도 경고 없음. 막지 않는다. */
+function hjIntakeTodayWarn(source,picked,todayNames){
+  if(source!=='camera'&&source!=='share')return false;
+  if(!picked||!(todayNames||[]).length)return false;
+  return !todayNames.includes(picked);
+}
+function hjTodaySiteListText(names){names=names||[];return names.slice(0,3).join(' · ')+(names.length>3?' 외 '+(names.length-3)+'곳':'');}
+const HJ_TODAY_SITE_SHOW=6;   // 시트 맨 위 줄에 보이는 오늘 현장 수(넘치면 아래 목록·검색으로)
+/* 시트 맨 위 '📅 오늘 일정 현장' 줄 — attr 은 단추 속성 이름(data-ps-today·data-camera-today). 기존 목록 행([data-psel]·[data-camera-project])과 따로 둔다. */
+function hjTodaySiteStripHtml(id,attr,names,current){
+  const work=new Set(hjTodayWorkNames()),list=(names||[]).slice(0,HJ_TODAY_SITE_SHOW);
+  if(!list.length)return '';
+  return '<div id="'+id+'" class="hj-today-strip" role="group" aria-labelledby="'+id+'H"><div id="'+id+'H" class="hj-today-h">📅 오늘 일정 현장</div><div class="hj-today-list">'+
+    list.map(n=>'<button type="button" class="hj-today-chip" '+attr+'="'+escapeAttr(n)+'" aria-pressed="'+(n===current?'true':'false')+'">'+
+      '<span class="hj-today-n">'+escapeHtml(n)+'</span>'+(work.has(n)?'<small>⏱ 작업 중</small>':'')+(n===current?'<small>✓ 지금 현장</small>':'')+'</button>').join('')+
+    '</div></div>';
+}
 function hjPlaceDist(ll,refs){return (refs||[]).map(r=>({name:r.name,m:Math.round(geoDist(ll[0],ll[1],r.lat,r.lng)*1000)})).sort((a,b)=>a.m-b.m||String(a.name).localeCompare(String(b.name)));}
 /* 사진 한 장 판단: k = agree(위치·일정 같은 현장 — 유일한 추천) · gps(위치만, 그날 일정 없음) · conflict(위치 ≠ 일정) · near2(150m 안 현장 여럿)
    · new(일정 현장에 위치 기록이 없음 — 처음 가는 현장) · far(일정 현장에서 150m 넘게 떨어짐) · sched(사진에 위치 없음, 일정 한 곳) · multi(일정 여러 곳) · none */
@@ -9765,6 +9829,7 @@ function openProjectSheet(openerOverride){
   const act=sortProjectDisplay(state.projects.filter(p=>!p.archived),photoCounts), arc=sortProjectDisplay(state.projects.filter(p=>p.archived),photoCounts);
   const __cntSheet={};state.files.forEach(f=>{if(f&&f.project)__cntSheet[f.project]=(__cntSheet[f.project]||0)+1;});
   const __dupeSheet=aptDupeNames();   // row() 안에서 부르면 현장마다 projects 를 다시 훑는다
+  const __todaySheet=hjTodaySiteNames();   // v585 📅 오늘 일정 현장 — 목록 맨 위 줄(아래 목록 순서는 그대로)
   const row=(p,dim)=>{const n=__cntSheet[p.name]||0,selected=state.activeProject===p.name;
     const stage=hjStageLabel(p,p.stage),badge=aptUnitBadge(p,__dupeSheet);
     return `<button type="button" class="ps-row" data-psel="${escapeAttr(p.name)}" aria-pressed="${selected?'true':'false'}">
@@ -9773,7 +9838,7 @@ function openProjectSheet(openerOverride){
       ${selected?'<span class="ps-current-tag">✓ 현재 현장</span>':''}</span><span class="ps-chevron" aria-hidden="true">›</span></button>`;};
   sh.innerHTML=`<div class="ps-heading"><h4 id="projSheetTitle">현장 선택</h4><button type="button" class="ghost" id="projSheetClose" aria-label="현장 선택 닫기">✕</button></div>
     ${state.projects.length>0?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="search" id="psSearch" aria-label="현장 이름 검색" aria-describedby="psSearchHint" placeholder="🔍 보관 현장도 함께 검색" autocomplete="off" style="flex:1;min-width:0;width:100%;min-height:44px;padding:11px;font-size:15px"><button type="button" id="psSearchClear" class="ghost" hidden style="width:auto;min-width:44px;min-height:44px;white-space:nowrap">검색 지우기</button></div><p id="psSearchHint" class="hint" style="margin:0 0 6px">띄어쓰기와 관계없이 진행·보관 현장을 함께 찾습니다.</p><div id="psResultStatus" role="status" aria-live="polite" aria-atomic="true" style="font-size:13px;color:var(--muted);margin-bottom:6px"></div>`:''}
-    <button type="button" id="psLeakFilter" class="ghost" aria-pressed="${__hjLeakFilter}" style="min-height:44px;margin:0 0 8px">💧 누수</button><div id="psList"></div>`;
+    <button type="button" id="psLeakFilter" class="ghost" aria-pressed="${__hjLeakFilter}" style="min-height:44px;margin:0 0 8px">💧 누수</button>${hjTodaySiteStripHtml('psToday','data-ps-today',__todaySheet,state.activeProject)}<div id="psList"></div>`;
   const list=sh.querySelector('#psList');
   const normalize=q=>String(q||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');
   const drawList=()=>{
@@ -9784,6 +9849,7 @@ function openProjectSheet(openerOverride){
     const status=sh.querySelector('#psResultStatus');
     if(status)status.textContent=q?'검색 결과 '+(active.length+archived.length)+'곳 · 진행 '+active.length+'곳 / 보관 '+archived.length+'곳':'사진 0개 먼저 · 가나다순 · 진행 '+active.length+'곳 · 보관 '+archived.length+'곳';
     const clear=sh.querySelector('#psSearchClear');if(clear)clear.hidden=!q;
+    const today=sh.querySelector('#psToday');if(today)today.hidden=!!q;   // 검색 중엔 오늘 줄을 숨긴다(검색 칸은 그 위라 자리가 안 움직인다)
     list.innerHTML=`
       <button type="button" data-psel="" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 8px;font-weight:700;border:0;border-bottom:1px solid var(--line-soft);background:${!state.activeProject?'var(--paper-2)':'transparent'};border-radius:${!state.activeProject?'8px':'0'};color:var(--ink);font:inherit;text-align:left"><span>● 전체 보기</span><span style="color:var(--muted);font-size:12px;font-weight:400">${state.files.length}</span></button>
       ${active.map(p=>row(p,false)).join('')||(!q&&!active.length?'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>':'')}
@@ -9799,16 +9865,18 @@ function openProjectSheet(openerOverride){
   if(pss)pss.oninput=drawList;
   const clear=sh.querySelector('#psSearchClear');
   if(clear)clear.onclick=()=>{pss.value='';drawList();pss.focus();};
-  list.onclick=e=>{
-    const toggle=e.target.closest('#psArcTg');
-    if(toggle){__showArchived=!__showArchived;drawList();sh.querySelector('#psArcTg')?.focus();return;}
-    const el=e.target.closest('[data-psel]');if(!el)return;
-    const nm=el.dataset.psel;
+  const pick=nm=>{
     if(nm&&!state.projects.some(p=>p.name===nm)){toast('현장을 찾을 수 없어요. 다시 검색해 주세요.');return;}
     close(false);
     if(nm){state.activeProject=nm;state.tab='project';}
     else{state.activeProject=null;if(state.tab==='project')state.tab='dashboard';}
     __projView=null;render();syncMobileNav();};
+  list.onclick=e=>{
+    const toggle=e.target.closest('#psArcTg');
+    if(toggle){__showArchived=!__showArchived;drawList();sh.querySelector('#psArcTg')?.focus();return;}
+    const el=e.target.closest('[data-psel]');if(!el)return;
+    pick(el.dataset.psel);};
+  sh.querySelectorAll('[data-ps-today]').forEach(b=>b.onclick=()=>pick(b.dataset.psToday));   // v585 오늘 일정 현장 — 아래 목록 행과 같은 동작
 }
 function moreActionHandler(a){if(a==='webbridge')return webWorkCenterOpen();else if(a==='officeops')return officeOpsView();else if(a==='officework')return officeWorkListView();else if(a==='biz')return shareBizCard();else if(a==='gdrive')return openGdriveSetup();else if(a==='opendrive')return openDrive();else if(a==='photobundle')return sendPhotoBundles();else if(a==='sheet')return exportToSheet();else if(a==='voice')return voiceMemo();else if(a==='ai')return aiHelper();else if(a==='addproject'){return hjProjectQuickAdd();}else if(a==='restore'){return openRestore();}else if(a==='backups'){return backupHistory();}else if(a==='asmanage'){return asManage();}else if(a==='aptorders'){return aptOrderManage();}else if(a==='pjmap'){return allProjectsMap();}else if(a==='fullxlsx'){return exportFullXlsx();}else if(a==='activebrief'){return aiActiveBrief();}else if(a==='opsreport'){return opsReport('week');}else if(a==='aiprovider'){return aiProviderManage();}else if(a==='llama'){return llamaSetup();}else if(a==='autopilot'){return aiAutoOperateView();}else if(a==='cowork'){return coworkTasksManage();}else if(a==='backupcenter'){return backupCenter();}else if(a==='claudeinbox'){return claudeInboxView();}else if(a==='bulkassign'){return bulkAssignCenter();}else if(a==='taxcal'){return taxCalendarView();}else if(a==='contractdraft'){return contractDraftView();}else if(a==='beforeafter'){return baCompareView();}else if(a==='voicein'){return voiceInputView();}else if(a==='cwsched'){return coworkSchedView();}else if(a==='msgcenter'){return msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;return render();}else if(a==='vatc'){return vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;return render();}else if(a==='kakaoin'){return kakaoOpenInbox();}else if(a==='ptlist'){return portalListView();}else if(a==='yearreport'){return yearReport();}else if(a==='aiops'){return aiOpsCenter();}else if(a==='loopstatus'){return aiOpsLoopStatus();}else if(a==='aibrain'){return aiOpsBrain();}else if(a==='asintake'){return asIntake();}else if(a==='satisfaction'){return satisfactionManage();}else if(a==='funnel'){return funnelView();}else if(a==='payplan'){return payPlanDialog();}else if(a==='crm'){return crmDialog();}else if(a==='inventory'){return inventoryManage();}else if(a==='profitrank'){return profitRank();}else if(a==='weekplan'){return weekPlan();}else if(a==='companyintro'){return companyIntro();}else if(a==='datahealth'){return dataHealth();}else if(a==='photoaudit'){return photoAssignmentAudit();}else if(a==='staleproj'){return staleProjects();}else if(a==='reviewreq'){return reviewRequest();}else if(a==='featurecoach'){return featureCoach();}else if(a==='quotefollowup'){return quoteFollowup();}else if(a==='similarquotes'){return similarQuoteDialog();}else if(a==='contractreview'){return contractReview();}else if(a==='repeatcust'){return repeatCustomers();}else if(a==='cashflow'){return cashFlow();}else if(a==='expenseclassify'){return expenseAutoClassify();}else if(a==='budgetalert'){return budgetAlert();}else if(a==='lossalert'){return lossAlert();}else if(a==='voicebrief'){return voiceBrief();}else if(a==='selfquote'){return selfQuoteDialog();}else if(a==='salestarget'){return salesTarget();}else if(a==='alertcenter'){return alertCenter();}else if(a==='photoquote'){return photoQuoteScan();}else if(a==='route'){return routeToday();}else if(a==='monthreport'){return monthlyReport();}else if(a==='safety'){return safetyChecklist();}else if(a==='season'){return seasonCalendar();}else if(a==='warranty'){return warrantyManage();}else if(a==='knowhow'){return knowhowManage();}else if(a==='scheduleplan'){return schedulePlanDialog();}else if(a==='negotiate'){return negotiateDialog();}else if(a==='siteconv'){return siteConversation();}else if(a==='winrate'){return winRateCoach();}else if(a==='bagallery'){return beforeAfterGallery();}else if(a==='custprogress'){return customerProgressV2();}else if(a==='weather'){return weatherSmart();}else if(a==='scancard'){return cardReceiptScan('card');}else if(a==='scanreceipt'){return cardReceiptScan('receipt');}else if(a==='aiusage'){return aiUsageDashboard();}else if(a==='a11y'){return a11yManage();}else if(a==='syncguide'){return syncGuide();}else if(a==='custreply'){return customerReplyDialog();}else if(a==='forecast'){return salesForecast();}else if(a==='automode'){return aiOperateMode();}else if(a==='guide'){return hjGuideHome();}else if(a==='help'){return helpGuide('');}else if(a==='brand'){return brandSettings();}else if(a==='import'){return importWizard();}else if(a==='settle'){return settleDocs();}else if(a==='taxinv'){return taxInvoiceInfo();}else if(a==='photorep'){return photoReport();}else if(a==='notify'){return notifySettings();}else if(a==='expense'){return expenseLedger();}else if(a==='pnl'){return pnl();}else if(a==='search'){return hjGlobalSearch();}else if(a==='materials'){return materialCatalog();}else if(a==='calc'){return materialCalc();}else if(a==='measure'){return measureNote();}else if(a==='todo'){return todoView();}else if(a==='punchlist'){return punchListView();}else if(a==='delaycheck'){return hjDelayPick();}else if(a==='schshare'){return hjSchShareView();}else if(a==='crewweek'){return hjCrewWeekView();}else if(a==='inquiry'){return hjInquiryView();}else if(a==='matdue'){return hjMatView();}else if(a==='payproof'){return hjProofView();}else if(a==='extrawork'){return extraWork();}else if(a==='siterules'){return siteRulesView();}else if(a==='casepack'){return casePackView();}else if(a==='suppliers'){return suppliers();}else if(a==='annual'){return annualReport();}else if(a==='goal'){return goalManage();}else if(a==='schedbrief'){return scheduleBrief();}else if(a==='aiquote'){return aiQuoteDialog();}else if(a==='photodefect'){return photoDefectDialog();}else if(a==='worklog'){return voiceWorkLog();}else if(a==='analysis'){return bizAnalysis();}else if(a==='budget'){return budgetManage();}else if(a==='weekbrief'){return weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){return runDiagnostics();}}
 function openMoreSheet(){
@@ -9860,6 +9928,7 @@ function openCameraProjectSheet(openerOverride){
   sh.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h4 id="cameraProjectTitle" style="margin:0;flex:1">📸 촬영할 현장 선택</h4><button type="button" class="ghost" id="cameraProjectClose" aria-label="촬영 현장 선택 닫기">✕</button></div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.5">사진이 미배정으로 쌓이지 않도록 촬영할 현장을 먼저 선택해 주세요.</p>
     <input id="cameraProjectSearch" type="search" placeholder="🔍 현장 이름 찾기" autocomplete="off" style="width:100%;padding:10px 12px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px;font-size:14px">
+    ${hjTodaySiteStripHtml('cameraToday','data-camera-today',hjTodaySiteNames(),'')}
     <div id="cameraProjectList">${rows||'<div style="padding:18px;text-align:center;color:var(--muted);font-size:13px">등록된 현장이 없습니다.<br>더보기에서 현장을 먼저 추가해 주세요.</div>'}</div>
     <button type="button" class="ghost" id="cameraUnassigned" style="width:100%;margin-top:4px;color:var(--warn)">⚠ 미배정으로 촬영</button>
     <p style="font-size:11px;color:var(--muted);margin:7px 2px 0">현장을 아직 모를 때만 사용하세요. 나중에 현장사진에서 배정할 수 있습니다.</p>`;
@@ -9870,10 +9939,15 @@ function openCameraProjectSheet(openerOverride){
   sh.querySelectorAll('[data-camera-project]').forEach(btn=>btn.onclick=()=>{
     state.activeProject=btn.dataset.cameraProject;closeCameraProjectSheet(false);render();syncMobileNav();triggerCameraInput();
   });
+  // v585 📅 오늘 일정 현장 줄 — 아래 목록 행과 같은 동작(그 현장을 고르고 바로 카메라)
+  sh.querySelectorAll('[data-camera-today]').forEach(btn=>btn.onclick=()=>{
+    state.activeProject=btn.dataset.cameraToday;closeCameraProjectSheet(false);render();syncMobileNav();triggerCameraInput();
+  });
   document.getElementById('cameraUnassigned').onclick=()=>{closeCameraProjectSheet(false);triggerCameraInput();};
   document.getElementById('cameraProjectSearch').oninput=e=>{
     const q=e.target.value.trim().toLowerCase();
     sh.querySelectorAll('[data-camera-project]').forEach(btn=>{btn.style.display=(!q||(btn.textContent||'').toLowerCase().includes(q))?'flex':'none';});
+    const today=sh.querySelector('#cameraToday');if(today)today.hidden=!!q;   // 검색 중엔 오늘 줄을 숨긴다
   };
   sh.onkeydown=e=>{
     if(e.key==='Escape'){e.preventDefault();closeCameraProjectSheet();return;}
