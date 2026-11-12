@@ -294,6 +294,7 @@
   .hj-today-chip:hover,.hj-today-chip:focus-visible{background:var(--paper-2);color:var(--ink);transform:none}
   .hj-today-warn{margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--hj-warn-bg,#fff7ed);color:var(--hj-warn-fg,#9a3412);font-size:14px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
   .hj-today-warn[hidden]{display:none}
+  .hj-today-more{margin:6px 0 0;font-size:12px;color:var(--muted-2);line-height:1.4}
   .more-sheet h4{margin:4px 0 10px;font-size:13px;color:var(--blueprint)}
   .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .more-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);cursor:pointer;font-size:11.5px;color:var(--ink)}
@@ -5077,9 +5078,11 @@ function openPhotoIntake(files,context){
   const selected=projects.findIndex(p=>p.name===context.project);
   const options=projects.map((p,i)=>`<option value="${i+1}"${i===selected?' selected':''}>${escapeHtml(p.name)}${p.archived?' (보관 현장)':''}</option>`).join('');
   const total=picked.reduce((n,f)=>n+(Number(f.size)||0),0);
-  // v585 📅 오늘 일정 현장 칩 — 누르면 위 칸 값만 바꾼다(저장 없음). 촬영·공유 사진인데 고른 현장이 오늘 현장 밖이면 한 줄 경고(막지 않음).
-  const todayNames=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)).slice(0,HJ_TODAY_SITE_SHOW);
-  const todayChips=todayNames.length?`<div id="photoIntakeToday" class="hj-today-strip" role="group" aria-labelledby="photoIntakeTodayH" style="margin:-4px 0 10px"><div id="photoIntakeTodayH" class="hj-today-h">📅 오늘 일정 현장 — 누르면 위 칸에 들어가요</div><div class="hj-today-list">${todayNames.map(n=>`<button type="button" class="hj-today-chip" data-intake-today="${escapeAttr(n)}" aria-pressed="false"><span class="hj-today-n">${escapeHtml(n)}</span></button>`).join('')}</div></div>`:'';
+  // v585 📅 오늘 일정 현장 칩 — 누르면 위 칸 값만 바꾼다(저장 없음). 촬영·공유 사진인데 고른 현장이 오늘 현장 밖이거나,
+  //   지금 ⏱ 작업 중인 현장이 따로 있으면 한 줄 경고(막지 않음). 칩은 6곳까지, 경고 판정·글은 자르지 않은 전체(todayAll)로.
+  const todayAll=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)),todayNames=todayAll.slice(0,HJ_TODAY_SITE_SHOW),todayWork=hjTodayWorkNames().filter(n=>todayAll.includes(n));
+  const todayMore=todayAll.length-todayNames.length;
+  const todayChips=todayNames.length?`<div id="photoIntakeToday" class="hj-today-strip" role="group" aria-labelledby="photoIntakeTodayH" style="margin:-4px 0 10px"><div id="photoIntakeTodayH" class="hj-today-h">📅 오늘 일정 현장 — 누르면 위 칸에 들어가요</div><div class="hj-today-list">${todayNames.map(n=>`<button type="button" class="hj-today-chip" data-intake-today="${escapeAttr(n)}" aria-pressed="false"><span class="hj-today-n">${escapeHtml(n)}</span>${todayWork.includes(n)?'<small>⏱ 작업 중</small>':''}</button>`).join('')}</div>${todayMore>0?`<p class="hj-today-more" data-today-more="${todayMore}">오늘 현장 외 ${todayMore}곳은 위 칸에서 고르세요</p>`:''}</div>`:'';
   openModal('사진 추가 확인',`<div id="photoIntakeForm" style="min-width:0;overflow-wrap:anywhere">
     <p><b>${picked.length}장 선택</b> · ${(total/1048576).toFixed(1)}MB · ${context.source==='camera'?'촬영한 사진':context.source==='share'?'공유받은 사진':'갤러리 사진'}</p>
     <label for="photoIntakeProject">사진을 추가할 현장</label>
@@ -5143,8 +5146,10 @@ function openPhotoIntake(files,context){
     const target=projects[Number(projectSelect.value)-1],name=target?target.name:'';
     document.querySelectorAll('#photoIntakeToday [data-intake-today]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intakeToday===name)));
     const warn=document.getElementById('photoIntakeTodayWarn');if(!warn)return;
-    const show=hjIntakeTodayWarn(context.source,name,todayNames);
-    warn.hidden=!show;warn.textContent=show?'⚠ 오늘 일정 현장은 '+hjTodaySiteListText(todayNames)+' — 고른 현장이 맞는지 확인해 주세요':'';
+    const kind=hjIntakeTodayWarn(context.source,name,todayAll,todayWork);
+    warn.hidden=!kind;warn.dataset.intakeTodayWarn=kind;
+    warn.textContent=kind==='out'?'⚠ 오늘 일정 현장은 '+hjTodaySiteListText(todayAll)+' — 고른 현장이 맞는지 확인해 주세요'
+      :kind==='work'?'⚠ 지금 ⏱ 작업 중인 현장은 '+hjTodaySiteListText(todayWork)+' — 고른 현장이 맞는지 확인해 주세요':'';
   };
   document.querySelectorAll('#photoIntakeToday [data-intake-today]').forEach(b=>b.onclick=()=>{
     const i=projects.findIndex(p=>p.name===b.dataset.intakeToday);if(i<0)return;
@@ -8398,11 +8403,12 @@ function hjPlaceSchedNames(ymd){
 }
 /* v585 오늘 일정 현장 — 하루 두세 현장을 도는 날, 앞 현장이 골라진 채 다음 현장에서 찍으면 사진이 엉뚱한 현장으로 들어갔다.
    = 지금 ⏱ 작업 중인 현장(오늘 시작·아직 안 끝냄) 먼저 + 그날 일정 현장(hjPlaceSchedNames — 💰·세금 자동·개인 일정 제외,
-   여러 날 공정의 이어지는 날 포함). 보관·없는 현장은 뺀다. 읽기만 — workData() 는 state.workLogs 에 빈 배열을 붙이므로 쓰지 않는다. */
+   여러 날 공정의 이어지는 날 포함). 보관·없는 현장은 뺀다. 읽기만 — workData() 는 state.workLogs 에 빈 배열을 붙이므로 쓰지 않는다.
+   📥 팀 작업 가져오기가 만든 기록(teamReport)은 '작업 중'으로 세지 않는다 — 0시간 완료 보고는 out 이 빈칸이라 끝난 팀 작업이 '⏱ 작업 중'으로 보였다. */
 function hjTodayWorkNames(ymd){
   ymd=ymd||localDate();
   const live=new Set((state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name)),out=[];
-  (Array.isArray(state.workLogs)?state.workLogs:[]).forEach(w=>{if(w&&w.project&&w.date===ymd&&!w.out&&live.has(w.project)&&!out.includes(w.project))out.push(w.project);});
+  (Array.isArray(state.workLogs)?state.workLogs:[]).forEach(w=>{if(w&&w.project&&w.date===ymd&&!w.out&&!w.teamReport&&live.has(w.project)&&!out.includes(w.project))out.push(w.project);});
   return out;
 }
 function hjTodaySiteNames(ymd){
@@ -8411,23 +8417,27 @@ function hjTodaySiteNames(ymd){
   hjPlaceSchedNames(ymd).forEach(n=>{if(!out.includes(n))out.push(n);});
   return out;
 }
-/* 사진 추가 확인 창의 경고 — 촬영·공유 사진(지금 그 자리에서 찍은 것)인데 고른 현장이 오늘 일정 현장 밖일 때만. 갤러리(지난 사진)는 경고 없음.
-   현장을 안 골랐거나(빈칸) 미배정을 고른 때도 경고 없음. 막지 않는다. */
-function hjIntakeTodayWarn(source,picked,todayNames){
-  if(source!=='camera'&&source!=='share')return false;
-  if(!picked||!(todayNames||[]).length)return false;
-  return !todayNames.includes(picked);
+/* 사진 추가 확인 창의 경고 — 촬영·공유 사진(지금 그 자리에서 찍은 것)만. 갤러리(지난 사진)·빈칸·미배정은 경고 없음. 막지 않는다.
+   'out'  = 고른 현장이 오늘 일정 현장 밖.
+   'work' = 고른 현장은 오늘 현장이지만 지금 ⏱ 작업 중인 현장이 따로 있다 — 하루 두세 현장을 도는 날, 앞 현장(그것도 오늘 현장)이
+            골라진 채 다음 현장에서 찍는 경우. ⏱ 를 눌러 둔 현장이 '지금 있는 곳'의 가장 확실한 단서다.
+   todayNames 는 자르지 않은 전체 목록이어야 한다(칩은 6곳까지만 그리지만 판정은 전부로). */
+function hjIntakeTodayWarn(source,picked,todayNames,workNames){
+  if(source!=='camera'&&source!=='share')return '';
+  if(!picked||!(todayNames||[]).length)return '';
+  if(!todayNames.includes(picked))return 'out';
+  return (workNames||[]).length&&!workNames.includes(picked)?'work':'';
 }
 function hjTodaySiteListText(names){names=names||[];return names.slice(0,3).join(' · ')+(names.length>3?' 외 '+(names.length-3)+'곳':'');}
 const HJ_TODAY_SITE_SHOW=6;   // 시트 맨 위 줄에 보이는 오늘 현장 수(넘치면 아래 목록·검색으로)
 /* 시트 맨 위 '📅 오늘 일정 현장' 줄 — attr 은 단추 속성 이름(data-ps-today·data-camera-today). 기존 목록 행([data-psel]·[data-camera-project])과 따로 둔다. */
 function hjTodaySiteStripHtml(id,attr,names,current){
-  const work=new Set(hjTodayWorkNames()),list=(names||[]).slice(0,HJ_TODAY_SITE_SHOW);
+  const work=new Set(hjTodayWorkNames()),list=(names||[]).slice(0,HJ_TODAY_SITE_SHOW),more=(names||[]).length-list.length;
   if(!list.length)return '';
   return '<div id="'+id+'" class="hj-today-strip" role="group" aria-labelledby="'+id+'H"><div id="'+id+'H" class="hj-today-h">📅 오늘 일정 현장</div><div class="hj-today-list">'+
     list.map(n=>'<button type="button" class="hj-today-chip" '+attr+'="'+escapeAttr(n)+'" aria-pressed="'+(n===current?'true':'false')+'">'+
       '<span class="hj-today-n">'+escapeHtml(n)+'</span>'+(work.has(n)?'<small>⏱ 작업 중</small>':'')+(n===current?'<small>✓ 지금 현장</small>':'')+'</button>').join('')+
-    '</div></div>';
+    '</div>'+(more>0?'<p class="hj-today-more" data-today-more="'+more+'">오늘 현장 외 '+more+'곳은 아래 목록·검색에서 고르세요</p>':'')+'</div>';
 }
 function hjPlaceDist(ll,refs){return (refs||[]).map(r=>({name:r.name,m:Math.round(geoDist(ll[0],ll[1],r.lat,r.lng)*1000)})).sort((a,b)=>a.m-b.m||String(a.name).localeCompare(String(b.name)));}
 /* 사진 한 장 판단: k = agree(위치·일정 같은 현장 — 유일한 추천) · gps(위치만, 그날 일정 없음) · conflict(위치 ≠ 일정) · near2(150m 안 현장 여럿)

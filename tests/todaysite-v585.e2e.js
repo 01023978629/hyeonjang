@@ -3,14 +3,17 @@
    그대로 [추가]하면 엉뚱한 현장 사진이 됐다. 현장 고르기 시트는 '사진 0개 먼저·가나다'라 오늘 현장을 찾기 어려웠다.
    합성 자료(이름은 지어낸 것), 시계 2026-11-11(수) 10:00 고정, 바깥 쓰기 0.
    ① 규칙 hjTodaySiteNames — ⏱ 작업 중 먼저 + 그날 일정 현장(여러 날 공정 이어지는 날 포함) · 💰·세금 자동·개인 일정·보관·없는 현장·
-      끝난 작업·어제 작업·완료 보고한 공정 제외 · 읽기만(state.workLogs 를 만들지 않음) (RULE)
+      끝난 작업·어제 작업·완료 보고한 공정·📥 팀 보고로 들어온 작업 기록 제외 · 읽기만(state.workLogs 를 만들지 않음) (RULE)
    ② 현장 고르기 시트(폰 390) — 맨 위 [data-ps-today] 줄 · 아래 목록 순서·행 수 그대로 · 검색 중 숨김 · 누르면 그 현장 화면 · 다시 열면 '지금 현장' (SHEET)
    ③ 촬영 시트 — [data-camera-today] 줄 · [data-camera-project] 순서 그대로 · 검색 중 숨김 · 누르면 그 현장으로 카메라 · 골라져 있으면 바로 카메라(그대로) (CAMERA)
-   ④ 사진 추가 확인 창 — 오늘 현장 칩(누르면 칸 값만) · 촬영·공유 사진인데 오늘 현장 밖이면 경고(막지 않음) · 갤러리·빈칸·미배정·오늘 현장은 경고 없음 · 저장 없음 (INTAKE)
+   ④ 사진 추가 확인 창 — 오늘 현장 칩(누르면 칸 값만 · 남은 '현장을 선택해 주세요' 글을 지움) · 촬영·공유 사진인데 오늘 현장 밖이면 경고,
+      오늘 현장이어도 ⏱ 작업 중인 현장이 따로 있으면 경고(막지 않음) · 갤러리·빈칸·미배정·⏱ 현장은 경고 없음 ·
+      오늘 현장 7곳 이상 — 칩은 6곳·'외 n곳' 안내, 경고 판정·글은 전체로 · 저장 없음 (INTAKE)
    ⑤ 폰 360 · 긴 이름 — 가로 넘침 없음 · 누르는 것 44px · 입력 16px (PHONE)
    ⑥ 핀(세 곳 같음) · 페이지 오류 0 · 바깥 쓰기 0
-   HJ_V585_BASELINE=<commit> 은 ① 에서, HJ_V585_MUTATION=no-cont(이어지는 날 빼기)·money-in(💰 포함)·workdata(workData() 로 읽기)는 ①,
-   no-hide(검색 중 숨기지 않음)는 ②, no-warn(경고 끔)·no-clear(현장 검색을 안 비움)는 ④ 에서 실패해야 한다. */
+   HJ_V585_BASELINE=<commit> 은 ① 에서, HJ_V585_MUTATION=no-cont(이어지는 날 빼기)·money-in(💰 포함)·workdata(workData() 로 읽기)·
+   team-work(팀 보고 기록도 작업 중으로)는 ①, no-hide(검색 중 숨기지 않음)는 ②, no-warn(경고 끔)·no-work(⏱ 경고 끔)·no-clear(현장 검색을 안 비움)·
+   no-issue-clear(오류 글을 안 지움)·cap-judge(경고를 6곳으로 자른 목록으로 판정)는 ④ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -27,7 +30,12 @@ const MUT = {
   'money-in': ["    if(/^💰/.test(String(s.title||'').trim())||s._taxAuto||s.sourceUid)return;", '    if(s._taxAuto||s.sourceUid)return;'],
   'workdata': ['(Array.isArray(state.workLogs)?state.workLogs:[]).forEach(w=>{if(w&&w.project&&w.date===ymd', 'workData().forEach(w=>{if(w&&w.project&&w.date===ymd'],
   'no-hide': ["const today=sh.querySelector('#psToday');if(today)today.hidden=!!q;", "const today=sh.querySelector('#psToday');"],
-  'no-warn': ['  return !todayNames.includes(picked);\n}', '  return false;\n}'],
+  'no-warn': ["  if(source!=='camera'&&source!=='share')return '';\n", "  return '';\n"],
+  'no-work': ["  return (workNames||[]).length&&!workNames.includes(picked)?'work':'';\n", "  return '';\n"],
+  'team-work': ['&&!w.out&&!w.teamReport&&live.has(w.project)', '&&!w.out&&live.has(w.project)'],
+  'cap-judge': ['const todayAll=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)),todayNames=todayAll.slice(0,HJ_TODAY_SITE_SHOW),',
+    'const todayAll=hjTodaySiteNames().filter(n=>projects.some(p=>p.name===n)).slice(0,HJ_TODAY_SITE_SHOW),todayNames=todayAll,'],
+  'no-issue-clear': ["    const issue=document.getElementById('photoIntakeIssue');if(issue)issue.textContent='';\n", ''],
   'no-clear': ["    if(q&&q.value){q.value='';q.dispatchEvent(new Event('input'));}\n", '']
 };
 let html = process.env.HJ_V585_BASELINE ? execFileSync('git', ['show', process.env.HJ_V585_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
@@ -68,7 +76,8 @@ async function open(width) {
 /* 합성 시드 — 오늘 2026-11-11(수).
    라온주택: ⏱ 08:30 시작·안 끝냄 / 가온아파트: 오늘 도배 / 나래빌라: 11/10~11/12 타일(이어지는 날) — 이 셋이 오늘 현장.
    빠지는 것: 다솜상가(💰 잔금만) · 차오름(세금 자동) · 사랑빌라(앱이 넣은 개인 일정) · 마루아파트(보관 — 일정·작업 모두) · 없는현장 ·
-   아라아파트(오늘 작업 끝냄) · 자두빌라(어제 시작한 작업) · 하늘아파트(이어지는 공정이지만 완료 보고) · 바다아파트(어제 하루 일정 — 지금 골라져 있는 현장). */
+   아라아파트(오늘 작업 끝냄) · 자두빌라(어제 시작한 작업) · 하늘아파트(이어지는 공정이지만 완료 보고) · 바다아파트(어제 하루 일정 — 지금 골라져 있는 현장) ·
+   사랑빌라의 오늘 작업 기록(📥 팀 보고 0시간 완료 — out 이 빈칸이지만 ⏱ 를 누른 것이 아니다). */
 const SEED = () => {
   closeModal(true);
   ['projSheet', 'projSheetBd', 'cameraProjectSheet', 'cameraProjectBackdrop'].forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
@@ -94,6 +103,7 @@ const SEED = () => {
     { id: 'w2', project: '아라아파트', date: '2026-11-11', in: '07:00', out: '08:00', memo: '' },
     { id: 'w3', project: '자두빌라', date: '2026-11-10', in: '13:00', out: '', memo: '' },
     { id: 'w4', project: '마루아파트', date: '2026-11-11', in: '08:00', out: '', memo: '' },
+    { id: 'w5', project: '사랑빌라', date: '2026-11-11', in: '09:00', out: '', memo: '[팀 보고] 완료', teamReport: { key: 'r1', orderId: '', hours: 0, reporter: '' } },
   ];
   state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; window.__tabStale = false;
   state.activeProject = '바다아파트'; state.tab = 'dashboard'; state.search = '';
@@ -119,7 +129,7 @@ const tapSizes = (page, sel) => page.locator(sel).evaluateAll(es => es.filter(e 
         return { today, tomorrow, yesterday, noLogs, created };
       });
       r.same = before === await page.evaluate(snap);
-      assert.deepEqual(r.today, TODAY, '오늘 현장 — ' + JSON.stringify(r.today));
+      assert.deepEqual(r.today, TODAY, '오늘 현장(팀 보고 기록은 작업 중이 아님) — ' + JSON.stringify(r.today));
       assert.deepEqual(r.tomorrow, ['나래빌라'], '11/12 는 이어지는 공정 셋째 날만 — ' + JSON.stringify(r.tomorrow));
       assert.deepEqual(r.yesterday, ['자두빌라', '나래빌라', '바다아파트'], '11/10 — 그날 시작한 작업·그날 일정 — ' + JSON.stringify(r.yesterday));
       assert.deepEqual(r.noLogs, ['가온아파트', '나래빌라'], '작업 기록이 없으면 일정만');
@@ -205,23 +215,28 @@ const tapSizes = (page, sel) => page.locator(sel).evaluateAll(es => es.filter(e 
       assert.equal(await page.locator('#cameraProjectSheet').count(), 0, '골라져 있으면 시트 없음');
     });
 
-    await test('④ 사진 추가 확인 창 — 오늘 현장 칩 · 촬영·공유 사진이 오늘 현장 밖이면 경고(막지 않음) · 저장 없음 (INTAKE)', async () => {
+    await test('④ 사진 추가 확인 창 — 오늘 현장 칩 · 촬영·공유 사진이 오늘 현장 밖이거나 ⏱ 현장이 따로 있으면 경고(막지 않음) · 7곳 이상 · 저장 없음 (INTAKE)', async () => {
       const openIntake = (source, project) => page.evaluate(([source, project]) => {
         closeModal(true);
         return openPhotoIntake([new File([new Uint8Array([255, 216, 255, 217])], 'cam.jpg', { type: 'image/jpeg' })], { project, source });
       }, [source, project]);
       const view = () => page.evaluate(() => {
-        const sel = document.getElementById('photoIntakeProject'), warn = document.getElementById('photoIntakeTodayWarn');
+        const sel = document.getElementById('photoIntakeProject'), warn = document.getElementById('photoIntakeTodayWarn'), more = document.querySelector('#photoIntakeToday [data-today-more]');
         return { picked: sel.value === 'none' ? 'none' : sel.value === '' ? '' : sel.options[sel.selectedIndex].textContent,
           chips: [...document.querySelectorAll('#photoIntakeToday [data-intake-today]')].map(b => b.dataset.intakeToday),
+          work: [...document.querySelectorAll('#photoIntakeToday [data-intake-today]')].filter(b => /⏱ 작업 중/.test(b.textContent)).map(b => b.dataset.intakeToday),
           pressed: [...document.querySelectorAll('#photoIntakeToday [aria-pressed="true"]')].map(b => b.dataset.intakeToday),
-          warn: warn && !warn.hidden && warn.getClientRects().length ? warn.textContent : '', described: sel.getAttribute('aria-describedby') };
+          warn: warn && !warn.hidden && warn.getClientRects().length ? warn.textContent : '', kind: warn ? warn.dataset.intakeTodayWarn || '' : '',
+          more: more ? more.textContent : '', issue: document.getElementById('photoIntakeIssue').textContent, described: sel.getAttribute('aria-describedby') };
       });
       const before = await page.evaluate(snap);
       assert.equal(await openIntake('camera', '바다아파트'), true);
       let v = await view();
       assert.equal(v.picked, '바다아파트', '골라져 있던 현장은 그대로 미리 골라 둔다');
       assert.deepEqual(v.chips, TODAY);
+      assert.deepEqual(v.work, ['라온주택'], '칩에도 ⏱ 작업 중 표시');
+      assert.equal(v.more, '', '오늘 현장이 6곳 이하면 외 n곳 안내 없음');
+      assert.equal(v.kind, 'out');
       assert.match(v.warn, /^⚠ 오늘 일정 현장은 라온주택 · 가온아파트 · 나래빌라 — .*맞는지 확인/, '촬영 사진이 오늘 현장 밖이면 경고 — ' + v.warn);
       assert.match(v.described, /photoIntakeTodayWarn/, '경고는 현장 칸 설명으로 이어진다');
       const sizes = await tapSizes(page, '#photoIntakeToday [data-intake-today]');
@@ -229,38 +244,69 @@ const tapSizes = (page, sel) => page.locator(sel).evaluateAll(es => es.filter(e 
       assert.ok(await page.locator('#modalRoot .modal').evaluate(el => el.scrollWidth <= el.clientWidth + 1), '창 가로 넘침 없음');
       // 현장 칸 위 '현장 검색'으로 목록을 줄여 둔 채 칩을 눌러도 그 현장이 골라진다
       await page.fill('#photoIntakeForm .project-select-search input[type="search"]', '바다');
-      assert.equal(await page.locator('#photoIntakeProject option').filter({ hasText: '가온아파트' }).count(), 0, '검색으로 목록이 줄었다');
-      await page.locator('#photoIntakeToday [data-intake-today="가온아파트"]').click();
+      assert.equal(await page.locator('#photoIntakeProject option').filter({ hasText: '라온주택' }).count(), 0, '검색으로 목록이 줄었다');
+      await page.locator('#photoIntakeToday [data-intake-today="라온주택"]').click();
       v = await view();
-      assert.deepEqual([v.picked, v.pressed, v.warn], ['가온아파트', ['가온아파트'], ''], '칩 → 칸 값만 · 경고 사라짐');
+      assert.deepEqual([v.picked, v.pressed, v.warn, v.kind], ['라온주택', ['라온주택'], '', ''], '칩 → 칸 값만 · ⏱ 작업 중 현장이면 경고 없음');
       assert.equal(await page.inputValue('#photoIntakeForm .project-select-search input[type="search"]'), '', '현장 검색은 비워진다');
       assert.equal(await page.evaluate(() => state.activeProject), '바다아파트', '칩은 지금 현장을 바꾸지 않는다');
+      // 하루 두세 현장 — 앞서 들른 오늘 현장(가온아파트)이 골라진 채 ⏱ 작업 중인 라온주택에서 찍으면 경고
+      await page.selectOption('#photoIntakeProject', { label: '가온아파트' });
+      v = await view();
+      assert.equal(v.kind, 'work');
+      assert.match(v.warn, /^⚠ 지금 ⏱ 작업 중인 현장은 라온주택 — .*맞는지 확인/, '오늘 현장이어도 ⏱ 현장이 따로 있으면 경고 — ' + v.warn);
       await page.selectOption('#photoIntakeProject', { label: '바다아파트' });
-      v = await view(); assert.ok(v.warn && !v.pressed.length, '다시 오늘 현장 밖 → 경고 · 눌린 칩 없음');
+      v = await view(); assert.ok(v.kind === 'out' && v.warn && !v.pressed.length, '다시 오늘 현장 밖 → 경고 · 눌린 칩 없음');
       await page.selectOption('#photoIntakeProject', 'none');
       v = await view(); assert.equal(v.warn, '', '미배정은 경고 없음');
       await page.selectOption('#photoIntakeProject', '');
       v = await view(); assert.equal(v.warn, '', '빈칸은 경고 없음');
+      // 빈칸으로 [추가] → '현장을 선택해 주세요' 글 → 칩을 누르면 그 글이 지워진다
+      await page.locator('#photoIntakeConfirm').click();
+      v = await view(); assert.match(v.issue, /현장을 선택해/, '빈칸 [추가]는 막히고 글이 뜬다 — ' + v.issue);
+      await page.locator('#photoIntakeToday [data-intake-today="나래빌라"]').click();
+      v = await view();
+      assert.deepEqual([v.picked, v.issue, v.kind], ['나래빌라', '', 'work'], '칩을 누르면 오류 글이 지워진다');
       // 막지 않는다 — 경고가 떠 있어도 [추가]는 고른 현장 그대로 진행한다
       await page.selectOption('#photoIntakeProject', { label: '바다아파트' });
       await page.evaluate(() => { window.__ran = null; runPhotoIntake = async (files, approved) => { window.__ran = { project: approved.project, source: approved.source, n: files.length }; __photoIntakeBusy = false; closeModal(true); }; });
       await page.locator('#photoIntakeConfirm').click();
       await page.waitForFunction(() => !!window.__ran);
       assert.deepEqual(await page.evaluate(() => window.__ran), { project: '바다아파트', source: 'camera', n: 1 }, '경고는 막지 않는다');
-      for (const [source, project, warn] of [['share', '바다아파트', true], ['gallery', '바다아파트', false], ['camera', '가온아파트', false], ['camera', null, false]]) {
+      for (const [source, project, kind] of [['share', '바다아파트', 'out'], ['gallery', '바다아파트', ''], ['camera', '가온아파트', 'work'], ['camera', '라온주택', ''],
+        ['share', '나래빌라', 'work'], ['gallery', '가온아파트', ''], ['camera', null, '']]) {
         assert.equal(await openIntake(source, project), true);
         v = await view();
         assert.deepEqual(v.chips, TODAY, source + ' 칩');
-        assert.equal(!!v.warn, warn, source + '/' + project + ' 경고 ' + warn + ' — ' + v.warn);
+        assert.deepEqual([v.kind, !!v.warn], [kind, !!kind], source + '/' + project + ' 경고 ' + kind + ' — ' + v.warn);
       }
-      await page.evaluate(() => { closeModal(true); state.schedule = []; state.workLogs = []; });
+      // 오늘 현장 7곳(⏱ 없음) — 칩은 6곳 + '외 1곳' 안내, 7번째 현장을 골라도 경고 없음, 경고 글의 '외 n곳'은 전체로 센다
+      const seven = await page.evaluate(() => {
+        closeModal(true); state.workLogs = [];
+        ['다솜상가', '아라아파트', '자두빌라', '차오름', '하늘아파트'].forEach((n, i) => state.schedule.push({ id: 'c' + i, date: '2026-11-11', time: String(11 + i) + ':00', title: '보수', project: n, workers: '', hours: 1, memo: '', report: null }));
+        return hjTodaySiteNames();
+      });
+      assert.equal(seven.length, 7, '오늘 현장 7곳 — ' + JSON.stringify(seven));
+      assert.equal(await openIntake('camera', seven[6]), true);
+      v = await view();
+      assert.deepEqual([v.chips, v.picked, v.kind, v.warn], [seven.slice(0, 6), seven[6], '', ''], '7번째 오늘 현장 — 칩엔 없지만 경고 없음');
+      assert.match(v.more, /외 1곳/, '칩 밖 오늘 현장 안내 — ' + v.more);
+      assert.equal(await openIntake('camera', '바다아파트'), true);
+      v = await view();
+      assert.match(v.warn, /^⚠ 오늘 일정 현장은 .+ 외 4곳 — /, '외 n곳은 전체 7곳에서 센다 — ' + v.warn);
+      await page.evaluate(() => { closeModal(true); openProjectSheet(); });
+      await page.locator('#psToday [data-ps-today]').first().waitFor({ state: 'visible' });
+      assert.deepEqual(await page.evaluate(() => [document.querySelectorAll('#psToday [data-ps-today]').length, (document.querySelector('#psToday [data-today-more]') || {}).textContent || '']),
+        [6, '오늘 현장 외 1곳은 아래 목록·검색에서 고르세요'], '시트도 6곳 + 외 n곳 안내');
+      await page.locator('#projSheetClose').click(); await sheetGone(page);
+      await page.evaluate(() => { state.schedule = []; state.workLogs = []; });
       assert.equal(await openIntake('camera', '바다아파트'), true);
       v = await view();
       assert.deepEqual([v.chips, v.warn, await page.locator('#photoIntakeToday').count()], [[], '', 0], '오늘 현장이 없으면 칩·경고 없음');
       await page.evaluate(() => closeModal(true));
       const after = await page.evaluate(snap);
       const keys = (a, b) => { const x = JSON.parse(a), y = JSON.parse(b); return Object.keys(Object.assign({}, x, y)).filter(k => JSON.stringify(x[k]) !== JSON.stringify(y[k])); };
-      assert.deepEqual(keys(before, after).sort(), ['schedule', 'workLogs'], '창은 저장하지 않는다(일정·작업 기록은 검사가 비운 것)');
+      assert.deepEqual(keys(before, after).sort(), ['schedule', 'workLogs'], '창은 저장하지 않는다(일정·작업 기록은 검사가 바꾼 것)');
     });
 
     await test('⑤ 폰 360 · 긴 이름 — 가로 넘침 없음 · 44px · 입력 16px (PHONE)', async () => {
