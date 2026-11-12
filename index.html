@@ -14809,11 +14809,38 @@ function projectHistory(name){
 }
 
 /* ═══════════ 🤖 오늘 자동 점검 — 앱 열면 AI가 먼저 챙기는 할 일 카드 ═══════════ */
+/* v586 '오늘 일정' 한 줄의 목록 — 그날 시작하는 일정 + 여러 날 공정의 이어지는 날(v354 hjSchContinuing: 일요일·완료 보고 제외).
+   예전에는 date===오늘만 세어, 3일짜리 공정 둘째·셋째 날에 🤖 오늘 챙길 일·한눈 보기·AI 비서 daily_check 에서 빠졌다(📅 오늘 일정·📋 내 업무는 v354 부터 넣음).
+   💰 수금·세금 일정은 예전처럼 그대로 센다. 시각순(예전 정렬 그대로 — 같은 시각이면 시작하는 일정 먼저). 읽기만. */
+function hjTodaySchRows(today){
+  const d=today||localDate();
+  return (state.schedule||[]).filter(s=>s&&s.date===d).map(s=>({s,c:null})).concat(hjSchContinuing(d))
+    .sort((a,b)=>String(a.s.time).localeCompare(String(b.s.time)));
+}
+// 한 줄 글 — 이어지는 날이면 공정표 꼬리 '(N일차 시작)' 를 떼고 '(2/3일째)' 를 붙인다
+function hjTodaySchLine(r,tn,pn){
+  const s=r.s,t=r.c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,''):s.title;
+  return (s.time?s.time+' ':'')+hjCut(t,tn)+(r.c?' ('+r.c.day+'/'+r.c.days+'일째)':'')+(s.project?' @'+hjCut(s.project,pn):'');
+}
+/* v586 '🧾 현장 미연결 견적' — 현장 없는 앱 견적은 가상 견적 파일이 없어 견적·정산 탭에 없고, 내역서 탭이 켜진 기기(v565)에서는 📑 내역서 화면이 떠서
+   막다른 길이었다. ✍ 견적 작성 탭의 첫 '현장 미연결' 진행 견적 카드(data-qcard-unlinked)로 데려가 잠깐 테두리를 두른다.
+   작성 중인(저장 안 한) 견적이 있으면 버리지 않고 탭만 바꿔 알린다. 아무것도 저장하지 않는다. */
+function hjQuoteUnlinkedOk(q){return !!q&&!q.project&&hjQuoteOpenForFollow(q)&&quoteCalc(q).total>0;}
+function hjQuoteUnlinkedOpen(){
+  if(state.editingQuote&&quoteEditDirty()){state.tab='quotemaker';render();toast('작성 중인 견적이 있어요 — [저장] 또는 [목록으로] 뒤에 현장 미연결 견적을 볼 수 있어요');return false;}
+  state.tab='quotemaker';state.editingQuote=null;render();
+  const el=document.querySelector('#view [data-qcard-unlinked]');
+  if(!el){toast('현장 미연결 견적이 없어요');return false;}
+  try{el.scrollIntoView({block:'center'});}catch(_){}
+  el.style.outline='3px solid var(--clay)';el.style.outlineOffset='3px';
+  setTimeout(()=>{el.style.outline='';el.style.outlineOffset='';},2000);
+  return true;
+}
 function dailyCheckData(){
   const items=[];
   const today=localDate();
-  const todaySch=(state.schedule||[]).filter(s=>s.date===today).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
-  if(todaySch.length){const f=todaySch[0];items.push({ic:'🗓',t:'오늘 일정 '+todaySch.length+'건 — '+(f.time?f.time+' ':'')+hjCut(f.title,14)+(f.project?' @'+hjCut(f.project,8):''),act:"state.tab='schedule';render()",w:2});}
+  const todaySch=hjTodaySchRows(today);   // v586 여러 날 공정의 이어지는 날 포함
+  if(todaySch.length){const f=todaySch[0];items.push({ic:'🗓',t:'오늘 일정 '+todaySch.length+'건 — '+hjTodaySchLine(f,14,8),act:"state.tab='schedule';render()",w:2});}
   const asN=asOpenList().length;
   if(asN)items.push({ic:'🔧',t:'미처리 AS '+asN+'건 — 하자 연락 확인',act:"asManage()",w:2.5});
   try{const old=hjStmtLedger().filter(s=>s.left>0&&hjStmtAgeDays(s,today)>=30);if(old.length)items.push({ic:'📑',t:'30일 넘은 협력사 미수 '+old.length+'장 · '+won(old.reduce((a,s)=>a+s.left,0))+' — 📑 장부에서 미수 안내 글',act:"state.tab='quotemaker';state.editingQuote=null;render()",w:2.8});}catch(e){}   // v536
@@ -14824,8 +14851,8 @@ function dailyCheckData(){
   try{const unread=hjUnreadEstimates().length;if(unread)items.push({ic:'📄',t:'읽지 않은 견적서 '+unread+'건 — 읽어야 매출에 들어갑니다',act:"hjEstimateAutoRead({silent:false,auto:false})",w:3.5});}catch(e){}   // v521
   // v331 작성·보냄 견적만 — 종결(lost)은 연결될 일이 없어 매일 조르기만 했고, 수주 표시(won)는 연결 없이도 이미 매출이다(hjSalesEntries).
   const labelGapN=hjLabelGaps().reduce((n,g)=>n+g.n,0);if(labelGapN>=20)items.push({ic:'🏷',t:'작업명 없는 사진 '+labelGapN+'장 — 같은 날 사진 작업명으로 채울 수 있어요',act:'hjLabelGapView()',w:4.5});
-  const unq=(state.quotes||[]).filter(q=>q&&!q.project&&hjQuoteOpenForFollow(q)&&quoteCalc(q).total>0).length;
-  if(unq)items.push({ic:'🧾',t:'현장 미연결 견적 '+unq+'건 — 연결하면 매출 반영',act:"state.tab='estimates';render()",w:5});
+  const unq=(state.quotes||[]).filter(hjQuoteUnlinkedOk).length;
+  if(unq)items.push({ic:'🧾',t:'현장 미연결 견적 '+unq+'건 — 연결하면 매출 반영',act:"hjQuoteUnlinkedOpen()",w:5});   // v586 ✍ 견적 작성 탭의 그 카드로
   items.sort((a,b)=>a.w-b.w);
   return items.slice(0,5);
 }
@@ -16399,9 +16426,9 @@ function profitAnalysis(){
 function hjGlanceCache(items){
   try{
     const today=localDate();
-    const sch=(state.schedule||[]).filter(s=>s.date===today).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+    const sch=hjTodaySchRows(today);   // v586 오늘 챙길 일과 같은 목록(여러 날 공정의 이어지는 날 포함)
     localStorage.setItem('hj_glance',JSON.stringify({at:Date.now(),d:today,
-      sch:sch.slice(0,2).map(s=>(s.time?s.time+' ':'')+hjCut(s.title,14)+(s.project?' @'+hjCut(s.project,7):'')),
+      sch:sch.slice(0,2).map(r=>hjTodaySchLine(r,14,7)),
       schN:sch.length,check:(items||dailyCheckData()).length}));
   }catch(e){}
 }
@@ -38855,7 +38882,8 @@ function viewQuoteMaker(){
     html+=`<div class="grid">`;
     state.quotes.forEach(q=>{
       const c=quoteCalc(q);
-      html+=`<div class="card" style="cursor:default">
+      // v586 data-qcard-unlinked — 🤖 '현장 미연결 견적' 줄(hjQuoteUnlinkedOpen)이 찾아오는 카드
+      html+=`<div class="card"${hjQuoteUnlinkedOk(q)?' data-qcard-unlinked="'+escapeAttr(q.id)+'"':''} style="cursor:default">
         <div class="meta" style="padding:14px">
           <div class="nm" style="font-size:14px">${hjQuoteTierLabel(q)?'<span data-qtier style="font-size:11px;font-weight:800;color:#fff;background:#0b4ea2;border-radius:999px;padding:1px 7px;margin-right:4px">'+hjQuoteTierLabel(q)+'안</span>':''}${q.stmt?'<span data-qstmt style="font-size:11px;font-weight:800;color:#065f46;background:#d1fae5;border-radius:999px;padding:1px 7px;margin-right:4px" title="'+escapeAttr('📑 '+(q.stmt.doc||'작업내역서')+' '+(q.stmt.date||'')+' · '+(q.stmt.file||''))+'">📑 내역서</span>':''}${escapeHtml(q.title||'(제목 없음)')}</div>
           <div class="sub">${escapeHtml(q.no||'')} · ${escapeHtml(estimateDateSummary(null,q))}</div>
