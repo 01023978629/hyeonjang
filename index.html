@@ -43440,41 +43440,49 @@ function renderLightbox(){
     if(im&&__stillCurrent()){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;}
   }catch(_){}})();}
   } else if(!f.thumb && !f._driveId && IMG.includes(f.ext)){
-    // driveId 없는 사진("IMG" 빈칸) → 드라이브 전체에서 같은 이름으로 찾아 받아오기(읽기전용 권한 사용)
-    const im0=document.getElementById('lbImg');
+    /* v593 미리보기도 서버 사본(Drive ID)도 없는 사진 — PC 폴더 스캔 직후(미리보기 만들기 전)·폰의 PC 전용 사진·🏢 동·호수 화면에서 넘겨 보는 사진.
+       예전에는 이 기기에 원본이 있어도 드라이브 전체를 '같은 이름'으로 찾아, 같은 이름이 여럿이거나 크기가 달라도 첫 것을 열고 그 Drive ID 를 사진에 적어 저장했다
+       — 다른 해의 IMG_1001 이 열리고 남의 Drive ID 가 저장됐다(v584 검토). 그 ID 로 다음부터 엉뚱한 사진이 미리보기·보고서·고객 페이지에 쓰인다.
+       ① 이 기기 원본(파일 핸들·_file·_heicFile·공유함 — getFileOf)을 먼저 그린다. 드라이브를 건드리지 않고 아무것도 적지 않는다.
+       ② 원본이 없을 때만 마지막으로 드라이브에서 '이름이 정확히 같은' 사진을 찾는다. 딱 하나여야 하고(같은 이름이 둘 이상이면 크기가 하나만 맞아도 어느 것인지 모른다고 본다),
+          이 사진 크기를 알면 바이트 수까지 같아야 연다. 아니면 받지도 적지도 않고 '열지 않았습니다'만 보인다. 사본 꼬리표를 뗀 '이름 일부'로 찾던 것은 이름이 다른 사진이라 뺐다.
+       ③ Drive ID 는 ②를 지나 받은 원본 크기까지 같을 때만 적는다 — 그 사이 다른 곳에서 정했거나 다른 기록이 이미 쓰는 ID 면 보여 주기만 한다(같은 Drive ID 두 기록, v556·v570). */
     const stage=document.querySelector('.lb-stage');
-    if(stage){const note=document.createElement('div');note.id='lbNote';note.style.cssText='position:absolute;color:#cbd5e1;font-size:13px';note.textContent='드라이브에서 사진 찾는 중…';stage.appendChild(note);}
+    const say=(t,k)=>{ if(!__stillCurrent())return; let n=document.getElementById('lbNote');
+      if(!n&&stage&&stage.isConnected){n=document.createElement('div');n.id='lbNote';n.style.cssText='position:absolute;left:50%;transform:translateX(-50%);width:max-content;max-width:86vw;color:#cbd5e1;font-size:13px;text-align:center;line-height:1.5;overflow-wrap:anywhere';stage.appendChild(n);}
+      if(n){n.textContent=t;n.setAttribute('data-lb-note',k);} };
+    const show=b=>{ const im=document.getElementById('lbImg'); if(!im||!__stillCurrent())return false;
+      const u=URL.createObjectURL(b);window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;
+      const n=document.getElementById('lbNote');if(n)n.remove();return true; };
+    const toJpg=async b=>{ const e=String(f.ext||'').toLowerCase(); if(e!=='heic'&&e!=='heif')return b;
+      await ensureHeic2any(); const o=await heic2any({blob:b,toType:'image/jpeg',quality:0.9}); return Array.isArray(o)?o[0]:o; };
+    say('사진 여는 중…','open');
     (async()=>{ try{
-      let tok; try{ tok=await getRoToken(false); }catch(e){ try{ tok=await getRoToken(true); }catch(e2){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진을 찾으려면 ☁️설정 → 📂 통합 불러오기 권한이 필요합니다'; return; } }
-      // 이름으로 검색(size도 받아 크기 매칭). "의 사본" 등 꼬리표 포함 정확매칭 우선, 없으면 원래이름 contains
-      const nm=f.name.replace(/'/g,"\\'");
-      let list=await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok);
-      if(!list.length){ const base=f.name.replace(/(의 사본.*|의 복사본.*| \(\d+\).*| - copy.*)$/i,'').replace(/'/g,"\\'"); if(base&&base!==f.name) list=await roList("name contains '"+base+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok); }
-      if(!list.length){ const n=document.getElementById('lbNote'); if(n)n.textContent='드라이브에서 이 사진을 찾지 못했습니다('+escapeHtml(f.name)+')'; return; }
-      // 크기(size)로 정확매칭 우선 — 같은 이름 사진이 여럿일 때 엉뚱한 것 방지
-      let hit=null;
-      if(f.size){ const exact=list.filter(x=>x.size&&Math.abs(+x.size-f.size)<=2); if(exact.length===1)hit=exact[0]; else if(exact.length>1)hit=exact[0]; }
-      if(!hit){
-        if(list.length===1) hit=list[0];
-        else {
-          // 이름 같은 게 여럿인데 크기로 못 좁힘 → 잘못 열 위험 → 사용자에게 알림
-          const n=document.getElementById('lbNote'); if(n)n.textContent='같은 이름의 사진이 '+list.length+'개라 정확히 못 고릅니다 — 📂 통합 불러오기로 연결하세요';
-          hit=list[0];   // 그래도 첫 번째를 시도(완전 실패보다는 나음)
-        }
+      let local=null; try{ local=f._heicFile||await getFileOf(f); }catch(_){ local=null; }   // 새로고침 뒤 폴더 권한이 풀린 핸들 등 — 원본 없음으로 보고 ②로
+      if(!__stillCurrent())return;
+      if(local){
+        let b; try{ b=await toJpg(local); }catch(_){ say('이 기기의 원본(HEIC)을 그리지 못했습니다 — 잠시 뒤 다시 열어 주세요','local-fail'); return; }
+        show(b); return;   // 기기 원본이 있으면 드라이브는 보지 않는다
       }
+      say('드라이브에서 사진 찾는 중…','search');
+      let tok; try{ tok=await getRoToken(false); }catch(e){ try{ tok=await getRoToken(true); }catch(e2){ say('사진을 찾으려면 ☁️설정 → 📂 통합 불러오기 권한이 필요합니다','auth'); return; } }
+      const nm=String(f.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const list=(await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok)).filter(x=>x&&x.id&&x.name===f.name);
+      if(!__stillCurrent())return;
+      if(!list.length){ say('드라이브에서 이 사진을 찾지 못했습니다('+f.name+')','notfound'); return; }
+      if(list.length>1){ say('드라이브에 같은 이름 사진이 '+list.length+'장이라 어느 것인지 알 수 없어 열지 않았습니다 — 원본이 있는 기기(PC)에서 확인하세요','ambiguous'); return; }
+      const hit=list[0], sz=Number(f.size)||0;
+      if(sz>0&&Number(hit.size)!==sz){ say('드라이브에 같은 이름 사진이 있지만 크기가 달라 다른 사진일 수 있어 열지 않았습니다','size'); return; }
       const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+hit.id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
-      if(!dr.ok){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 받기 실패'; return; }
-      let b=await dr.blob();
-      const e=(f.ext||'').toLowerCase();
-      if(e==='heic'||e==='heif'){ try{ await ensureHeic2any(); const out=await heic2any({blob:b,toType:'image/jpeg',quality:0.9}); b=Array.isArray(out)?out[0]:out; }catch(_){}}
-      const u=URL.createObjectURL(b); const im=document.getElementById('lbImg');
-      const n=document.getElementById('lbNote'); if(n)n.remove();
-      if(im&&__stillCurrent()){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;
-        // 찾은 driveId를 기록 → 다음부턴 바로 받음 + 썸네일 캐시
-        f._driveId=hit.id; try{ const t=await makeThumbDataUrl(b,480); if(t){f.thumb=t;await idbSet('thumb:'+hit.id,t);} }catch(_){}
-        markDirty();
-      }
-    }catch(err){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 표시 오류'; } })();
+      if(!dr.ok){ say('사진 받기 실패','fail'); return; }
+      const raw=await dr.blob();
+      if(sz>0&&raw.size!==sz){ say('받은 사진 크기가 달라 열지 않았습니다','size'); return; }
+      let b=raw; try{ b=await toJpg(raw); }catch(_){}
+      if(!show(b))return;
+      if(f._driveId||!state.files.includes(f)||state.files.some(x=>x&&x!==f&&x._driveId===hit.id))return;
+      f._driveId=hit.id; try{ const t=await makeThumbDataUrl(b,480); if(t){f.thumb=t;await idbSet('thumb:'+hit.id,t);} }catch(_){}
+      markDirty();
+    }catch(err){ say('사진 표시 오류','error'); } })();
   }
   document.getElementById('lbClose').onclick=closeLightbox;
   const done=document.getElementById('lbDone');if(done)done.onclick=closeLightbox;
