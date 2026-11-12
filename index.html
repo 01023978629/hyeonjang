@@ -10548,8 +10548,26 @@ function salesEstimateFiles(){
    매출(대시보드·월말 결산·부가세 준비·세무 엑셀·매출 추이·현장 매출 sales)은 작업내역서(📑 반영으로 만든 앱 견적 — 가상 파일 _stmt,
    견적 레코드 q.stmt)만 센다. 견적서 파일·일반 앱 견적은 '견적'으로만 보이고 매출이 아니다.
    청구서·거래명세서·고객 페이지·입금 문자(projStats.est·bill·due)와 마진은 이 판에서 그대로다(고객에게 나가는 숫자 — 다음 판에서 정함).
-   설정이 없으면 예전과 같다. goals 안의 값이라 새 최상위 저장 키가 없고, 저장본을 따라 기기끼리 같은 기준을 쓴다. */
-function hjSalesBasis(){const g=state.goals;return g&&typeof g==='object'&&g.salesBasis==='stmt'?'stmt':'all';}
+   설정이 없으면 예전과 같다(→ v589 부터는 설정이 없어도 작업내역서가 있으면 내역서 기준 — 아래). goals 안의 값이라 새 최상위 저장 키가 없고, 저장본을 따라 기기끼리 같은 기준을 쓴다. */
+/* v589 매출 기준 기본값 = 작업내역서 — 대표 결정(11/12) "돈은 메모용이니 매출을 내역서 정리만 하면 돼". 대표가 v561 켜기 단추를 눌렀는지 알 수 없으니
+   goals.salesBasis 가 'stmt' 면 내역서, 'all' 이면(사람이 끈 것) 예전처럼 견적 포함, 비어 있으면 → 내역서 견적(q.stmt.key)·작업내역서 가상 파일(_stmt)이
+   하나라도 있으면 내역서, 없으면 예전 그대로. 내역서가 없는 자료(데모·옛 검사)는 숫자·글자 하나도 안 바뀐다.
+   끄면 키를 지우지 않고 'all' 을 적는다 — 지우면 다음에 열 때 자동으로 다시 켜진다. 옛 판 기기는 'stmt' 만 보므로 'all' 을 읽어도 예전과 같다.
+   hjSalesBasis 는 견적 파일마다 불린다(hjSalesFileOk) — 내역서 유무는 한 번에 도는 동안(같은 작업 안)만 기억하고, 그 사이에도 견적·파일 목록이
+   바뀌면(반영·복원·불러오기 — 배열이 바뀌거나 길이가 달라짐) 다시 센다. 다음 작업(누름·화면 그리기)에서는 늘 새로 센다(낡은 기억 금지). */
+let __hjStmtDataMemo=null,__hjStmtDataMemoQ=false;
+function hjStmtDataExists(){
+  const qs=state.quotes,fs=state.files,ql=Array.isArray(qs)?qs.length:-1,fl=Array.isArray(fs)?fs.length:-1,m=__hjStmtDataMemo;
+  if(m&&m.qs===qs&&m.ql===ql&&m.fs===fs&&m.fl===fl)return m.v;
+  let v=false;
+  if(ql>0)for(let i=0;i<ql;i++){const q=qs[i];if(q&&q.stmt&&q.stmt.key){v=true;break;}}
+  if(!v&&fl>0)for(let i=0;i<fl;i++){const f=fs[i];if(f&&f._stmt){v=true;break;}}
+  __hjStmtDataMemo={qs,ql,fs,fl,v};
+  if(!__hjStmtDataMemoQ){__hjStmtDataMemoQ=true;const clr=()=>{__hjStmtDataMemo=null;__hjStmtDataMemoQ=false;};if(typeof queueMicrotask==='function')queueMicrotask(clr);else Promise.resolve().then(clr);}
+  return v;
+}
+function hjSalesBasisPref(){const g=state.goals,b=g&&typeof g==='object'?g.salesBasis:'';return b==='stmt'||b==='all'?b:'';}   // 사람이 정한 값('' = 정하지 않음 — 자동)
+function hjSalesBasis(){const b=hjSalesBasisPref();if(b)return b;return hjStmtDataExists()?'stmt':'all';}
 function hjSalesFileOk(f){return hjSalesBasis()!=='stmt'||!!(f&&f._stmt);}
 function hjSalesQuoteOk(q){return hjSalesBasis()!=='stmt'||!!(q&&q.stmt&&q.stmt.key);}
 function hjEstLabel(){return hjSalesBasis()==='stmt'?'견적':'견적(매출)';}   // 견적 합계(projStats.est)에 붙이는 이름
@@ -10569,7 +10587,7 @@ function hjStmtMonthSales(ym){
 function hjMarginShort(s){if(hjSalesBasis()!=='stmt')return hjMan(s.marginEff);return s.marginNA?'내역서 없음':s.marginRateEff+'% · '+hjMan(s.marginEff);}
 function hjSalesBasisSet(on){
   state.goals=(state.goals&&typeof state.goals==='object')?state.goals:{};
-  if(on)state.goals.salesBasis='stmt';else delete state.goals.salesBasis;
+  state.goals.salesBasis=on?'stmt':'all';   // v589 끄면 'all' — 키를 지우면 내역서가 있는 자료는 다음에 열 때 다시 켜진다
   markDirty();render();
   return hjSalesBasis();
 }
@@ -23578,8 +23596,9 @@ function goalManage(){
         :'<div style="font-size:12.5px;color:var(--muted);padding:4px 0">연 목표를 정하면 추적합니다</div>')+
     '</div>'+
     '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">📌 검은 선은 오늘까지의 기대 진행률입니다. 막대가 선을 넘으면 목표보다 앞서가는 거예요. (수금 기준)</div>'+
-    // v561 매출 기준 — 켜면 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)은 작업내역서만. 청구서·고객 페이지 금액·마진은 그대로.
-    '<label data-sales-basis style="display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:10px 12px;margin-bottom:10px;background:var(--paper-2);border-radius:12px;font-size:13px;line-height:1.5;cursor:pointer"><input type="checkbox" id="goalSalesStmt"'+(hjSalesBasis()==='stmt'?' checked':'')+' style="width:22px;height:22px;flex:none;margin:1px 0 0"><span><b>📑 매출은 작업내역서만 셉니다</b><br><small style="color:var(--muted)">견적서·앱 견적은 \'견적\'으로만 보이고 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)에서 빠집니다. 청구서·고객 페이지 금액과 마진은 그대로예요.</small></span></label>'+
+    // v561 매출 기준 — 켜면 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)은 작업내역서만. 청구서·고객 페이지 금액은 그대로(마진은 v562 부터 내역서 기준).
+    // v589 체크는 실제 기준 — 정하지 않았어도 작업내역서가 있으면 저절로 켜져 있고, 그때는 그렇다고 적는다(끄면 'all' 로 남는다).
+    '<label data-sales-basis style="display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:10px 12px;margin-bottom:10px;background:var(--paper-2);border-radius:12px;font-size:13px;line-height:1.5;cursor:pointer"><input type="checkbox" id="goalSalesStmt"'+(hjSalesBasis()==='stmt'?' checked':'')+' style="width:22px;height:22px;flex:none;margin:1px 0 0"><span><b>📑 매출은 작업내역서만 셉니다</b>'+(!hjSalesBasisPref()&&hjSalesBasis()==='stmt'?' <small data-sales-basis-auto style="color:var(--muted)">· 작업내역서가 있어 저절로 켜져 있어요</small>':'')+'<br><small style="color:var(--muted)">견적서·앱 견적은 \'견적\'으로만 보이고 매출(월말 결산·부가세 준비·세무 엑셀·매출 추이)에서 빠집니다. 청구서·고객 페이지 금액은 그대로이고, 마진은 작업내역서 기준(%)으로 셉니다.</small></span></label>'+
     '<button class="clay" id="goalEdit" style="width:100%;padding:12px">🎯 목표 설정/수정</button>';
   openModal('📊 매출 목표',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.getElementById('goalEdit').onclick=()=>goalEditDialog();
@@ -37713,7 +37732,8 @@ function viewStatements(){
   const kpi=(k,label,val,sub)=>'<div data-stmt-kpi="'+k+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px;background:var(--paper);min-width:0"><div style="font-size:11.5px;color:var(--muted)">'+label+'</div><b style="display:block;font-size:17px;white-space:nowrap">'+val+'</b>'+(sub?'<div style="font-size:11.5px;color:var(--muted)">'+sub+'</div>':'')+'</div>';
   let h='<section class="stmt-view" data-stmt-view>';
   h+='<div class="panel-head" style="margin-bottom:10px;justify-content:flex-start;gap:6px;flex-wrap:wrap"><button class="clay tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서 엑셀을 읽어 현장마다 매출 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="ghost tiny" data-stmt-go="quotemaker" style="min-height:44px">✍ 견적 작성</button></div>';
-  if(hjSalesBasis()!=='stmt')h+='<div data-stmt-basis-hint class="hint" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;margin:0 0 10px"><span style="flex:1 1 220px;min-width:0">대시보드·월말 결산의 매출은 아직 견적서까지 함께 세고 있어요.</span><button class="mini-btn" data-stmt-basis="1" style="min-height:44px">📑 매출은 작업내역서만 세기</button></div>';
+  // v589 내역서가 있으면 매출은 저절로 내역서 기준 — 안내는 사람이 📊 매출 목표에서 끈 경우('all')에만
+  if(hjSalesBasisPref()==='all')h+='<div data-stmt-basis-hint class="hint" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;margin:0 0 10px"><span style="flex:1 1 220px;min-width:0">📊 매출 목표에서 \'작업내역서만 세기\'를 꺼 두셔서, 대시보드·월말 결산의 매출이 견적서까지 함께 세고 있어요.</span><button class="mini-btn" data-stmt-basis="1" style="min-height:44px">📑 매출은 작업내역서만 세기</button></div>';
   h+='<div data-stmt-kpis style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px;margin:0 0 12px">'+
     kpi('cur','💰 '+mm(D.nowYm)+' 매출(내역서)',won(D.cur.total),'내역서 '+D.cur.n+'건')+
     kpi('prev','지난달('+mm(hjYmShift(D.nowYm,-1))+')',won(D.prev.total),'내역서 '+D.prev.n+'건')+
@@ -40052,9 +40072,8 @@ function hjStmtDunView(to,back){   // back(선택, v582): ‹ 뒤로 = 📄 내�
      hjStmtPayPlan 과 같은 셈, 다른 내역서·견적 입금은 섞지 않는다)·남은 돈·📷(줄 작업일 앞뒤 하루 사진 수, v568) · 입금 이력 = stmtPay 묶음별(묶음 id 없는 옛 기록은 날짜별).
      이 내역서 입금은 있는데 줄에서 빠진 현장(집계 제외·견적 삭제 등 — 이름을 바꾸면 입금 기록도 같이 옮겨지므로 이름 바뀜은 아니다)과
      현장 없이 적힌 입금('현장 미지정')도 따로 보여 현장별 받은 돈 합 = 머리의 받은 돈이 되게 한다.
-   · 머리 '남음'(장부: 합계 − 이 내역서로 받은 돈 전부)과 현장별 남은 돈 합(hjStmtPayPlan: 현장마다 max(0, 합계 − 그 현장이 받은 돈))은
-     줄에서 빠진 현장·현장 미지정으로 받은 돈, 합계보다 더 받은 현장이 있으면 갈린다. 어느 셈이 맞는지는 대표 결정 대기라 몰래 고르지 않고
-     차이(gap)와 까닭을 머리에 한 줄로 보인다.
+   · 머리 '남음'은 장부 셈(합계 − 이 내역서로 받은 돈 전부) 하나다 — v589 대표 결정(11/12) "돈은 메모용이니 매출을 내역서 정리만 하면 돼":
+     현장별 남은 돈 합과 갈릴 때 머리에 띄우던 차이 경고 한 줄(v582)은 뺐다. 현장별 줄의 받은 돈·남은 돈과 '현장 목록에 없음'·'현장 미지정' 칸은 그대로.
    · 반영한 뒤 견적을 고쳐 줄 금액(q.stmt.lines)으로 셈한 합계와 지금 견적 합계(quoteCalc)가 1원 넘게 다르면 그 현장 칸에 알린다(linesOff).
    · hjStmtDetailView(src,back): 아래 단추는 기존 함수만 — 💰 입금(hjStmtPayView)·🧾 증빙(hjStmtProofView)·📋 미수 안내 글(hjStmtDunView) — 셋 다 ‹ 뒤로 = 이 창.
    · 고객 이름·전화는 그리지 않는다. 저장하는 것 없음. 입구: 📑 장부 줄 [📄 보기](data-stmtdetail — 내역서 탭·✍ 견적 작성 탭 같은 함수). */
@@ -40073,8 +40092,6 @@ function hjStmtDetailData(src){
   const list=[...sites.values()].map(g=>{g.left=Math.max(0,g.total-g.paid);g.lines=g.lines.map((l,i)=>[l,i]).sort((a,b)=>String(a[0].d).localeCompare(String(b[0].d))||a[1]-b[1]).map(x=>x[0]);
       g.photos=g.quotes?hjStmtPhotoCount(idx,g.project,g.lines.map(l=>l.d)):0;return g;})
     .sort((a,b)=>(!a.quotes)-(!b.quotes)||a.none-b.none||a.project.localeCompare(b.project,'ko'));
-  // 머리 남음 vs 현장별 남은 돈 합 — 까닭: 줄에서 빠진 현장·현장 미지정으로 받은 돈(orphanPaid), 합계보다 더 받은 현장(overPaid)
-  const siteLeft=list.reduce((a,g)=>a+(g.quotes?g.left:0),0),orphanPaid=list.reduce((a,g)=>a+(g.quotes?0:g.paid),0),overPaid=list.reduce((a,g)=>a+(g.quotes?Math.max(0,g.paid-g.total):0),0);
   const grpSrc={};(state.payLog||[]).forEach(x=>{if(x&&x.stmtPay&&x.stmt)(grpSrc[x.stmtPay]=grpSrc[x.stmtPay]||new Set()).add(x.stmt);});
   const pays=new Map();
   (state.payLog||[]).forEach(x=>{if(!x||x.stmt!==src)return;
@@ -40084,7 +40101,6 @@ function hjStmtDetailData(src){
     if(!g.payer&&x.payer)g.payer=String(x.payer).slice(0,30);if(!g.method&&x.method)g.method=String(x.method);
     if(HJ_PROOF[x.proof])g.proofs[x.proof]=(g.proofs[x.proof]||0)+1;else g.none++;});
   return {src,file:s.file||src,doc:s.doc,to:s.to,date:s.date,age:hjStmtAgeDays(s),total:s.total,paid:s.paid,left:s.left,
-    siteLeft,orphanPaid,overPaid,gap:Math.max(0,siteLeft-s.left),
     dunTo:hjStmtCell(s.to)||'거래처 미기재',proofN:hjStmtProofTargets(src).length,sites:list,
     pays:[...pays.values()].map(p=>Object.assign(p,{sites:p.sites.size})).sort((a,b)=>String(b.d).localeCompare(String(a.d))||a.key.localeCompare(b.key))};
 }
@@ -40092,12 +40108,8 @@ function hjStmtDetailView(src,back){
   let D=null;try{D=hjStmtDetailData(src);}catch(e){}
   if(!D){toast('반영한 내역서를 찾지 못했습니다');return;}
   const today=localDate(),me=()=>hjStmtDetailView(src,back),SHOW=40,W=(v,c)=>'<b style="white-space:nowrap'+(c?';color:'+c:'')+'">'+won(v)+'</b>';   // 금액이 숫자 중간에서 줄바꿈되지 않게
-  // 머리 남음과 현장별 남은 돈 합이 다르면 숨기지 않고 까닭과 함께 — 어느 셈을 기준으로 할지는 대표 결정 대기
-  const gap=D.gap?'<div data-sd-gap style="font-size:12px;line-height:1.6;color:var(--hj-warn-fg,#b45309);margin-top:4px;overflow-wrap:anywhere">⚠ 현장별 남은 돈을 더하면 '+W(D.siteLeft)+'이에요 — 위 남음('+won(D.left)+')과 '+won(D.gap)+' 달라요. '+
-      (D.orphanPaid?'줄에서 빠진 현장·현장 미지정으로 받은 '+won(D.orphanPaid)+'은 위 받음에만 들어가 있어요. ':'')+
-      (D.overPaid?'합계보다 '+won(D.overPaid)+' 더 받은 현장이 있어요. ':'')+'협력사에 남은 돈을 말하기 전에 확인해 주세요.</div>':'';
   const head='<div data-sd-head style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px;line-height:1.7;overflow-wrap:anywhere"><b style="overflow-wrap:anywhere">'+escapeHtml((D.to?D.to+' · ':'')+D.doc)+'</b> · 작성일 '+escapeHtml(D.date||'모름')+(D.left?hjStmtAgeChip({date:D.date},today):'')+
-    '<div data-sd-sum>합계 '+W(D.total)+' · 받음 '+W(D.paid,'var(--ok)')+' · '+(D.left?'남음 '+W(D.left):'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+gap+
+    '<div data-sd-sum>합계 '+W(D.total)+' · 받음 '+W(D.paid,'var(--ok)')+' · '+(D.left?'남음 '+W(D.left):'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+
     '<div style="font-size:11.5px;color:var(--muted);word-break:break-all">원본 파일: '+escapeHtml(D.file)+'</div></div>';
   const line=l=>'<div data-sd-line style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:4px 0;border-top:1px dashed var(--line-soft)"><span style="min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.loc&&l.loc!==l.work?l.loc+' · '+l.work:l.work)+'</span><b style="white-space:nowrap">'+won(l.amt)+'</b></div>';
   const name=g=>g.none?'<b>현장 미지정</b>':g.open?'<button type="button" class="mini-btn" data-open="'+escapeAttr(g.project)+'" style="min-height:44px;max-width:100%;overflow-wrap:anywhere;text-align:left" title="이 현장 화면 열기">'+escapeHtml(g.project)+'</button>':'<b style="overflow-wrap:anywhere">'+escapeHtml(g.project)+'</b> <span style="font-size:11.5px;color:var(--muted)">현장 목록에 없음</span>';

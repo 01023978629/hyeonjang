@@ -61,7 +61,8 @@ const SEED = () => {
   __hjBriefWxErrAt = 0; __hjBriefWx = null; __briefOpen = true;
   const P = (name, stage, extra) => Object.assign({ name, stage, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false }, extra || {});
   state.projects = [P('가온', 2, { phases: ['방수'] }), P('나래', 1, { customer: { name: '이대표', phone: '01055557777', addr: '' } }), P('다솜', 2)];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {};
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null;
+  state.goals = { salesBasis: 'all' };   // v589 설정이 비면 내역서가 있는 자료는 저절로 내역서 기준 — '매출 기준이 견적 포함이어도 💰 칸은 내역서만'을 지키려고 끈 상태로 시작
   state.notes = [{ id: 'leadA', date: YM + '-01 10:00', project: '', text: '[홈페이지 상담 리드]\n공사: 욕실\n연락처 01098765432' }];
   const est = (id, name, project, amount, date) => ({ id, name, ext: 'xlsx', kind: 'estimate', project, prefix: project ? '_정리완료/' + project + '/견적서/' : '', size: 900 + amount % 991,
     est: { customer: name.replace(/\.xlsx$/, ''), amount, supply: Math.round(amount / 1.1), vat: amount - Math.round(amount / 1.1), date }, when: new Date(date + 'T09:00:00+09:00') });

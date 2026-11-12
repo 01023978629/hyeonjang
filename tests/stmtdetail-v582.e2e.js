@@ -2,16 +2,17 @@
    내역서 줄은 반영 미리보기에서만, 입금 묶음 이력·현장별 남은 돈은 어디에도 없었다).
    합성 자료(이름은 지어낸 것), 시계 2026-11-05 고정, 바깥 쓰기 0.
    ① 자료 — 머리 = 장부 값 · 현장별 합계·받은 돈(이 내역서 입금만, hjStmtPayPlan 과 같은 셈 — 같은 현장의 다른 내역서·견적 입금은 안 섞임)·남은 돈 · 줄 순서 · 📷 ·
-      줄에서 빠진 현장·현장 미지정의 입금도 따로 → 현장별 받은 돈 합 = 머리 받은 돈 · 머리 남음과 현장별 남은 돈 합의 차이(gap)와 까닭 ·
+      줄에서 빠진 현장·현장 미지정의 입금도 따로 → 현장별 받은 돈 합 = 머리 받은 돈 · 머리 남음은 장부 셈 하나(v589 대표 결정 11/12 — 차이·까닭 칸 없음) ·
       입금 이력(stmtPay 묶음 — 같은 날 두 묶음은 두 줄 / 옛 기록은 날짜별 / 통장 한 줄로 여러 장) · 읽기만 (DATA)
-   ② 장부 [📄 보기] — 📑 내역서 탭·✍ 견적 작성 탭 둘 다 같은 창 · 줄마다 다른 이름(aria-label) · 머리·경과일·차이 한 줄·원본 파일 · 현장 묶음·줄·📷 · 입금 이력 ·
+   ② 장부 [📄 보기] — 📑 내역서 탭·✍ 견적 작성 탭 둘 다 같은 창 · 줄마다 다른 이름(aria-label) · 머리·경과일·원본 파일(차이 경고 줄 없음 — v589) · 현장 묶음·줄·📷 · 입금 이력 ·
       고객 이름·전화 없음 · 단추 (ENTRY)
    ③ 단추는 기존 함수만 — 🧾 증빙·📋 미수 안내 글·💰 입금 셋 다 ‹ 뒤로 = 이 창, 입금 저장 뒤에도 이 창 · 현장 단추 → 현장 화면 · 다 받은 내역서는 [닫기]만 ·
       견적을 고쳐 줄 금액과 합계가 다르면 알림 · 거래처 없는 내역서의 미수 안내 글 (BUTTONS)
    ④ 폰 390·360 넘침 없음(띄어쓰기 없는 긴 거래처 이름 포함)·44px · 저장본 불변 · 핀 3곳 같음 · 페이지 오류 0 · 외부 쓰기 0 (PHONE)
    HJ_V582_BASELINE=<commit> 은 ①, HJ_V582_MUTATION=wrong-paid(현장별 받은 돈을 내역서 무시하고 그 현장 전체 수금으로)·same-day-merge(입금 이력을 날짜로만 묶음)·
-   no-unassigned(현장 없이 적힌 입금을 현장별에서 뺌)·no-dun-fallback(거래처 없는 내역서를 미수 안내 글에 못 이음 — ③ 의 화면에서도)는 ①,
-   no-entry(위임 셀렉터에 [data-stmtdetail] 빠뜨림)·no-gap-note(차이 한 줄 없음)는 ②, no-lines-off(고친 견적 알림 없음)·no-back(입금 창에 ‹ 뒤로 없음)는 ③,
+   no-unassigned(현장 없이 적힌 입금을 현장별에서 뺌)·no-dun-fallback(거래처 없는 내역서를 미수 안내 글에 못 이음 — ③ 의 화면에서도)·
+   site-left-head(머리 남음을 장부 셈 대신 현장별 남은 돈 합으로 — v589 '장부 셈 하나')는 ①,
+   no-entry(위임 셀렉터에 [data-stmtdetail] 빠뜨림)는 ②, no-lines-off(고친 견적 알림 없음)·no-back(입금 창에 ‹ 뒤로 없음)는 ③,
    wide-head(머리 거래처 이름 줄바꿈 없음)는 ④ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -29,7 +30,7 @@ const MUT = {
   'no-entry': ['[data-stmtproof],[data-stmtdetail]', '[data-stmtproof]'],
   'same-day-merge': ["const d=String(x.d||''),k=x.stmtPay?'g:'+x.stmtPay:'d:'+d", "const d=String(x.d||''),k='d:'+d"],
   'no-unassigned': ["if(x&&x.stmt===src){const k=x.project||'';paidBy[k]", "if(x&&x.stmt===src&&x.project){const k=x.project||'';paidBy[k]"],
-  'no-gap-note': ['const gap=D.gap?', 'const gap=false?'],
+  'site-left-head': ['date:s.date,age:hjStmtAgeDays(s),total:s.total,paid:s.paid,left:s.left,', 'date:s.date,age:hjStmtAgeDays(s),total:s.total,paid:s.paid,left:list.reduce((a,g)=>a+(g.quotes?g.left:0),0),'],
   'no-dun-fallback': ["dunTo:hjStmtCell(s.to)||'거래처 미기재'", 'dunTo:s.to'],
   'no-lines-off': ['if(Math.abs(exp-t)>1)g.linesOff=true;', ''],
   'no-back': ['fn:()=>hjStmtPayView(src,me)', 'fn:()=>hjStmtPayView(src)'],
@@ -116,15 +117,15 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
         const plan = hjStmtPayPlan(L, L.left);   // 남은 돈 전부를 나누면 현장별 남은 돈과 같아야 한다
         const out = {
           head: [D.to, D.doc, D.date, D.file, D.age, D.total, D.paid, D.left, D.dunTo, D.proofN], led: [L.total, L.paid, L.left],
-          gap: [D.siteLeft, D.orphanPaid, D.overPaid, D.gap],
+          gapKeys: ['siteLeft', 'orphanPaid', 'overPaid', 'gap'].filter(k => k in D),   // v589 차이 셈은 없어졌다(머리 남음 = 장부 셈 하나)
           sites: D.sites.map(g => [g.project, g.quotes, g.total, g.paid, g.left, g.photos, g.open, g.none, g.linesOff]),
           own, plan: plan && plan.map(r => [r.project, r.left]),
-          planCap: [!!hjStmtPayPlan(L, D.siteLeft), hjStmtPayPlan(L, D.siteLeft + 1)],   // [💰 입금] 이 나눌 수 있는 한도 = 현장별 남은 돈 합
+          planCap: (() => { const siteLeft = D.sites.reduce((a, g) => a + (g.quotes ? g.left : 0), 0); return [!!hjStmtPayPlan(L, siteLeft), hjStmtPayPlan(L, siteLeft + 1)]; })(),   // [💰 입금] 이 나눌 수 있는 한도 = 현장별 남은 돈 합
           lines: D.sites[0].lines.map(l => [l.d, l.loc, l.work, l.amt]),
           pays: D.pays.map(p => [p.key, p.d, p.total, p.sites, p.unassigned, !!p.grp, p.payer, p.method, JSON.stringify(p.proofs), p.none, p.others]),
           sumPaid: D.sites.reduce((a, g) => a + g.paid, 0), sumTotal: D.sites.reduce((a, g) => a + g.total, 0),
           sumLeft: D.sites.reduce((a, g) => a + (g.quotes ? g.left : 0), 0),
-          B: (() => { const b = hjStmtDetailData('B.xlsx'); return [b.total, b.paid, b.left, b.gap, b.sites.map(g => [g.project, g.paid]), b.pays.length]; })(),
+          B: (() => { const b = hjStmtDetailData('B.xlsx'); return [b.total, b.paid, b.left, b.sites.map(g => [g.project, g.paid]), b.pays.length]; })(),
           C: hjStmtDetailData('C.xlsx').pays.map(p => [p.total, p.others]),
           E: (() => { const e = hjStmtDetailData('E.xlsx'); return [e.to, e.dunTo, e.left]; })(),
           none: hjStmtDetailData('없는.xlsx')
@@ -144,9 +145,10 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
       for (const s of r.sites) assert.equal(s[3], r.own[s[0]], (s[0] || '현장 미지정') + ' 받은 돈 = 이 내역서 입금 기록만');
       assert.deepEqual(r.plan, [['가온아파트', 275000], ['다솜아파트', 495000]], 'hjStmtPayPlan 과 같은 남은 돈');
       assert.equal(r.sumPaid, 913000, '현장별 받은 돈 합 = 머리 받은 돈(현장 미지정 포함)'); assert.equal(r.sumTotal, 1650000);
-      // 머리 남음(장부: 합계 − 이 내역서로 받은 돈 전부)과 현장별 남은 돈 합(hjStmtPayPlan 의 셈)은 줄에서 빠진 현장·현장 미지정으로 받은 33,000원만큼 갈린다 — 숨기지 않고 gap 으로
-      assert.deepEqual(r.gap, [770000, 33000, 0, 33000], 'gap ' + JSON.stringify(r.gap));
-      assert.equal(r.sumLeft, 770000, '현장별 남은 돈 합'); assert.equal(r.head[7] + r.gap[3], r.sumLeft, '머리 남음 + 차이 = 현장별 남은 돈 합');
+      // 머리 남음은 장부 셈 하나(합계 − 이 내역서로 받은 돈 전부 = 737,000) — 현장별 남은 돈 합(770,000, 줄에서 빠진 현장·현장 미지정으로 받은 33,000 만큼 큼)과
+      // 갈려도 차이 셈·경고는 없다(v589 대표 결정 11/12 "돈은 메모용"). 현장별 줄의 남은 돈은 그대로 보인다.
+      assert.deepEqual(r.gapKeys, [], '차이 셈 없음 ' + JSON.stringify(r.gapKeys));
+      assert.equal(r.sumLeft, 770000, '현장별 남은 돈 합(현장 줄 그대로)'); assert.equal(r.head[7], 737000, '머리 남음 = 장부 셈');
       assert.deepEqual(r.planCap, [true, null], '입금 창이 나눌 수 있는 한도 = 현장별 남은 돈 합');
       assert.deepEqual(r.lines, [['2026-10-05', '가온아파트 101-1001', '욕실 누수 탐지', 220000], ['2026-10-06', '가온아파트 101-1001', '배관 교체', 330000]], '줄 날짜순');
       assert.deepEqual(r.pays, [
@@ -154,13 +156,13 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
         ['g:spsameday1', '2026-10-25', 660000, 3, 0, true, '시험누수(주)', '계좌이체', '{"tax":3}', 0, 0],
         ['g:spsameday2', '2026-10-25', 165000, 3, 0, true, '시험누수(주)', '계좌이체', '{"tax":3}', 0, 0]
       ], '입금 이력 — 같은 날 따로 받은 두 묶음은 두 줄 ' + JSON.stringify(r.pays));
-      assert.deepEqual(r.B, [440000, 440000, 0, 0, [['가온아파트', 440000]], 1], '다 받은 내역서 ' + JSON.stringify(r.B));
+      assert.deepEqual(r.B, [440000, 440000, 0, [['가온아파트', 440000]], 1], '다 받은 내역서 ' + JSON.stringify(r.B));
       assert.deepEqual(r.C, [[330000, 1]], '통장 한 줄로 두 장');
       assert.deepEqual(r.E, ['', '거래처 미기재', 110000], '거래처 없는 내역서');
       assert.equal(r.none, null, '없는 내역서');
       assert.ok(r.same, '읽기만 — 저장본 불변');
     });
-    await test('② 장부 [📄 보기] — 내역서 탭·견적 작성 탭 같은 창 · 줄마다 다른 이름 · 머리·차이·현장·줄·이력 · 고객 정보 없음 (ENTRY)', async () => {
+    await test('② 장부 [📄 보기] — 내역서 탭·견적 작성 탭 같은 창 · 줄마다 다른 이름 · 머리(차이 경고 없음)·현장·줄·이력 · 고객 정보 없음 (ENTRY)', async () => {
       await page.waitForSelector('#view [data-stmt-view] [data-stmtdetail="A.xlsx"]');
       const btn = await page.evaluate(() => [...document.querySelectorAll('#view [data-stmtdetail]')].map(b => [b.dataset.stmtdetail, b.textContent.trim(), b.getAttribute('aria-label')]));
       assert.deepEqual(btn.map(b => b[0]).sort(), ['A.xlsx', 'B.xlsx', 'C.xlsx', 'D.xlsx', 'E.xlsx', 'F.xlsx'], '장부 줄마다 보기');
@@ -176,7 +178,7 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
         const m = document.querySelector('#modalRoot'), t = el => (el ? el.innerText : '').replace(/\s+/g, ' ').trim();
         return {
           title: t(m.querySelector('#modalTitle')), head: t(m.querySelector('[data-sd-head]')), age: (m.querySelector('[data-sd-head] [data-stmt-age]') || {}).dataset,
-          gap: t(m.querySelector('[data-sd-head] [data-sd-gap]')),
+          gap: m.querySelectorAll('[data-sd-gap]').length,
           sites: [...m.querySelectorAll('[data-sd-site]')].map(s => [s.dataset.sdSite, t(s.querySelector('[data-sd-site-sum]')), (s.querySelector('[data-stmt-photo]') || {}).dataset ? s.querySelector('[data-stmt-photo]').dataset.stmtPhoto : null, s.querySelectorAll('[data-sd-line]').length, !!s.querySelector('button[data-open]')]),
           line0: t(m.querySelector('[data-sd-site="가온아파트"] [data-sd-line]')),
           none: t(m.querySelector('[data-sd-site=""]')), raon: t(m.querySelector('[data-sd-site="라온빌라"]')),
@@ -189,7 +191,8 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
       assert.match(r.head, /합계 1,650,000원 · 받음 913,000원 · 남음 737,000원/);
       assert.match(r.head, /원본 파일: A\.xlsx/);
       assert.equal(r.age && r.age.stmtAge, '23');
-      assert.equal(r.gap, '⚠ 현장별 남은 돈을 더하면 770,000원이에요 — 위 남음(737,000원)과 33,000원 달라요. 줄에서 빠진 현장·현장 미지정으로 받은 33,000원은 위 받음에만 들어가 있어요. 협력사에 남은 돈을 말하기 전에 확인해 주세요.', '차이 한 줄 ' + r.gap);
+      assert.equal(r.gap, 0, '머리에 차이 경고 줄 없음(v589 — 장부 셈 하나)');
+      assert.ok(!/현장별 남은 돈을 더하면/.test(r.head), '머리에 차이 글 없음 ' + r.head);
       assert.deepEqual(r.sites, [
         ['가온아파트', '합계 550,000원 · 받은 돈 275,000원 · 남은 돈 275,000원', '2', 2, true],
         ['나래아파트', '합계 110,000원 · 받은 돈 110,000원 · ✓ 다 받음', '0', 1, true],
@@ -252,11 +255,16 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
       await page.click('#modalRoot .mfoot button.clay');
       await page.waitForSelector('#modalRoot [data-stmt-detail="A.xlsx"]', { timeout: 4000 });
       const after = await page.evaluate(() => ({ logs: state.payLog.length, sum: document.querySelector('#modalRoot [data-sd-sum]').textContent.replace(/\s+/g, ' ').trim(),
-        gap: (document.querySelector('#modalRoot [data-sd-gap]') || {}).textContent || '', btns: [...document.querySelectorAll('#modalRoot .mfoot button')].map(b => b.textContent.trim()) }));
-      // 머리 남음 737,000 을 현장별 남은 돈 770,000 비율로 나누면 머리는 '다 받음'인데 현장에는 33,000 이 남는다 — 차이 한 줄이 그것을 말한다
+        gap: document.querySelectorAll('#modalRoot [data-sd-gap]').length,
+        siteLeft: [...document.querySelectorAll('#modalRoot [data-sd-site-sum]')].map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(t => /남은 돈/.test(t)),
+        btns: [...document.querySelectorAll('#modalRoot .mfoot button')].map(b => b.textContent.trim()) }));
+      // 머리 남음 737,000 을 현장별 남은 돈 770,000 비율로 나누면 머리는 '다 받음'(장부 셈)이고 현장 줄에는 남은 돈이 그대로 보인다 — 차이 경고 줄은 없다(v589)
       assert.equal(after.logs, 15, '입금 저장 2건');
       assert.equal(after.sum, '합계 1,650,000원 · 받음 1,650,000원 · ✓ 다 받음');
-      assert.match(after.gap, /현장별 남은 돈을 더하면 33,000원이에요 — 위 남음\(0원\)과 33,000원 달라요/, after.gap);
+      assert.equal(after.gap, 0, '차이 경고 줄 없음 — 머리 남음은 장부 셈 하나');
+      assert.equal(after.siteLeft.length, 2, '현장 줄의 남은 돈은 그대로 보임 ' + JSON.stringify(after.siteLeft));
+      const siteLeftSum = after.siteLeft.reduce((a, t) => a + Number((t.match(/남은 돈 ([\d,]+)원/) || [0, '0'])[1].replace(/,/g, '')), 0);
+      assert.equal(siteLeftSum, 33000, '현장 줄 남은 돈 합 = 33,000 ' + JSON.stringify(after.siteLeft));
       assert.deepEqual(after.btns, ['닫기', '🧾 증빙 5건'], '다 받으면 입금·미수 단추 없음 ' + JSON.stringify(after.btns));
       // 🧾 증빙도 저장 뒤 이 창으로(통합 검토 v587 — 예전엔 창이 닫혀 장부로 떨어졌다)
       await page.click('#modalRoot .mfoot button:has-text("🧾 증빙 5건")');
@@ -274,13 +282,13 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
         const D = hjStmtDetailData('B.xlsx'), g = D.sites[0];
         hjStmtDetailView('B.xlsx');
         const m = document.querySelector('#modalRoot');
-        return { d: [g.total, g.lineTotal, g.linesOff, g.paid, g.left, D.left, D.overPaid, D.gap], note: (m.querySelector('[data-sd-site="가온아파트"] [data-sd-lines-off]') || {}).textContent || '',
+        return { d: [g.total, g.lineTotal, g.linesOff, g.paid, g.left, D.left], note: (m.querySelector('[data-sd-site="가온아파트"] [data-sd-lines-off]') || {}).textContent || '',
           line: m.querySelector('[data-sd-site="가온아파트"] [data-sd-line]').innerText.replace(/\s+/g, ' ').trim(), gapNote: !!m.querySelector('[data-sd-gap]') };
       });
-      assert.deepEqual(off.d, [220000, 440000, true, 440000, 0, 0, 220000, 0], '고친 견적 ' + JSON.stringify(off.d));
+      assert.deepEqual(off.d, [220000, 440000, true, 440000, 0, 0], '고친 견적 ' + JSON.stringify(off.d));
       assert.equal(off.note, '✏ 반영한 뒤 견적을 고쳐서, 아래 줄 금액으로 셈한 합계(440,000원)와 위 합계가 달라요 — 위 합계·남은 돈은 지금 견적 기준이에요');
       assert.equal(off.line, '10/18 가온아파트 101-1001 · 타일 보수 440,000원', '줄은 내역서 원본 금액');
-      assert.equal(off.gapNote, false, '머리 남음 0 = 현장별 남은 돈 0 이면 차이 한 줄 없음');
+      assert.equal(off.gapNote, false, '차이 경고 줄 없음');
       await page.evaluate(() => closeModal(true));
       // 거래처가 빈 내역서 — 📋 미수 안내 글이 '거래처 미기재' 묶음으로 열린다(죽은 단추가 아님)
       await page.evaluate(() => hjStmtDetailView('E.xlsx'));
