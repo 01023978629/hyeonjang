@@ -6,16 +6,17 @@
       날짜 없는 줄은 같은 파일일 때만 기본 '바꾸기' · 위치가 다르면 짝 아님 · 읽기만 (CLASSIFY)
       기본값을 주지 않는 곳 — 고른 현장과 다른 현장 · 집계 제외 · 보관·지운 현장 · 다른 거래처·거래처 모름 · 합만 같고 품목 사이 금액을 옮긴 견적 · 품목 이름을 고친 견적 (DEFAULT)
    ② 반영 — 바꾸기: 줄 금액·stmt.total·품목 단가(1원 보정)·가상 견적 파일·매출·장부가 새 금액 · 견적 수 그대로 · 안전판 '작업내역서 금액 수정 전' ·
-      저장 표시(바꾸기만 해도) · 이름이 다른 수정본도 옛 견적을 바꿈 + 새 줄은 따로 · 따로 더하기·넣지 않기 · 공급가 견적 +10% (APPLY)
+      저장 표시(바꾸기만 해도) · 견적 비고에 '[금액 수정]' 기록 · 이름이 다른 수정본도 옛 견적을 바꿈 + 새 줄은 따로 · 따로 더하기·넣지 않기 ·
+      바꾸기만 한 수정본 파일도 '반영함'(hjStmtFiles) · 공급가 견적 +10% (APPLY)
    ③ 막음 — 안 고른 줄·안전판 없이·안전판 실패·손으로 고친 견적·입금이 새 합계보다 큼·미리보기 뒤 바뀜·같은 옛 줄 두 번 → 아무것도 안 바뀜 ·
       여럿 중 고른 줄만 바꿈 (GUARD) · 그 현장에 나눠 적힌 입금이 그 현장 새 합계보다 큼(내역서 전체는 괜찮아도) · 집계 제외 견적은 입금 대조에서 뺌 ·
       품목 이름·순서를 고친 견적 · 품목 사이 금액을 옮긴 견적 · 견적 작성 화면에 열린 견적 (GUARD2)
-   ④ 화면 — 확인 창의 ✏️ 줄(기본 '바꾸기')·없는 줄 알림 · 현장을 다른 곳으로 고르면 기본값 없음 → 되돌리면 다시 바꾸기 ·
+   ④ 화면 — 확인 창의 ✏️ 줄(기본 '바꾸기')·없는 줄 알림·옛 작성 월 알림 · 현장을 다른 곳으로 고르면 기본값 없음 → 되돌리면 다시 바꾸기 ·
       창을 연 뒤 옛 줄이 바뀌면 [반영]이 막힘 · [반영] → 바뀜 · 여럿이면 안 고르면 반영 안 함 → 고르면 반영 · 반영 중 Esc 로 안 닫힘 ·
       폰 390 넘침 없음·44px·16px (UI)
    ⑤ 핀 3곳 서로 같음 · 오류 0 · 바깥 쓰기 0
    HJ_V583_BASELINE=<commit> 은 ① 에서, HJ_V583_MUTATION=no-revise(감지 끔)·no-reprice(단가를 다시 안 셈)는 ①·② 에서 실패해야 한다.
-   검토 뒤 더한 변이 — 모두 실패해야 한다: no-dirty(②) · no-loc·no-projctx·no-vendor·no-deadproj·no-exsumdef·no-itemcheck·no-namecheck(①)
+   검토 뒤 더한 변이 — 모두 실패해야 한다: no-dirty·no-memo·no-filemark(②) · no-loc·no-projctx·no-vendor·no-deadproj·no-exsumdef·no-itemcheck·no-namecheck(①)
    · no-projpaid·no-exsum·no-editingq(③) · no-revamt·stale-default·no-lock(④). */
 'use strict';
 const assert = require('node:assert/strict');
@@ -32,6 +33,8 @@ const MUT = {
   'no-revise': ['byK.forEach((ls,k)=>{const cs=exist.filter(x=>!x.used&&x.k===k);if(cs.length)ls.forEach(l=>rev.set(l,{cands:cs,sure:ls.length===1&&cs.length===1}));});', ''],
   'no-reprice': ['  q.items.forEach((it,i)=>{it.price=prices[i];});\n', ''],
   'no-dirty': ['||res.newProjects.length||res.replaced.length)markDirty();', '||res.newProjects.length)markDirty();'],
+  'no-memo': ["x.q.memo=[String(x.q.memo||'')]", "void [String(x.q.memo||'')]"],
+  'no-filemark': ['    x.q.stmt.file=src;\n', ''],
   'no-loc': ["function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.loc),hjStmtKey(l&&l.work)].join('|');}", "function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.work)].join('|');}"],
   'no-projctx': ["  if(ctx&&ctx.project!=null&&ctx.project!==p)return '고른 현장('+ctx.project+')과 다른 현장의 견적이라 골라 주세요';\n", ''],
   'no-vendor': ["    if(!a||!b)return '다른 파일이고 거래처를 알 수 없어 골라 주세요';\n    if(a!==b)return '다른 거래처(‘'+a+'’) 내역서라 골라 주세요';\n", ''],
@@ -205,7 +208,7 @@ const SEED = () => {
         const s1 = { replaced: res.replaced.map(x => [x.project, x.work, x.from, x.to]), quotes: res.quotes.length, appended: res.appended.length, total: res.total, dup: res.dupLines,
           lines: ga.stmt.lines.map(l => l.amt), stTotal: ga.stmt.total, calc: quoteCalc(ga), items: ga.items.map(i => i.price), n: state.quotes.length,
           est: EST('가온아파트'), nare: EST('나래아파트'), led: LEDGER(A), vf: vf.est.amount, sales: hjSalesEntries().reduce((a, e) => a + e.amount, 0),
-          snap: last.label, snapOld: lastGa.stmt.lines.map(l => l.amt), dirty: state.dirty };
+          snap: last.label, snapOld: lastGa.stmt.lines.map(l => l.amt), dirty: state.dirty, memo: ga.memo.split('\n').filter(x => /^\[금액 수정\]/.test(x)) };
         return { s0, s1 };
       }, { l1: G(LINES1), l2: G(LINES2), A });
       assert.deepEqual(r.s0, { est: 270000, led: 540000, n: 2 });
@@ -218,6 +221,7 @@ const SEED = () => {
       assert.ok(r.s1.est === 380000 && r.s1.nare === 270000 && r.s1.led === 650000 && r.s1.vf === 380000 && r.s1.sales === 650000, 'APPLY 매출·장부·가상 파일 ' + JSON.stringify(r.s1));
       assert.ok(r.s1.snap === '작업내역서 금액 수정 전' && JSON.stringify(r.s1.snapOld) === '[220000,50000]', 'APPLY 안전판은 바꾸기 전 자료 ' + JSON.stringify(r.s1));
       assert.equal(r.s1.dirty, true, 'APPLY 바꾸기만 해도 저장 표시');
+      assert.deepEqual(r.s1.memo, ['[금액 수정] 2026-11-10 · 우수관 교체 220,000→330,000원 · 원본 ‘' + A + '’'], 'APPLY 견적 비고 기록 ' + JSON.stringify(r.s1.memo));
       const r2 = await page.evaluate(async ({ l3, A, A2 }) => {
         // 이름이 다른 수정본 — 옛 견적(A)의 우수관을 바꾸고, 새 줄(실리콘)만 새 견적
         const res3 = await hjStmtApplySafe(DECIDE(PLAN(A2, l3)));
@@ -234,7 +238,15 @@ const SEED = () => {
         const rS = await hjStmtApplySafe(DECIDE(PLAN('S.xlsx', [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-02', '다솜빌라 2층', '수전 교체', 120000]], 'separate')));
         const ds = STMTQ('다솜빌라', 'S.xlsx');
         const s5 = { rep: rS.replaced.length, total: ds.stmt.total, calc: quoteCalc(ds).total, items: ds.items.map(i => i.price) };
-        return { s3, s4, s5 };
+        // 바꾸기만 하는 수정본(새 견적·붙인 줄 없음)도 만물 폴더 목록에서 '반영함'
+        const A3 = '작업내역서초안_20261110_가상협력_수정2.xlsx';
+        state.files.push({ id: 'fx_a3', name: A3, prefix: '작업내역서/', kind: 'other' });
+        const pre = hjStmtFiles().find(x => x.f.id === 'fx_a3').applied;
+        const r6 = await hjStmtApplySafe(DECIDE(PLAN(A3, [['작업내역서'], ['받는 분', '가상협력'], ['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-03', '가온아파트 101-1101', '우수관 교체', 450000]])));
+        const gq = STMTQ('가온아파트', A);
+        const s6 = { pre, rep: r6.replaced.map(x => [x.from, x.to]), quotes: r6.quotes.length, post: hjStmtFiles().find(x => x.f.id === 'fx_a3').applied, file: gq.stmt.file, src: hjStmtSrcOf(gq),
+          origApplied: hjStmtFiles().filter(x => x.f.id !== 'fx_a3').length, memo: gq.memo.split('\n').filter(x => /^\[금액 수정\]/.test(x)).length };
+        return { s3, s4, s5, s6 };
       }, { l3: G(LINES3), A, A2 });
       Object.assign(r, r2);
       assert.deepEqual(r.s3.replaced, [['가온아파트', 330000, 440000]], 'REVISED file replaces the old quote ' + JSON.stringify(r.s3));
@@ -243,6 +255,7 @@ const SEED = () => {
       assert.deepEqual(r.s4.add, [1, 0, [440000, 50000, 60000]], '따로 더하기는 예전처럼 한 줄 더 ' + JSON.stringify(r.s4));
       assert.deepEqual(r.s4.skip, [1, 0, 0, 0, true], '넣지 않기는 아무것도 안 바꿈 ' + JSON.stringify(r.s4));
       assert.deepEqual(r.s5, { rep: 1, total: 132000, calc: 132000, items: [120000] }, '공급가 견적 ' + JSON.stringify(r.s5));
+      assert.deepEqual(r.s6, { pre: false, rep: [[440000, 450000]], quotes: 0, post: true, file: '작업내역서초안_20261110_가상협력_수정2.xlsx', src: A, origApplied: 0, memo: 3 }, 'APPLY 바꾸기만 한 수정본도 반영함 ' + JSON.stringify(r.s6));
     });
 
     await test('③ 막음 — 안 고름·안전판·손으로 고친 견적·입금·미리보기 뒤 바뀜·같은 옛 줄 두 번 → 그대로 · 여럿 중 고른 줄만 (GUARD)', async () => {
@@ -334,7 +347,7 @@ const SEED = () => {
       assert.ok(/견적 작성 화면에 가온아파트 견적이 열려 있어요/.test(g2.editing) && g2.editing_same && g2.ok === 'applied 1', 'GUARD2 작성 중 견적 ' + JSON.stringify(g2));
     });
 
-    await test('④ 화면 — ✏️ 줄 기본 바꾸기·없는 줄 알림 · 다른 현장이면 기본값 없음 · 창을 연 뒤 바뀜 막음 → [반영] · 여럿이면 안 고르면 막음 → 고르면 반영 · 반영 중 잠김 · 폰 390·44px·16px (UI)', async () => {
+    await test('④ 화면 — ✏️ 줄 기본 바꾸기·없는 줄·옛 작성 월 알림 · 다른 현장이면 기본값 없음 · 창을 연 뒤 바뀜 막음 → [반영] · 여럿이면 안 고르면 막음 → 고르면 반영 · 반영 중 잠김 · 폰 390·44px·16px (UI)', async () => {
       await page.evaluate(({ l1, A }) => { SEED_FN(); hjStmtApply(PLAN(A, l1)); hjStmtApply(PLAN('M.xlsx', [['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-07', '다솜빌라 1층', '방수', 100000], ['2026-11-07', '다솜빌라 1층', '방수', 120000]])); state.tab = 'quotemaker'; render(); }, { l1: G(LINES1), A });
       // 가짜 엑셀로 파일 읽기 경로까지
       await page.evaluate(async ({ l2, A }) => {
@@ -354,6 +367,7 @@ const SEED = () => {
         sel: [...document.querySelectorAll('#modalRoot [data-stmt-rev]')].map(s => [Math.round(s.getBoundingClientRect().height), getComputedStyle(s).fontSize]),
         small: [...document.querySelectorAll('#modalRoot button')].filter(b => b.offsetParent && b.getBoundingClientRect().height < 43.5).map(b => b.textContent.trim()) }));
       assert.ok(phone.over <= 1 && phone.modalOver <= 1 && phone.sel.every(([h, f]) => h >= 44 && f === '16px') && !phone.small.length, 'phone 390 ' + JSON.stringify(phone));
+      assert.match(ui.sum, /옛 작성일\(2026-11\) 매출이 바뀝니다/, '옛 작성 월 알림 ' + JSON.stringify(ui));
       // 그 위치를 다른 현장으로 고르면 기본 '바꾸기'를 거둔다(사람이 고른다) → 되돌리면 다시 기본 '바꾸기'
       await page.selectOption('#modalRoot [data-stmt-proj="0"]', '다솜빌라');
       const other = await page.evaluate(() => ({ val: document.querySelector('#modalRoot [data-stmt-rev]').value, row: document.querySelector('#modalRoot [data-stmt-revrow]').textContent,

@@ -39343,9 +39343,15 @@ function hjStmtApply(plan,opts){
   const all=[];byP.forEach(o=>all.push(...o.lines));
   const rp=hjStmtRevisePlan(all);
   if(rp.reps.length&&!(opts&&opts.snapped))throw new Error('금액을 바꾸려면 안전판을 먼저 만들어야 해요 — 확인 창의 [반영] 단추로 해 주세요');
+  const today=localDate();
   rp.qs.forEach(x=>{
     x.rs.forEach(r=>{x.q.stmt.lines[r.e.li].amt=r.to;});
-    hjStmtReprice(x.q);syncQuoteToProject(x.q);
+    hjStmtReprice(x.q);
+    // 옛 작성 월의 매출(내역서)이 소급해 바뀌므로 언제·무엇을·어느 파일로 바꿨는지 견적 비고에 남긴다(기존 칸) ·
+    // 그 파일은 반영한 것으로 본다(stmt.file — hjStmtFiles 가 '아직 안 넣음'에서 뺀다. 새 견적이 안 생겨도)
+    x.q.memo=[String(x.q.memo||'')].concat(x.rs.map(r=>'[금액 수정] '+today+' · '+(hjStmtCell(r.e.l.work)||'작업')+' '+hjNum(r.from)+'→'+hjNum(r.to)+'원 · 원본 ‘'+src+'’')).filter(Boolean).join('\n');
+    x.q.stmt.file=src;
+    syncQuoteToProject(x.q);
     x.rs.forEach(r=>res.replaced.push({project:x.q.project||'',qid:x.q.id,d:r.e.l.d||'',loc:r.e.l.loc||'',work:r.e.l.work||'',from:r.from,to:r.to}));
     res.total+=quoteCalc(x.q).total-x.before;
   });
@@ -39477,7 +39483,7 @@ function hjStmtReview(r){
     const pOf=g=>hjStmtChoiceName(g.choice);
     const to=hjStmtCell((root.querySelector('#stmtTo')||{}).value||'');
     const ctxOf=new Map();cur.groups.forEach(g=>{if(g.choice)g.lines.forEach(l=>ctxOf.set(l,{project:pOf(g),to}));});
-    const newBy={},lineN={};let repN=0,repD=0,pendN=0;
+    const newBy={},lineN={},months=new Set();let repN=0,repD=0,pendN=0;
     cur.groups.forEach((g,i)=>{
       let dup=0,fresh=0,amt=0,rev=0;
       if(g.choice)g.lines.forEach(l=>{
@@ -39485,7 +39491,7 @@ function hjStmtReview(r){
         const v=cls.rev.get(l);
         if(v){rev++;const d=revDec(l,v,ctxOf.get(l));
           if(d==='add'){fresh++;amt+=l.amt;}
-          else if(d.indexOf('r:')===0){repN++;const e=v.cands.find(x=>revKey(x)===d);if(e)repD+=Math.round(num(l.amt))-Math.round(num(e.l.amt));}
+          else if(d.indexOf('r:')===0){repN++;const e=v.cands.find(x=>revKey(x)===d);if(e){repD+=Math.round(num(l.amt))-Math.round(num(e.l.amt));const ym=ymOf(e.q.date||e.q.stmt.date||'');if(ym)months.add(ym);}}
           else if(!d)pendN++;
           return;}
         fresh++;amt+=l.amt;});
@@ -39529,7 +39535,8 @@ function hjStmtReview(r){
     if(box)box.querySelectorAll('[data-stmt-ex]').forEach(cb=>cb.onchange=()=>{if(cb.checked)cur.exclude.add(cb.dataset.stmtEx);else cur.exclude.delete(cb.dataset.stmtEx);});
     const sm=root.querySelector('#stmtSummary');
     const np=Object.keys(newBy).length;
-    const revTxt=(repN?'금액 바꾸는 줄 '+repN+'개(줄 금액 '+(repD>=0?'+':'−')+won(Math.abs(repD))+')':'')+(pendN?(repN?' · ':'')+'⚠ 아직 안 고른 줄 '+pendN+'개':'');
+    // 바꾸는 옛 견적의 작성 월 매출(내역서)이 소급해 바뀐다 — 결산·신고를 마친 달일 수 있어 알린다
+    const revTxt=(repN?'금액 바꾸는 줄 '+repN+'개(줄 금액 '+(repD>=0?'+':'−')+won(Math.abs(repD))+')'+(months.size?' — ⚠ 옛 작성일('+[...months].sort().join(', ')+') 매출이 바뀝니다':''):'')+(pendN?(repN?' · ':'')+'⚠ 아직 안 고른 줄 '+pendN+'개':'');
     if(sm)sm.textContent=(np?'반영하면: 현장 '+np+'곳 · 작업비용 '+won(Object.values(newBy).reduce((a,b)=>a+b,0))+' — 같은 현장의 여러 위치는 견적 1건으로 묶습니다.':revTxt?'':'새로 넣을 줄이 없습니다.')+(revTxt?(np?' · ':'반영하면: ')+revTxt:'');
   };
   root.querySelectorAll('[data-stmt-proj]').forEach(sel=>{
@@ -39716,7 +39723,7 @@ function hjStmtProofView(src,back){
 }
 // 앱이 색인한 작업내역서 엑셀 — [{f,applied}] (작업내역서/ 폴더 또는 이름에 작업내역서·공사내역서, 양식 제외)
 function hjStmtFiles(){
-  const used=new Set((state.quotes||[]).filter(q=>q&&q.stmt).map(hjStmtSrcOf));
+  const used=new Set();(state.quotes||[]).forEach(q=>{if(!q||!q.stmt)return;used.add(hjStmtSrcOf(q));if(q.stmt.file)used.add(hjStmtCell(q.stmt.file));});   // v583 금액만 바꾼 수정본도(stmt.file)
   return (state.files||[]).filter(f=>f&&!f._fromQuote&&/\.xlsx?$/i.test(String(f.name||''))&&!/양식|서식|템플릿/.test(String(f.name||''))&&
       (/^작업내역서\//.test(String(f.prefix||'').normalize('NFC'))||/작업내역서|공사내역서/.test(String(f.name||'').normalize('NFC'))))
     .map(f=>({f,applied:used.has(hjStmtCell(f.name))}))
