@@ -48656,8 +48656,11 @@ function hjWoMemoSafe(p,memo){
   const name=String((p&&p.customer||{}).name||'').trim();
   return String(memo||'').split('\n').filter(l=>!/\d[\d,]*\s*(?:만\s*)?원(?![가-힣])|금액|견적가|잔금|계약금|중도금|수금|입금/.test(l)).map(l=>hjRetScrub(l,name).replace(/고객(\s+고객)+/g,'고객').trim()).filter(Boolean).join('\n').slice(0,600);
 }
+/* v587 하루치 지시에 여러 날 공정의 이어지는 날도 — 예전에는 date===그날만 골라, 3일짜리 타일 둘째·셋째 날은 [📤 내일 일정 팀에 보내기]에서 빠졌다
+   (📤 일정 공유는 v354 부터 넣음). 이어지는 날 규칙은 hjSchContinuing 그대로(시작 다음 날~끝, 일요일 제외, 완료 보고된 공정은 끝난 것). */
+function hjWoDayOk(s){return !!(s&&s.project&&!/^💰/.test(String(s.title||''))&&!s._taxAuto&&(state.projects||[]).some(p=>p&&p.name===s.project));}
 function hjWoDaySchedules(day){
-  return (state.schedule||[]).filter(s=>s&&s.date===day&&s.project&&!/^💰/.test(String(s.title||''))&&!s._taxAuto&&(state.projects||[]).some(p=>p&&p.name===s.project))
+  return (state.schedule||[]).filter(s=>s&&s.date===day&&hjWoDayOk(s)).concat(hjSchContinuing(day,hjWoDayOk).map(x=>x.s))
     .sort((a,b)=>String(a.time||'99').localeCompare(String(b.time||'99'))||String(a.title||'').localeCompare(String(b.title||'')));
 }
 // 하루치 패킷 — 일정마다 주문 1개. 번호는 그날 이미 쓴 번호 다음부터.
@@ -48666,14 +48669,17 @@ function hjWoBuildDay(day){
   const base=hjWoNextId(state,localDate()),m=HJ_WO_ID_RE.exec(base),date=m[1];let n=Number(m[2]);
   const orders=[],refs=[];
   // 이미 보낸 일정은 같은 번호로 다시 보낸다(팀 앱에서 같은 지시가 두 번 생기지 않게).
-  const sentId=(p,s)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&Array.isArray(w.items)&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)));return w?w.packetId:'';};
+  // v587 여러 날 공정은 날마다 지시가 따로라 그날(items[].day)까지 맞아야 같은 번호 — day 가 없는 옛 기록(v444)은 그 일정의 시작일로 읽는다.
+  const sentId=(p,s)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&Array.isArray(w.items)&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)&&String(x.day||s.date)===day));return w?w.packetId:'';};
   rows.forEach(s=>{
     const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s);
-    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(s.title||'작업',(p.customer||{}).name),120)+(trade?' ('+trade+')':''),detail:hjWoMemoSafe(p,s.memo),
-      assignee:hjWoText(crew.join(','),20),due:s.date,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
+    const c=s.date===day?null:hjSchContOn(s,day),contTail=c?' ('+c.day+'/'+c.days+'일째)':'';   // v587 이어지는 날이면 '(2/3일째)' — 공정표 꼬리 '(N일차 시작)' 는 뗀다
+    const tail=(trade?' ('+trade+')':'')+contTail,rawTitle=c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업':(s.title||'작업');
+    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo),
+      assignee:hjWoText(crew.join(','),20),due:day,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
       checklist:(HJ_WO_CHECKLIST_BY[trade]||HJ_WO_CHECKLIST).slice(),photosWanted:HJ_WO_PHOTOS.map(x=>x[0]),notes:''});
     const o=one.orders[0];o.guideKey=hjWoGuideKey(p,trade);
-    orders.push(o);refs.push({name:p.name,order:o,again:!!again,items:[{kind:'sched',ref:String(s.id),text:hjWoText(s.title||'일정',120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
+    orders.push(o);refs.push({name:p.name,order:o,again:!!again,items:[{kind:'sched',ref:String(s.id),day,text:hjWoText((c?rawTitle:(s.title||'일정'))+contTail,120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
   });
   return {packet:{type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders},refs};
 }
