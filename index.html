@@ -918,7 +918,7 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   .modal{background:var(--paper);border:1.5px solid var(--line);border-radius:14px;max-width:620px;width:100%;max-height:84vh;overflow:auto;box-shadow:0 30px 70px -30px rgba(13,78,162,.55)}
   .modal.wide{max-width:880px}
   .modal-head{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-soft);padding:10px 12px 10px 20px}
-  .modal h3{margin:0;padding:6px 0;font-size:17px;flex:1;min-width:0}
+  .modal h3{margin:0;padding:6px 0;font-size:17px;flex:1;min-width:0;overflow-wrap:anywhere}   /* v582 띄어쓰기 없는 긴 이름(거래처·현장)이 제목에 오면 창이 옆으로 넘쳤다 */
   .modal-close{width:40px;height:40px;padding:0;border-color:transparent;background:transparent;font-size:24px;line-height:1;color:var(--muted)}
   .modal-close:hover{background:var(--paper-2);color:var(--blueprint);border-color:var(--line-soft);transform:none}
   .modal .mbody{padding:16px 20px}
@@ -39395,7 +39395,8 @@ function hjStmtPayCheck(src,amt,d){
   const miss=rows.filter(r=>!(state.projects||[]).some(p=>p&&p.name===r.project));
   return miss.length?'지워진 현장이 있어 나눠 적을 수 없어요: '+miss.map(r=>r.project).join(', '):'';
 }
-function hjStmtPayView(src){
+// back(선택, v582): 📄 내역서 보기에서 열었으면 ‹ 뒤로 와 저장 뒤 그 창으로 돌아간다 — 다른 입구는 예전 그대로.
+function hjStmtPayView(src,back){
   const s=hjStmtLedger().find(x=>x.src===src);if(!s){toast('반영한 내역서를 찾지 못했습니다');return;}
   const today=localDate();
   const body=`<div style="font-size:13px;line-height:1.7">
@@ -39411,6 +39412,7 @@ function hjStmtPayView(src){
     <div id="spPlan" style="margin-top:10px;border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px;font-size:12px"></div>
   </div>`;
   openModal('💰 내역서 입금',body,[
+    ...(back?[{label:'‹ 뒤로',cls:'ghost',fn:back}]:[]),
     {label:'취소',cls:'ghost',fn:closeModal},
     {label:'입금 저장',cls:'clay',fn:()=>{
       const root=$('#modalRoot');
@@ -39420,6 +39422,7 @@ function hjStmtPayView(src){
       catch(e){toast((e&&e.message)||'입금을 저장하지 못했습니다');return;}
       closeModal();render();
       toast('💰 '+((s.to?s.to+' ':'')+won(r.total))+' 입금 — 현장 '+r.n+'곳에 나눠 기록');
+      if(back)back();
     }}]);
   const root=$('#modalRoot');
   const draw=()=>{
@@ -39522,16 +39525,19 @@ function hjStmtLedgerHTML(){
   const left=led.reduce((a,s)=>a+s.left,0),today=localDate();
   // v535 협력사별 미수 — 거래처마다 남은 돈·장 수·가장 오래된 경과일 + [📋 미수 안내 글]
   const dun=hjStmtDunGroups(led).map(g=>`<div data-stmt-dun="${escapeAttr(g.to)}" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)">
-      <div style="flex:1 1 200px;min-width:0;font-size:12.5px"><b>${escapeHtml(g.to)}</b> · 내역서 ${g.list.length}장 · 남은 돈 <b>${won(g.left)}</b> · 가장 오래된 것 ${hjStmtAgeChip(g.list[0],today,true)}</div>
+      <div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere"><b>${escapeHtml(g.to)}</b> · 내역서 ${g.list.length}장 · 남은 돈 <b>${won(g.left)}</b> · 가장 오래된 것 ${hjStmtAgeChip(g.list[0],today,true)}</div>
       <button class="mini-btn" data-stmtdun="${escapeAttr(g.to)}" style="min-height:44px" title="이 협력사에 보낼 미수 안내 글(내역서별 금액·경과일) — 복사·공유만, 자동으로 보내지 않음">📋 미수 안내 글</button></div>`).join('');
-  const rows=led.map(s=>`<div data-stmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-top:1px solid var(--line-soft)">
-      <div style="flex:1 1 220px;min-width:0"><b style="font-size:13px">${escapeHtml((s.to?s.to+' · ':'')+s.doc+' '+hjStmtMd(s.date))}</b> <span style="font-size:11.5px;color:var(--muted)">현장 ${s.quotes.length}곳</span><br>
+  // v582 줄의 단추는 글자가 줄마다 같아(📄 보기·💰 입금·🧾 증빙) 화면읽기로는 어느 내역서인지 몰랐다 — 이름(aria-label)에 내역서를 밝힌다(보이는 글자는 그대로 포함)
+  //   거래처·날짜가 같은 내역서가 둘 이상이면 원본 파일 이름을 붙여 구분한다(화면 줄에도 파일 이름이 보인다).
+  const nmOf=s=>((s.to?s.to+' ':'')+s.doc+' '+hjStmtMd(s.date)).trim(),nmN={};led.forEach(s=>{const k=nmOf(s);nmN[k]=(nmN[k]||0)+1;});
+  const rows=led.map(s=>{const nm=nmOf(s)+(nmN[nmOf(s)]>1?' '+s.src:'');return `<div data-stmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-top:1px solid var(--line-soft)">
+      <div style="flex:1 1 220px;min-width:0"><b style="font-size:13px;overflow-wrap:anywhere">${escapeHtml((s.to?s.to+' · ':'')+s.doc+' '+hjStmtMd(s.date))}</b> <span style="font-size:11.5px;color:var(--muted)">현장 ${s.quotes.length}곳</span><br>
         <span style="font-size:12px">합계 ${won(s.total)} · 받음 <b style="color:var(--ok)">${won(s.paid)}</b> · ${s.left?'남음 <b>'+won(s.left)+'</b>'+hjStmtAgeChip(s,today):'<b style="color:var(--ok)">✓ 다 받음</b>'}</span><br>
         <span style="font-size:11px;color:var(--muted);word-break:break-all">${escapeHtml(s.src)}</span></div>
-      <button class="mini-btn" data-stmtdetail="${escapeAttr(s.src)}" style="min-height:44px" title="이 내역서 한 장 — 현장별 줄·받은 돈·남은 돈·입금 이력">📄 보기</button>
-      ${s.left?`<button class="mini-btn" data-stmtpay="${escapeAttr(s.src)}" style="min-height:44px" title="협력사가 이 내역서 금액을 입금했으면 — 현장마다 나눠 입금 기록">💰 입금</button>`:''}
-      ${(()=>{const n=hjStmtProofTargets(s.src).length;return n?`<button class="mini-btn" data-stmtproof="${escapeAttr(s.src)}" style="min-height:44px" title="이 내역서 입금 기록(현장마다 나눠 적힌 것)에 세금계산서 등 증빙을 한 번에 기록">🧾 증빙 ${n}건 아직</button>`:'';})()}
-    </div>`).join('');
+      <button class="mini-btn" data-stmtdetail="${escapeAttr(s.src)}" aria-label="${escapeAttr(nm+' 보기')}" style="min-height:44px" title="이 내역서 한 장 — 현장별 줄·받은 돈·남은 돈·입금 이력">📄 보기</button>
+      ${s.left?`<button class="mini-btn" data-stmtpay="${escapeAttr(s.src)}" aria-label="${escapeAttr(nm+' 입금')}" style="min-height:44px" title="협력사가 이 내역서 금액을 입금했으면 — 현장마다 나눠 입금 기록">💰 입금</button>`:''}
+      ${(()=>{const n=hjStmtProofTargets(s.src).length;return n?`<button class="mini-btn" data-stmtproof="${escapeAttr(s.src)}" aria-label="${escapeAttr(nm+' 증빙 '+n+'건 아직')}" style="min-height:44px" title="이 내역서 입금 기록(현장마다 나눠 적힌 것)에 세금계산서 등 증빙을 한 번에 기록">🧾 증빙 ${n}건 아직</button>`:'';})()}
+    </div>`;}).join('');
   const frows=todo.slice(0,8).map(x=>`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)">
       <div style="flex:1 1 220px;min-width:0;font-size:12.5px">📄 ${escapeHtml(x.f.name)} <span style="font-size:11px;color:var(--muted)">아직 안 넣음</span></div>
       <button class="mini-btn" data-stmtfile="${escapeAttr(x.f.id)}" style="min-height:44px">📑 반영</button></div>`).join('');
@@ -39575,14 +39581,14 @@ async function hjStmtDunSend(to,accs){
   try{await navigator.clipboard.writeText(text);toast('📋 미수 안내 글을 복사했어요 — 카톡·문자에 붙여넣으세요');return true;}catch(e){toast('복사 실패 — 다시 시도해 주세요');return false;}
 }
 // 계좌는 대표가 고른다 — 장부(COMPANY.accounts)에 있는 계좌를 그대로 단추로, '계좌 없이 글만'도. 미리 고른 계좌 없음.
-function hjStmtDunView(to){
+function hjStmtDunView(to,back){   // back(선택, v582): ‹ 뒤로 = 📄 내역서 보기
   const g=hjStmtDunGroups().find(x=>x.to===to);if(!g){toast('남은 돈 있는 내역서가 없어요');return;}
   const A=(Array.isArray(COMPANY.accounts)?COMPANY.accounts:[]).filter(a=>a&&a.no);
   const preview=hjStmtDunText(to,[]);
   openModal('📋 '+g.to+' 미수 안내 글',
     '<div style="font-size:12.5px;line-height:1.6;margin-bottom:8px">내역서 '+g.list.length+'장 · 남은 돈 <b>'+won(g.left)+'</b><br><span style="color:var(--muted)">어느 계좌를 적을지 골라 주세요 — 세금계산서를 발행한 내역서면 사업자 계좌를 적으세요. 보내기는 공유·복사만 합니다.</span></div>'+
     '<pre data-stmt-dun-preview style="white-space:pre-wrap;font-family:inherit;font-size:12.5px;line-height:1.6;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;margin:0;max-height:40vh;overflow:auto">'+escapeHtml(preview)+'</pre>',
-    A.map((a,i)=>({label:(i===0?'① ':i===1?'② ':(i+1)+'. ')+(a.label||a.bank+' '+a.no)+' 적기',cls:'ghost',fn:()=>{closeModal();hjStmtDunSend(to,[a]);}}))   // 어느 계좌도 앞세우지 않는다
+    (back?[{label:'‹ 뒤로',cls:'ghost',fn:back}]:[]).concat(A.map((a,i)=>({label:(i===0?'① ':i===1?'② ':(i+1)+'. ')+(a.label||a.bank+' '+a.no)+' 적기',cls:'ghost',fn:()=>{closeModal();hjStmtDunSend(to,[a]);}})))   // 어느 계좌도 앞세우지 않는다
       .concat([{label:'계좌 없이 글만',cls:'ghost',fn:()=>{closeModal();hjStmtDunSend(to,[]);}},{label:'닫기',cls:'ghost',fn:closeModal}]),true);
 }
 /* v582 📄 내역서 한 장 보기 — 협력사가 '10/13 내역서 얼마 남았어요?' 하면 답할 화면이 없었다.
@@ -39590,30 +39596,41 @@ function hjStmtDunView(to){
    입금 묶음(stmtPay) 이력·현장별 남은 돈은 어디에도 없었다.
    · hjStmtDetailData(src)(읽기만): 머리 = 장부(hjStmtLedger)와 같은 값 · 현장별 묶음 = 합계(그 현장 내역서 견적 합계)·받은 돈(이 내역서 입금 기록 stmt===src 만 —
      hjStmtPayPlan 과 같은 셈, 다른 내역서·견적 입금은 섞지 않는다)·남은 돈·📷(줄 작업일 앞뒤 하루 사진 수, v568) · 입금 이력 = stmtPay 묶음별(묶음 id 없는 옛 기록은 날짜별).
-     이 내역서 입금은 있는데 줄에서 빠진 현장(집계 제외·이름 바뀜)도 따로 보여 현장별 받은 돈 합 = 머리의 받은 돈이 되게 한다.
-   · hjStmtDetailView(src,back): 아래 단추는 기존 함수만 — 💰 입금(hjStmtPayView)·🧾 증빙(hjStmtProofView, 대상 있을 때)·📋 미수 안내 글(hjStmtDunView, 남은 돈 있을 때).
+     이 내역서 입금은 있는데 줄에서 빠진 현장(집계 제외·견적 삭제 등 — 이름을 바꾸면 입금 기록도 같이 옮겨지므로 이름 바뀜은 아니다)과
+     현장 없이 적힌 입금('현장 미지정')도 따로 보여 현장별 받은 돈 합 = 머리의 받은 돈이 되게 한다.
+   · 머리 '남음'(장부: 합계 − 이 내역서로 받은 돈 전부)과 현장별 남은 돈 합(hjStmtPayPlan: 현장마다 max(0, 합계 − 그 현장이 받은 돈))은
+     줄에서 빠진 현장·현장 미지정으로 받은 돈, 합계보다 더 받은 현장이 있으면 갈린다. 어느 셈이 맞는지는 대표 결정 대기라 몰래 고르지 않고
+     차이(gap)와 까닭을 머리에 한 줄로 보인다.
+   · 반영한 뒤 견적을 고쳐 줄 금액(q.stmt.lines)으로 셈한 합계와 지금 견적 합계(quoteCalc)가 1원 넘게 다르면 그 현장 칸에 알린다(linesOff).
+   · hjStmtDetailView(src,back): 아래 단추는 기존 함수만 — 💰 입금(hjStmtPayView)·🧾 증빙(hjStmtProofView)·📋 미수 안내 글(hjStmtDunView) — 셋 다 ‹ 뒤로 = 이 창.
    · 고객 이름·전화는 그리지 않는다. 저장하는 것 없음. 입구: 📑 장부 줄 [📄 보기](data-stmtdetail — 내역서 탭·✍ 견적 작성 탭 같은 함수). */
 function hjStmtDetailData(src){
   const s=hjStmtLedger().find(x=>x.src===src);if(!s)return null;
   const idx=hjStmtPhotoIndex(),sites=new Map(),names=new Set((state.projects||[]).filter(p=>p&&p.name).map(p=>p.name));
-  const site=name=>{if(!sites.has(name))sites.set(name,{project:name,quotes:0,total:0,paid:0,left:0,sep:false,lines:[],photos:0,open:names.has(name)});return sites.get(name);};
+  const site=name=>{if(!sites.has(name))sites.set(name,{project:name,none:!name,quotes:0,total:0,paid:0,left:0,sep:false,lines:[],photos:0,open:names.has(name),lineTotal:0,linesOff:false});return sites.get(name);};
   s.quotes.forEach(q=>{const g=site(q.project),t=quoteCalc(q).total;g.quotes++;g.total+=t;if(q.stmt.vat==='separate')g.sep=true;
     const ls=(Array.isArray(q.stmt.lines)?q.stmt.lines:[]).filter(Boolean);
+    // 줄로 셈한 합계(부가세 별도 내역서면 줄 = 공급가 → +10%) — 반영 때 견적 합계와 같다. 줄이 없는 견적은 견적 합계 그대로.
+    const A=ls.reduce((a,l)=>a+Math.round(num(l.amt)),0),exp=ls.length?(q.stmt.vat==='separate'?A+Math.round(A*0.1):A):t;
+    g.lineTotal+=exp;if(Math.abs(exp-t)>1)g.linesOff=true;
     (ls.length?ls:[{d:q.stmt.date||q.date||'',loc:'',work:q.title||'작업내역서',amt:t}]).forEach(l=>g.lines.push({d:String(l.d||q.stmt.date||''),loc:hjStmtCell(l.loc),work:hjStmtCell(l.work)||'작업',amt:Math.round(num(l.amt))}));});
-  const paidBy={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt===src&&x.project)paidBy[x.project]=(paidBy[x.project]||0)+Math.round(num(x.amt));});
+  const paidBy={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt===src){const k=x.project||'';paidBy[k]=(paidBy[k]||0)+Math.round(num(x.amt));}});
   Object.keys(paidBy).forEach(name=>{site(name).paid=paidBy[name];});
   const list=[...sites.values()].map(g=>{g.left=Math.max(0,g.total-g.paid);g.lines=g.lines.map((l,i)=>[l,i]).sort((a,b)=>String(a[0].d).localeCompare(String(b[0].d))||a[1]-b[1]).map(x=>x[0]);
       g.photos=g.quotes?hjStmtPhotoCount(idx,g.project,g.lines.map(l=>l.d)):0;return g;})
-    .sort((a,b)=>(!a.quotes)-(!b.quotes)||a.project.localeCompare(b.project,'ko'));
+    .sort((a,b)=>(!a.quotes)-(!b.quotes)||a.none-b.none||a.project.localeCompare(b.project,'ko'));
+  // 머리 남음 vs 현장별 남은 돈 합 — 까닭: 줄에서 빠진 현장·현장 미지정으로 받은 돈(orphanPaid), 합계보다 더 받은 현장(overPaid)
+  const siteLeft=list.reduce((a,g)=>a+(g.quotes?g.left:0),0),orphanPaid=list.reduce((a,g)=>a+(g.quotes?0:g.paid),0),overPaid=list.reduce((a,g)=>a+(g.quotes?Math.max(0,g.paid-g.total):0),0);
   const grpSrc={};(state.payLog||[]).forEach(x=>{if(x&&x.stmtPay&&x.stmt)(grpSrc[x.stmtPay]=grpSrc[x.stmtPay]||new Set()).add(x.stmt);});
   const pays=new Map();
   (state.payLog||[]).forEach(x=>{if(!x||x.stmt!==src)return;
     const d=String(x.d||''),k=x.stmtPay?'g:'+x.stmtPay:'d:'+d;
-    if(!pays.has(k))pays.set(k,{key:k,grp:String(x.stmtPay||''),d,total:0,sites:new Set(),payer:'',method:'',proofs:{},none:0,others:x.stmtPay&&grpSrc[x.stmtPay]?grpSrc[x.stmtPay].size-1:0});
-    const g=pays.get(k);g.total+=Math.round(num(x.amt));g.sites.add(x.project||'');if(d&&(!g.d||d<g.d))g.d=d;
+    if(!pays.has(k))pays.set(k,{key:k,grp:String(x.stmtPay||''),d,total:0,sites:new Set(),unassigned:0,payer:'',method:'',proofs:{},none:0,others:x.stmtPay&&grpSrc[x.stmtPay]?grpSrc[x.stmtPay].size-1:0});
+    const g=pays.get(k);g.total+=Math.round(num(x.amt));if(x.project)g.sites.add(x.project);else g.unassigned++;if(d&&(!g.d||d<g.d))g.d=d;
     if(!g.payer&&x.payer)g.payer=String(x.payer).slice(0,30);if(!g.method&&x.method)g.method=String(x.method);
     if(HJ_PROOF[x.proof])g.proofs[x.proof]=(g.proofs[x.proof]||0)+1;else g.none++;});
   return {src,file:s.file||src,doc:s.doc,to:s.to,date:s.date,age:hjStmtAgeDays(s),total:s.total,paid:s.paid,left:s.left,
+    siteLeft,orphanPaid,overPaid,gap:Math.max(0,siteLeft-s.left),
     dunTo:hjStmtCell(s.to)||'거래처 미기재',proofN:hjStmtProofTargets(src).length,sites:list,
     pays:[...pays.values()].map(p=>Object.assign(p,{sites:p.sites.size})).sort((a,b)=>String(b.d).localeCompare(String(a.d))||a.key.localeCompare(b.key))};
 }
@@ -39621,28 +39638,34 @@ function hjStmtDetailView(src,back){
   let D=null;try{D=hjStmtDetailData(src);}catch(e){}
   if(!D){toast('반영한 내역서를 찾지 못했습니다');return;}
   const today=localDate(),me=()=>hjStmtDetailView(src,back),SHOW=40,W=(v,c)=>'<b style="white-space:nowrap'+(c?';color:'+c:'')+'">'+won(v)+'</b>';   // 금액이 숫자 중간에서 줄바꿈되지 않게
-  const head='<div data-sd-head style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px;line-height:1.7"><b>'+escapeHtml((D.to?D.to+' · ':'')+D.doc)+'</b> · 작성일 '+escapeHtml(D.date||'모름')+(D.left?hjStmtAgeChip({date:D.date},today):'')+
-    '<div data-sd-sum>합계 '+W(D.total)+' · 받음 '+W(D.paid,'var(--ok)')+' · '+(D.left?'남음 '+W(D.left):'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+
+  // 머리 남음과 현장별 남은 돈 합이 다르면 숨기지 않고 까닭과 함께 — 어느 셈을 기준으로 할지는 대표 결정 대기
+  const gap=D.gap?'<div data-sd-gap style="font-size:12px;line-height:1.6;color:var(--hj-warn-fg,#b45309);margin-top:4px;overflow-wrap:anywhere">⚠ 현장별 남은 돈을 더하면 '+W(D.siteLeft)+'이에요 — 위 남음('+won(D.left)+')과 '+won(D.gap)+' 달라요. '+
+      (D.orphanPaid?'줄에서 빠진 현장·현장 미지정으로 받은 '+won(D.orphanPaid)+'은 위 받음에만 들어가 있어요. ':'')+
+      (D.overPaid?'합계보다 '+won(D.overPaid)+' 더 받은 현장이 있어요. ':'')+'협력사에 남은 돈을 말하기 전에 확인해 주세요.</div>':'';
+  const head='<div data-sd-head style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px;line-height:1.7;overflow-wrap:anywhere"><b style="overflow-wrap:anywhere">'+escapeHtml((D.to?D.to+' · ':'')+D.doc)+'</b> · 작성일 '+escapeHtml(D.date||'모름')+(D.left?hjStmtAgeChip({date:D.date},today):'')+
+    '<div data-sd-sum>합계 '+W(D.total)+' · 받음 '+W(D.paid,'var(--ok)')+' · '+(D.left?'남음 '+W(D.left):'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+gap+
     '<div style="font-size:11.5px;color:var(--muted);word-break:break-all">원본 파일: '+escapeHtml(D.file)+'</div></div>';
   const line=l=>'<div data-sd-line style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:4px 0;border-top:1px dashed var(--line-soft)"><span style="min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.loc&&l.loc!==l.work?l.loc+' · '+l.work:l.work)+'</span><b style="white-space:nowrap">'+won(l.amt)+'</b></div>';
+  const name=g=>g.none?'<b>현장 미지정</b>':g.open?'<button type="button" class="mini-btn" data-open="'+escapeAttr(g.project)+'" style="min-height:44px;max-width:100%;overflow-wrap:anywhere;text-align:left" title="이 현장 화면 열기">'+escapeHtml(g.project)+'</button>':'<b style="overflow-wrap:anywhere">'+escapeHtml(g.project)+'</b> <span style="font-size:11.5px;color:var(--muted)">현장 목록에 없음</span>';
   const sites=D.sites.map(g=>'<div data-sd-site="'+escapeAttr(g.project)+'" style="border:1px solid var(--line-soft);border-radius:11px;padding:6px 10px;margin:0 0 8px">'+
-    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px">'+(g.open?'<button type="button" class="mini-btn" data-open="'+escapeAttr(g.project)+'" style="min-height:44px;max-width:100%;overflow-wrap:anywhere;text-align:left" title="이 현장 화면 열기">'+escapeHtml(g.project)+'</button>':'<b style="overflow-wrap:anywhere">'+escapeHtml(g.project)+'</b> <span style="font-size:11.5px;color:var(--muted)">현장 목록에 없음</span>')+
-      (g.quotes?' '+hjStmtPhotoBadge(g.photos):'')+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px">'+name(g)+(g.quotes?' '+hjStmtPhotoBadge(g.photos):'')+'</div>'+
     '<div data-sd-site-sum style="font-size:12.5px;margin:4px 0 2px">'+(g.quotes?'합계 '+W(g.total)+' · ':'')+'받은 돈 '+W(g.paid,'var(--ok)')+(g.quotes?' · '+(g.left?'남은 돈 '+W(g.left):'<b style="color:var(--ok)">✓ 다 받음</b>'):'')+'</div>'+
-    (g.quotes?'':'<div style="font-size:11.5px;color:var(--muted)">이 내역서 줄에서 빠진 현장이에요(집계 제외·이름 바뀜) — 이 내역서로 받은 돈만 남아 있어요.</div>')+
+    (g.quotes?'':'<div style="font-size:11.5px;color:var(--muted)">'+(g.none?'현장 없이 적힌 이 내역서 입금이에요 — 위 받음에는 들어가 있어요.':'이 내역서 줄에서 빠진 현장이에요(집계 제외·견적 삭제 등) — 이 내역서로 받은 돈만 남아 있어요.')+'</div>')+
     (g.sep?'<div style="font-size:11.5px;color:var(--muted)">줄 금액은 공급가 — 합계에는 부가세 10%가 더해져 있어요</div>':'')+
+    (g.linesOff?'<div data-sd-lines-off style="font-size:11.5px;color:var(--hj-warn-fg,#b45309)">✏ 반영한 뒤 견적을 고쳐서, 아래 줄 금액으로 셈한 합계('+won(g.lineTotal)+')와 위 합계가 달라요 — 위 합계·남은 돈은 지금 견적 기준이에요</div>':'')+
     g.lines.slice(0,SHOW).map(line).join('')+(g.lines.length>SHOW?'<div style="font-size:11.5px;color:var(--muted);padding-top:2px">…외 '+(g.lines.length-SHOW)+'줄</div>':'')+'</div>').join('');
   const proofTxt=p=>{const ks=Object.keys(p.proofs);if(!ks.length)return '증빙 아직';return ks.map(k=>HJ_PROOF[k]+(ks.length>1||p.none?' '+p.proofs[k]+'건':'')).join(' · ')+(p.none?' · 아직 '+p.none+'건':'');};
+  const where=p=>p.sites?'현장 '+p.sites+'곳에 나눠 적음'+(p.unassigned?' (현장 미지정 '+p.unassigned+'건 포함)':''):'현장 미지정으로 적음';
   const pays=D.pays.length?D.pays.map(p=>'<div data-sd-pay="'+escapeAttr(p.key)+'" style="font-size:12.5px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="display:flex;justify-content:space-between;gap:8px"><span>'+escapeHtml(p.d?hjMdDow(p.d):'날짜 없음')+(p.grp?'':' <span style="color:var(--muted)">(그날 입금 합계)</span>')+'</span><b style="white-space:nowrap">'+won(p.total)+'</b></div>'+
-      '<div style="color:var(--muted);overflow-wrap:anywhere">현장 '+p.sites+'곳에 나눠 적음'+(p.payer?' · 입금자 '+escapeHtml(p.payer):'')+(p.method?' · '+escapeHtml(p.method):'')+' · 🧾 '+escapeHtml(proofTxt(p))+(p.others?' · 통장 한 줄로 내역서 '+(p.others+1)+'장을 함께 받은 입금':'')+'</div></div>').join('')
+      '<div style="color:var(--muted);overflow-wrap:anywhere">'+where(p)+(p.payer?' · 입금자 '+escapeHtml(p.payer):'')+(p.method?' · '+escapeHtml(p.method):'')+' · 🧾 '+escapeHtml(proofTxt(p))+(p.others?' · 통장 한 줄로 내역서 '+(p.others+1)+'장을 함께 받은 입금':'')+'</div></div>').join('')
     :'<div data-sd-nopay style="font-size:12.5px;color:var(--muted);padding:4px 0">아직 받은 돈이 없어요</div>';
   const body='<div data-stmt-detail="'+escapeAttr(src)+'" style="font-size:13px;line-height:1.6">'+head+
     '<div style="font-size:12px;font-weight:800;margin:4px 0 6px">🏗 현장별 '+D.sites.length+'곳</div>'+sites+
     '<div style="font-size:12px;font-weight:800;margin:12px 0 2px">💰 입금 이력 '+D.pays.length+'번</div>'+pays+'</div>';
   const btns=[{label:back?'← 뒤로':'닫기',cls:'ghost',fn:back||closeModal}];
-  if(D.left)btns.push({label:'📋 미수 안내 글',cls:'ghost',fn:()=>hjStmtDunView(D.dunTo)});
+  if(D.left)btns.push({label:'📋 미수 안내 글',cls:'ghost',fn:()=>hjStmtDunView(D.dunTo,me)});
   if(D.proofN)btns.push({label:'🧾 증빙 '+D.proofN+'건',cls:'ghost',fn:()=>hjStmtProofView(src,me)});
-  if(D.left)btns.push({label:'💰 입금',cls:'clay',fn:()=>hjStmtPayView(src)});
+  if(D.left)btns.push({label:'💰 입금',cls:'clay',fn:()=>hjStmtPayView(src,me)});
   openModal('📄 '+((D.to?D.to+' ':'')+D.doc+' '+hjStmtMd(D.date)).trim(),body,btns,true);
   document.querySelectorAll('#modalRoot [data-open]').forEach(b=>{b.onclick=()=>{const n=b.dataset.open;closeModal();state.activeProject=n;state.tab='project';__projView=null;render();};});
 }
