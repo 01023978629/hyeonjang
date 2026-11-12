@@ -106,7 +106,7 @@ const SEED = () => {
     { id: 'w4', project: '마루아파트', date: '2026-11-11', in: '08:00', out: '', memo: '' },
     { id: 'w5', project: '사랑빌라', date: '2026-11-11', in: '09:00', out: '', memo: '[팀 보고] 완료', teamReport: { key: 'r1', orderId: '', hours: 0, reporter: '' } },
   ];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; __tabStale = false;
   state.activeProject = '바다아파트'; state.tab = 'dashboard'; state.search = '';
   render(); syncMobileNav();
 };

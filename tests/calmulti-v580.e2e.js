@@ -106,7 +106,7 @@ const SEED = () => {
   closeModal(true);
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
   state.projects = [P('가온아파트'), P('나래마을아파트')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   const S = (id, date, time, title, memo, extra) => Object.assign({ id, date, time, title, project: '가온아파트', workers: '', hours: 8, memo, report: null }, extra || {});
   state.schedule = [
     S('T', '2026-11-12', '', '타일', '2026-11-12~2026-11-14 (3일)\n자재: 줄눈 회색'),

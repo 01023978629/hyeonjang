@@ -34,7 +34,10 @@ const MUT = {
   'no-reprice': ['  q.items.forEach((it,i)=>{it.price=prices[i];});\n', ''],
   'no-dirty': ['||res.newProjects.length||res.replaced.length)markDirty();', '||res.newProjects.length)markDirty();'],
   'no-memo': ["x.q.memo=[String(x.q.memo||'')]", "void [String(x.q.memo||'')]"],
-  'no-filemark': ['    x.q.stmt.file=src;\n', ''],
+  'no-filemark': ["    x.q.stmt.revFiles=(Array.isArray(x.q.stmt.revFiles)?x.q.stmt.revFiles:[]).filter(f=>f!==src).concat(src).slice(-20);\n", ''],
+  // 통합 검토(v587) — 수정본 표식을 견적마다 한 칸(stmt.file)에 덮어쓰면 앞선 수정본이 다시 '아직 안 넣음'이 되고 원본 파일 이름도 바뀐다
+  'rev-overwrite': ["    x.q.stmt.revFiles=(Array.isArray(x.q.stmt.revFiles)?x.q.stmt.revFiles:[]).filter(f=>f!==src).concat(src).slice(-20);\n", '    x.q.stmt.file=src;\n'],
+  'no-oldfile': ["  if((rf.includes(sc)||org===sc)&&sc!==last)return ", "  if(false)return "],
   'no-loc': ["function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.loc),hjStmtKey(l&&l.work)].join('|');}", "function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.work)].join('|');}"],
   'no-projctx': ["  if(ctx&&ctx.project!=null&&ctx.project!==p)return '고른 현장('+ctx.project+')과 다른 현장의 견적이라 골라 주세요';\n", ''],
   'no-vendor': ["    if(!a||!b)return '다른 파일이고 거래처를 알 수 없어 골라 주세요';\n    if(a!==b)return '다른 거래처(‘'+a+'’) 내역서라 골라 주세요';\n", ''],
@@ -94,7 +97,7 @@ const SEED = () => {
   hjSnapshot = window.__realSnap;
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김가상', phone: '010-0000-0000', addr: '' }, archived: false });
   state.projects = [P('가온아파트'), P('나래아파트'), P('다솜빌라')];
-  state.quotes = []; state.files = []; state.notes = []; state.payLog = []; state.expenses = []; state.schedule = []; state._demo = false; state.dirHandle = null; state.goals = {}; state.editingQuote = null; window.__tabStale = false;
+  state.quotes = []; state.files = []; state.notes = []; state.payLog = []; state.expenses = []; state.schedule = []; state._demo = false; state.dirHandle = null; state.goals = {}; state.editingQuote = null; __tabStale = false;
   __hjStmtYm = null; __hjStmtOldOpen = false; state.activeProject = null; state.tab = 'estimates'; state.search = '';
   // 앱 함수로 처음 반영한다(손으로 견적을 짓지 않는다)
   window.PLAN = (file, lines, vat, pick) => {
@@ -245,8 +248,16 @@ const SEED = () => {
         const r6 = await hjStmtApplySafe(DECIDE(PLAN(A3, [['작업내역서'], ['받는 분', '가상협력'], ['작업 날짜', '위치', '작업명', '작업비용'], ['2026-11-03', '가온아파트 101-1101', '우수관 교체', 450000]])));
         const gq = STMTQ('가온아파트', A);
         const s6 = { pre, rep: r6.replaced.map(x => [x.from, x.to]), quotes: r6.quotes.length, post: hjStmtFiles().find(x => x.f.id === 'fx_a3').applied, file: gq.stmt.file, src: hjStmtSrcOf(gq),
-          origApplied: hjStmtFiles().filter(x => x.f.id !== 'fx_a3').length, memo: gq.memo.split('\n').filter(x => /^\[금액 수정\]/.test(x)).length };
-        return { s3, s4, s5, s6 };
+          rev: (gq.stmt.revFiles || []).slice(), origApplied: hjStmtFiles().filter(x => x.f.id !== 'fx_a3').length, memo: gq.memo.split('\n').filter(x => /^\[금액 수정\]/.test(x)).length };
+        // 통합 검토(v587) — 바꾸기만 한 수정본을 하나 더(수정3): 앞선 수정본(수정2)이 다시 '아직 안 넣음'이 되면 안 되고, 원본 파일 이름(stmt.file)은 그대로,
+        // 이미 넣었던 옛 파일(수정2·원본)을 다시 넣으면 기본값으로 바꾸지 않는다(새 금액이 옛 금액으로 돌아간다)
+        const A4 = '작업내역서초안_20261110_가상협력_수정3.xlsx', HEAD = [['작업내역서'], ['받는 분', '가상협력'], ['작업 날짜', '위치', '작업명', '작업비용']];
+        const r7 = await hjStmtApplySafe(DECIDE(PLAN(A4, HEAD.concat([['2026-11-03', '가온아파트 101-1101', '우수관 교체', 460000]]))));
+        const g7 = STMTQ('가온아파트', A);
+        const again = (file, amt) => { const pl = PLAN(file, HEAD.concat([['2026-11-03', '가온아파트 101-1101', '우수관 교체', amt]])), row = hjStmtRevisions(pl.groups[0].lines, file, { projectOf: () => '가온아파트', to: pl.to }).rows[0]; return row ? [row.def, row.cands[0].block] : ['none', '']; };
+        const s7 = { rep: r7.replaced.map(x => [x.from, x.to]), a3: hjStmtFiles().find(x => x.f.id === 'fx_a3').applied, file: g7.stmt.file, rev: (g7.stmt.revFiles || []).slice(),
+          old3: again(A3, 450000), orig: again(A, 220000), next: again('작업내역서초안_20261110_가상협력_수정4.xlsx', 470000)[0] !== '', detail: hjStmtDetailData(A).file, lines: g7.stmt.lines.map(l => l.amt) };
+        return { s3, s4, s5, s6, s7 };
       }, { l3: G(LINES3), A, A2 });
       Object.assign(r, r2);
       assert.deepEqual(r.s3.replaced, [['가온아파트', 330000, 440000]], 'REVISED file replaces the old quote ' + JSON.stringify(r.s3));
@@ -255,7 +266,10 @@ const SEED = () => {
       assert.deepEqual(r.s4.add, [1, 0, [440000, 50000, 60000]], '따로 더하기는 예전처럼 한 줄 더 ' + JSON.stringify(r.s4));
       assert.deepEqual(r.s4.skip, [1, 0, 0, 0, true], '넣지 않기는 아무것도 안 바꿈 ' + JSON.stringify(r.s4));
       assert.deepEqual(r.s5, { rep: 1, total: 132000, calc: 132000, items: [120000] }, '공급가 견적 ' + JSON.stringify(r.s5));
-      assert.deepEqual(r.s6, { pre: false, rep: [[440000, 450000]], quotes: 0, post: true, file: '작업내역서초안_20261110_가상협력_수정2.xlsx', src: A, origApplied: 0, memo: 3 }, 'APPLY 바꾸기만 한 수정본도 반영함 ' + JSON.stringify(r.s6));
+      assert.deepEqual(r.s6, { pre: false, rep: [[440000, 450000]], quotes: 0, post: true, file: A, src: A, rev: [A, A2, '작업내역서초안_20261110_가상협력_수정2.xlsx'], origApplied: 0, memo: 3 }, 'APPLY 바꾸기만 한 수정본도 반영함 · 원본 이름 그대로 ' + JSON.stringify(r.s6));
+      assert.ok(JSON.stringify(r.s7.rep) === '[[450000,460000]]' && r.s7.a3 === true && r.s7.file === A && r.s7.detail === A && JSON.stringify(r.s7.lines) === '[460000,50000,60000]', 'CHAIN 앞선 수정본 반영함 유지·원본 이름 ' + JSON.stringify(r.s7));
+      assert.ok(r.s7.old3[0] === '' && /이미 넣었던 옛 파일/.test(r.s7.old3[1]) && r.s7.orig[0] === '' && /이미 넣었던 옛 파일/.test(r.s7.orig[1]), 'CHAIN 옛 파일 다시 넣으면 기본값 없음 ' + JSON.stringify(r.s7));
+      assert.equal(r.s7.next, true, 'CHAIN 처음 보는 다음 수정본은 기본 바꾸기');
     });
 
     await test('③ 막음 — 안 고름·안전판·손으로 고친 견적·입금·미리보기 뒤 바뀜·같은 옛 줄 두 번 → 그대로 · 여럿 중 고른 줄만 (GUARD)', async () => {

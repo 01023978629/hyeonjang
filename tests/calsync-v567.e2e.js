@@ -81,7 +81,7 @@ const SEED = () => {
   closeModal(true);
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
   state.projects = [P('가온아파트'), P('나래마을아파트'), P('다솜아파트'), P('라온그린아파트')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   state.files = [{ id: 'PH1', name: 'IMG_1.jpg', ext: 'jpg', kind: 'photo', project: '나래마을아파트', prefix: '현장사진/', size: 1001, when: new Date('2026-11-01T10:00:00+09:00') }];
   const S = (id, date, time, title, project, extra) => Object.assign({ id, date, time, title, project: project || '', workers: '', hours: 8, memo: '', report: null }, extra || {});
   state.schedule = [S('A', '2026-11-10', '09:00', '가온A 3동 1309호 앞베란다 우수관 방수', '가온아파트'), S('B', '2026-11-10', '12:00', '라온그린 104동 1503호 우수관 누수', '라온그린아파트'),
@@ -165,7 +165,7 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
         const plan = () => hjCalSyncPlan(hjCalSyncParse(t)), sig = () => JSON.stringify(state.schedule), out = {};
         const tryIt = async (p, picks) => { const b = sig(); try { await hjCalSyncApply(p, picks); return 'applied'; } catch (e) { return (b === sig() ? 'same:' : 'CHANGED:') + e.message; } };
         const p0 = plan(); out.rows = p0.rows.map(r => r.status);
-        window.__tabStale = true; out.stale = await tryIt(p0, [{ i: 0 }]); window.__tabStale = false;
+        __tabStale = true; out.stale = await tryIt(p0, [{ i: 0 }]); __tabStale = false;
         const real = hjSnapshot; hjSnapshot = async () => false; out.snap = await tryIt(p0, [{ i: 0 }]); hjSnapshot = real;
         const f = state.schedule.find(s => s.id === 'F'), keep = f.title; f.title = '바뀐 제목'; out.stamp = await tryIt(p0, [{ i: 0 }]); f.title = keep;
         out.none = await tryIt(plan(), []);

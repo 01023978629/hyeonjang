@@ -60,7 +60,7 @@ async function open(width) {
 }
 const SEED = () => {
   closeModal(true);
-  state._demo = false; state.payLog = []; state.quotes = []; state.files = []; state.notes = []; state.asLog = []; state.expenses = []; window.__tabStale = false;
+  state._demo = false; state.payLog = []; state.quotes = []; state.files = []; state.notes = []; state.asLog = []; state.expenses = []; __tabStale = false;
   state.contacts = [{ id: 'k1', name: '김타일', phone: '010-1111-2222', company: '', team: true }];
   state.projects = [{ name: '가상현장A', stage: 2, received: 0, phases: [], cost: {}, customer: { name: '김가상', phone: '010-9999-8888', addr: '대전 서구 둔산동 1' } }];
   const S = (id, date, title, x) => Object.assign({ id, date, time: '09:00', title, project: '가상현장A', workers: '', memo: '', hours: 8, report: null }, x || {});

@@ -66,7 +66,7 @@ const SEED = () => {
   closeModal(true);
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false });
   state.projects = [P('가온아파트'), P('나래마을아파트'), P('다솜아파트')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   const S = (id, date, time, title, extra) => Object.assign({ id, date, time, title, project: '', workers: '', hours: 8, memo: '', report: null }, extra || {});
   state.schedule = [S('OLD', '2026-11-12', '09:00', '옛 맞추기 일정', { memo: '장소: 시험로 1\n구글 캘린더에서 가져옴 (@ 제미나이 입력)' }), S('MAN', '2026-11-12', '13:00', '손으로 넣은 일정', { memo: '구글 캘린더에서 가져옴' })];
   state.activeProject = null; state.tab = 'schedule'; state.search = '';

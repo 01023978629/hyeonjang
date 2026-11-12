@@ -51,7 +51,7 @@ async function open(width) {
   return { context, page };
 }
 const SEED = () => {
-  closeModal(true); window.__tabStale = false; state._demo = false;
+  closeModal(true); __tabStale = false; state._demo = false;
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, geo: null });
   state.projects = [P('가온아파트'), P('나래아파트'), P('다솜아파트')];
   state.files = []; state.quotes = []; state.expenses = []; state.payLog = []; state.schedule = []; state.notes = [];
@@ -107,7 +107,7 @@ const SEED = () => {
         const extra = { d: '2026-11-01', project: '나래아파트', amt: 1000, stmt: 'C.xlsx', memo: 'x' }; state.payLog.push(extra);   // 창을 연 뒤 새 입금
         let b = snap(); try { await hjStmtProofSave('C.xlsx', 'tax', { recs }); out.changed = 'saved'; } catch (e) { out.changed = e.message; } out.changedSame = snap() === b;
         state.payLog.splice(state.payLog.indexOf(extra), 1);
-        window.__tabStale = true; b = snap(); try { await hjStmtProofSave('C.xlsx', 'tax', {}); out.stale = 'saved'; } catch (e) { out.stale = e.message; } out.staleSame = snap() === b; window.__tabStale = false;
+        __tabStale = true; b = snap(); try { await hjStmtProofSave('C.xlsx', 'tax', {}); out.stale = 'saved'; } catch (e) { out.stale = e.message; } out.staleSame = snap() === b; __tabStale = false;
         b = snap(); try { await hjStmtProofSave('C.xlsx', 'cash', { at: '2026-11-09' }); out.future = 'saved'; } catch (e) { out.future = e.message; } out.futureSame = snap() === b;
         await hjStmtProofSave('C.xlsx', 'etc', {});
         out.etc = state.payLog.filter(x => x.stmt === 'C.xlsx').map(x => [x.proof, x.method]);

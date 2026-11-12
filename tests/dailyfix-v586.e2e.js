@@ -77,7 +77,7 @@ const SEED = () => {
   state.projects = [P('가온아파트'), P('나래빌라'), P('다솜상가', 0)];
   state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state.asLog = []; state.workLogs = []; state._demo = false; state.dirHandle = null;
   state.goals = { salesBasis: 'stmt' };   // v565 내역서 탭이 켜진 기기 — 견적·정산 탭 자리가 📑 내역서
-  window.__tabStale = false; state.editingQuote = null;
+  __tabStale = false; state.editingQuote = null;
   const S = (id, date, time, title, extra) => Object.assign({ id, date, time, title, project: '', workers: '', hours: 8, memo: '', report: null }, extra || {});
   state.schedule = [
     S('MULTI', '2026-11-10', '09:00', '타일 (3일차 시작)', { project: '가온아파트', memo: '2026-11-10~2026-11-12 (3일)' }),

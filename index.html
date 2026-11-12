@@ -4040,7 +4040,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v579-stmtdraft';
+const APP_BUILD='hyeonjang-v587-wodaymulti';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -37797,12 +37797,12 @@ async function hjUnbilledCopy(){
 }
 function hjUnbilledSkip(name,from,to){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<from)return false;
-  if(window.__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return false;}
+  if((typeof __tabStale!=='undefined'&&__tabStale)){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return false;}
   p.stmtSkip=(Array.isArray(p.stmtSkip)?p.stmtSkip:[]).filter(x=>x&&!(String(x.from)>=from&&String(x.to)<=to)).concat([{from,to,at:localDate()}]).slice(-60);
   __hjUnbilledMemo=null;markDirty();render();toast('청구 안 함으로 넘겼어요 — 목록 아래 [넘긴 작업 다시 보기]로 되돌릴 수 있어요');return true;
 }
 function hjUnbilledUnskip(){
-  if(window.__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  if((typeof __tabStale!=='undefined'&&__tabStale)){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
   const since=hjAddDays(localDate(),-HJ_UNBILLED_DAYS);let n=0;
   (state.projects||[]).forEach(p=>{if(!p||!Array.isArray(p.stmtSkip))return;const keep=p.stmtSkip.filter(x=>x&&String(x.to)<since);n+=p.stmtSkip.length-keep.length;if(keep.length)p.stmtSkip=keep;else delete p.stmtSkip;});
   if(n){__hjUnbilledMemo=null;markDirty();render();toast('넘긴 작업 '+n+'건을 다시 보이게 했어요');}
@@ -39461,6 +39461,10 @@ function hjStmtChoiceName(c){c=String(c||'');return c.indexOf('__new__:')===0?hj
 function hjStmtRevBlock(e,l,src,ctx){
   const q=e&&e.q;if(!q)return '바꿀 줄을 찾지 못했어요';
   if(hjStmtQuoteEdited(q,1))return '손으로 고친 견적이라 바꿀 수 없어요 — 골라 주세요';
+  // 이 견적에 이미 넣었던 파일(원본·앞선 수정본)인데 그 뒤 다른 파일로 금액을 또 바꿨으면 — 옛 파일을 다시 넣는 것이다(새 금액이 옛 금액으로 돌아간다).
+  // 처음 보는 파일(다음 수정본)은 막지 않는다. 마지막으로 넣은 파일 = revFiles 끝, 없으면 원본(stmt.src).
+  const rf=Array.isArray(q.stmt&&q.stmt.revFiles)?q.stmt.revFiles.map(f=>hjStmtCell(f)):[],sc=hjStmtCell(src),org=hjStmtSrcOf(q),last=rf.length?rf[rf.length-1]:org;
+  if((rf.includes(sc)||org===sc)&&sc!==last)return '이 견적은 그 뒤 ‘'+last+'’ 로 금액을 바꿨어요 — 이미 넣었던 옛 파일이라 골라 주세요';
   if(q.exSum)return '집계 제외한 견적이라 골라 주세요';
   const p=q.project||'',pj=(state.projects||[]).find(x=>x&&x.name===p);
   if(!pj)return '지운 현장의 견적이라 골라 주세요';
@@ -39577,9 +39581,10 @@ function hjStmtApply(plan,opts){
     x.rs.forEach(r=>{x.q.stmt.lines[r.e.li].amt=r.to;});
     hjStmtReprice(x.q);
     // 옛 작성 월의 매출(내역서)이 소급해 바뀌므로 언제·무엇을·어느 파일로 바꿨는지 견적 비고에 남긴다(기존 칸) ·
-    // 그 파일은 반영한 것으로 본다(stmt.file — hjStmtFiles 가 '아직 안 넣음'에서 뺀다. 새 견적이 안 생겨도)
+    // 그 파일은 반영한 것으로 본다 — stmt.revFiles(이 견적의 금액을 바꾼 수정본, 마지막이 가장 최근 · 20개까지). hjStmtFiles 가 '아직 안 넣음'에서 뺀다(새 견적이 안 생겨도).
+    // stmt.file 은 처음 만든 원본 파일 그대로 둔다 — 덮으면 앞선 수정본이 다시 '아직 안 넣음'으로 뜨고, 그걸 넣으면 기본값으로 새 금액이 옛 금액으로 돌아갔다(통합 검토).
     x.q.memo=[String(x.q.memo||'')].concat(x.rs.map(r=>'[금액 수정] '+today+' · '+(hjStmtCell(r.e.l.work)||'작업')+' '+hjNum(r.from)+'→'+hjNum(r.to)+'원 · 원본 ‘'+src+'’')).filter(Boolean).join('\n');
-    x.q.stmt.file=src;
+    x.q.stmt.revFiles=(Array.isArray(x.q.stmt.revFiles)?x.q.stmt.revFiles:[]).filter(f=>f!==src).concat(src).slice(-20);
     syncQuoteToProject(x.q);
     x.rs.forEach(r=>res.replaced.push({project:x.q.project||'',qid:x.q.id,d:r.e.l.d||'',loc:r.e.l.loc||'',work:r.e.l.work||'',from:r.from,to:r.to}));
     res.total+=quoteCalc(x.q).total-x.before;
@@ -39901,7 +39906,7 @@ function hjStmtProofInput(rec,kind,at,no){
 }
 async function hjStmtProofSave(src,kind,o){
   if(!Object.prototype.hasOwnProperty.call(HJ_PROOF,kind))throw new Error('증빙 종류를 고르세요');
-  if(window.__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');
+  if((typeof __tabStale!=='undefined'&&__tabStale))throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');
   const at=String(o&&o.at||localDate()),no=String(o&&o.no||'').trim().slice(0,100);
   if((kind==='tax'||kind==='cash')&&(!/^\d{4}-\d{2}-\d{2}$/.test(at)||at>localDate()))throw new Error('발행일은 오늘까지의 실제 날짜로 넣어 주세요');
   const recs=o&&Array.isArray(o.recs)?o.recs:hjStmtProofTargets(src);
@@ -39911,7 +39916,7 @@ async function hjStmtProofSave(src,kind,o){
   const vals=recs.map(r=>hjStmtProofInput(r,kind,at,no));   // 하나라도 막히면 아무것도 안 적는다
   if(state._demo){recs.forEach((r,i)=>hjTaxIssueApply(r,vals[i]));render();return {n:recs.length,demo:true};}
   const idx=recs.map(r=>state.payLog.indexOf(r)),stamp=paidStableJson(state.payLog||[]),rows=state.payLog;
-  const ensure=()=>{if(window.__tabStale||state.payLog!==rows||paidStableJson(state.payLog||[])!==stamp)throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');};
+  const ensure=()=>{if((typeof __tabStale!=='undefined'&&__tabStale)||state.payLog!==rows||paidStableJson(state.payLog||[])!==stamp)throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');};
   await durableLocalMutation({snapshotLabel:'내역서 증빙 한 번에 전',beforeCommit:ensure,mutateDraft:draft=>{
     if(paidStableJson(draft.payLog||[])!==stamp)throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');
     idx.forEach((i,k)=>{const r=draft.payLog[i];if(!r||r.stmt!==src||HJ_PROOF[r.proof])throw new Error('입금 기록이 바뀌었어요 — 창을 다시 열어 주세요');hjTaxIssueApply(r,vals[k]);});
@@ -39941,7 +39946,8 @@ function hjStmtProofView(src,back){
     const root=$('#modalRoot'),k=(root.querySelector('.spfKind[aria-pressed="true"]')||{}).dataset;
     const kind=k&&k.k||'tax';
     try{const r=await hjStmtProofSave(src,kind,{recs,at:(root.querySelector('#spfAt')||{}).value||today,no:(root.querySelector('#spfNo')||{}).value||''});
-      closeModal();render();toast('🧾 '+HJ_PROOF[kind]+' — 입금 기록 '+r.n+'건에 한 번에 기록했어요'+(r.demo?' (데모라 저장은 안 함)':''));}
+      closeModal();render();toast('🧾 '+HJ_PROOF[kind]+' — 입금 기록 '+r.n+'건에 한 번에 기록했어요'+(r.demo?' (데모라 저장은 안 함)':''));
+      if(typeof back==='function')back();}   // v582 📄 내역서 보기에서 열었으면 저장 뒤 그 창으로(💰 입금과 같게)
     catch(e){toast((e&&e.message)||'증빙을 기록하지 못했습니다');}
   }});
   openModal('🧾 내역서 입금 증빙',body,btns,true);
@@ -39952,7 +39958,7 @@ function hjStmtProofView(src,back){
 }
 // 앱이 색인한 작업내역서 엑셀 — [{f,applied}] (작업내역서/ 폴더 또는 이름에 작업내역서·공사내역서, 양식 제외)
 function hjStmtFiles(){
-  const used=new Set();(state.quotes||[]).forEach(q=>{if(!q||!q.stmt)return;used.add(hjStmtSrcOf(q));if(q.stmt.file)used.add(hjStmtCell(q.stmt.file));});   // v583 금액만 바꾼 수정본도(stmt.file)
+  const used=new Set();(state.quotes||[]).forEach(q=>{if(!q||!q.stmt)return;used.add(hjStmtSrcOf(q));if(q.stmt.file)used.add(hjStmtCell(q.stmt.file));(Array.isArray(q.stmt.revFiles)?q.stmt.revFiles:[]).forEach(f=>used.add(hjStmtCell(f)));});   // v583 금액만 바꾼 수정본도(stmt.revFiles)
   return (state.files||[]).filter(f=>f&&!f._fromQuote&&/\.xlsx?$/i.test(String(f.name||''))&&!/양식|서식|템플릿/.test(String(f.name||''))&&
       (/^작업내역서\//.test(String(f.prefix||'').normalize('NFC'))||/작업내역서|공사내역서/.test(String(f.name||'').normalize('NFC'))))
     .map(f=>({f,applied:used.has(hjStmtCell(f.name))}))
@@ -41418,12 +41424,14 @@ function hjCalSyncPlan(events,opts){
 // picks=[{i,project}] — 미리보기에서 체크한 줄만. {added,changed,removed,ids,list} — v581 ids·list = 새로 넣거나 바꾼 일정(지운 것 빼고), list 는 바뀌기 전·뒤
 function hjCalSyncSnap(s){const sp=hjSchSpan(s);return {date:String(s.date||''),time:String(s.time||''),to:sp.days>1?sp.to:''};}
 async function hjCalSyncApply(plan,picks){
-  if(window.__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
+  if((typeof __tabStale!=='undefined'&&__tabStale))throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(!plan||plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
   const sel=(Array.isArray(picks)?picks:[]).map(p=>({r:plan.rows[p.i],project:String(p.project||'')})).filter(x=>x.r);
   if(!sel.length)throw new Error('반영할 줄을 체크하세요');
   let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}
   if(!snapped)throw new Error('안전판을 만들지 못해 반영하지 않았습니다. 잠시 후 다시 시도하세요.');
+  // 안전판을 기다리는 사이 다른 창이 저장했을 수 있다 — 오래된 창이면 바꾸지 않는다(바꿔도 저장은 막혀 '바뀐 일정 알리기'가 저장 안 된 날짜를 알리게 된다)
+  if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
   const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,ids:[],list:[]};
   const note=(s,kind,from,fix)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);out.list.push({id:s.id,kind,fix:!!fix,title:String(s.title||''),project:String(s.project||''),from,to:null,_s:s});};

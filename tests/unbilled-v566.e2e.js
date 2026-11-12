@@ -57,7 +57,7 @@ const SEED = () => {
   const today = localDate(), d = n => hjAddDays(today, -n);
   const P = (name, extra) => Object.assign({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false }, extra || {});
   state.projects = [P('가온'), P('나래'), P('다솜'), P('라온', { archived: true }), P('마루')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   let n = 0;
   const ph = (project, day, label) => ({ id: 'PH' + (++n), name: 'IMG_' + n + '.jpg', ext: 'jpg', kind: 'photo', project, prefix: '현장사진/', size: 1000 + n, when: new Date(day + 'T10:00:00+09:00'), _worklabel: label || '' });
   state.files = [ph('가온', d(11)), ph('가온', d(10)), ph('가온', d(10)), ph('가온', d(10)), ph('가온', d(9)),          // 내역서 줄 d(10) — 이어진 사흘 한 묶음, 들어간 작업
@@ -106,7 +106,7 @@ const ROWS = () => ({ n: (document.querySelector('#view [data-unbilled-n]') || {
       assert.ok(text.split('\n').length === 3 && text.includes(D.rowB), '복사 글 — ' + text);
     });
     await test('③ [청구 안 함] → 현장 안 stmtSkip · [넘긴 작업 다시 보기] · 오래된 창이면 안 적음 (SKIP)', async () => {
-      const st = await page.evaluate(d3 => { window.__tabStale = true; const r = hjUnbilledSkip('나래', d3, d3); window.__tabStale = false; return [r, JSON.stringify(state.projects.find(p => p.name === '나래').stmtSkip || null)]; }, D.d3);
+      const st = await page.evaluate(d3 => { __tabStale = true; const r = hjUnbilledSkip('나래', d3, d3); __tabStale = false; return [r, JSON.stringify(state.projects.find(p => p.name === '나래').stmtSkip || null)]; }, D.d3);
       assert.deepEqual(st, [false, 'null'], '오래된 창이면 안 적음 — ' + JSON.stringify(st));
       await page.click('#view [data-unbilled] > [data-unbilled-row="나래"] [data-unbilled-skip]');
       const b = await page.evaluate(() => ({ n: document.querySelector('#view [data-unbilled-n]').textContent, rows: [...document.querySelectorAll('#view [data-unbilled] > [data-unbilled-row]')].map(el => el.firstChild.textContent.trim()),

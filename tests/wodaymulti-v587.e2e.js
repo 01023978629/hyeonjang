@@ -74,7 +74,7 @@ async function open(width, mobile) {
 }
 async function seed(page, legacy) {
   await page.evaluate(async ({ CUST, legacy }) => {
-    closeModal(true); clearTimeout(__idbSaveTimer); await __appStateWriteQueue; window.__tabStale = false;
+    closeModal(true); clearTimeout(__idbSaveTimer); await __appStateWriteQueue; __tabStale = false;
     const P = (name, kind) => ({ name, kind, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: CUST.name, phone: CUST.phone, addr: CUST.addr }, archived: false });
     state.projects = [P('가온아파트 욕실', 'interior'), P('나래빌라 주방', 'interior'), P('다솜상가', 'interior')];
     state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state.quotes = []; state.asLog = []; state.workLogs = []; state.contacts = [];

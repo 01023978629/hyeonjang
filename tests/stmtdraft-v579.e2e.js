@@ -55,7 +55,7 @@ const SEED = () => {
   closeModal(true);
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김가상', phone: '010-0000-0000', addr: '' }, archived: false });
   state.projects = [P('가온아파트'), P('나래아파트'), P('다솜빌라')];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   let n = 0;
   const ph = (project, day, label) => ({ id: 'PH' + (++n), name: 'IMG_' + n + '.jpg', ext: 'jpg', kind: 'photo', project, prefix: '현장사진/', size: 1000 + n, when: new Date(day + 'T10:00:00+09:00'), _worklabel: label || '' });
   state.files = [ph('가온아파트', '2026-11-05', '욕조 방수'), ph('가온아파트', '2026-11-06', '타일'), ph('다솜빌라', '2026-11-08', '실리콘')];

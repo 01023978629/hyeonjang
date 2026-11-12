@@ -33,6 +33,7 @@ const MUT = {
   'no-dun-fallback': ["dunTo:hjStmtCell(s.to)||'거래처 미기재'", 'dunTo:s.to'],
   'no-lines-off': ['if(Math.abs(exp-t)>1)g.linesOff=true;', ''],
   'no-back': ['fn:()=>hjStmtPayView(src,me)', 'fn:()=>hjStmtPayView(src)'],
+  'proof-noback': ["      if(typeof back==='function')back();}   // v582 📄 내역서 보기에서 열었으면 저장 뒤 그 창으로", "      }   // v582"],
   'wide-head': ['line-height:1.7;overflow-wrap:anywhere"><b style="overflow-wrap:anywhere">', 'line-height:1.7"><b>']
 };
 let html = process.env.HJ_V582_BASELINE ? execFileSync('git', ['show', process.env.HJ_V582_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
@@ -66,7 +67,7 @@ async function open(width) {
   return { context, page };
 }
 const SEED = () => {
-  closeModal(true); window.__tabStale = false; state._demo = false;
+  closeModal(true); __tabStale = false; state._demo = false;
   const P = name => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '시험고객' + name.slice(0, 1), phone: '010-0000-12' + String(name.length).padStart(2, '0'), addr: '' }, geo: null });
   state.projects = [P('가온아파트'), P('나래아파트'), P('다솜아파트')];
   state.files = []; state.quotes = []; state.expenses = []; state.payLog = []; state.schedule = []; state.notes = [];
@@ -257,6 +258,13 @@ const snapState = () => { const o = JSON.parse(JSON.stringify(serializeData()));
       assert.equal(after.sum, '합계 1,650,000원 · 받음 1,650,000원 · ✓ 다 받음');
       assert.match(after.gap, /현장별 남은 돈을 더하면 33,000원이에요 — 위 남음\(0원\)과 33,000원 달라요/, after.gap);
       assert.deepEqual(after.btns, ['닫기', '🧾 증빙 5건'], '다 받으면 입금·미수 단추 없음 ' + JSON.stringify(after.btns));
+      // 🧾 증빙도 저장 뒤 이 창으로(통합 검토 v587 — 예전엔 창이 닫혀 장부로 떨어졌다)
+      await page.click('#modalRoot .mfoot button:has-text("🧾 증빙 5건")');
+      await page.waitForSelector('#modalRoot [data-stmtproof-n]');
+      await page.click('#modalRoot .mfoot button.clay');
+      await page.waitForSelector('#modalRoot [data-stmt-detail="A.xlsx"]', { timeout: 6000 });
+      const pf = await page.evaluate(() => ({ btns: [...document.querySelectorAll('#modalRoot .mfoot button')].map(b => b.textContent.trim()), left: hjStmtProofTargets('A.xlsx').length }));
+      assert.deepEqual(pf, { btns: ['닫기'], left: 0 }, '증빙 저장 뒤 내역서 보기로 · 증빙 단추 사라짐 ' + JSON.stringify(pf));
       // 뒤로 = 받은 함수
       const back = await page.evaluate(() => { let hit = 0; hjStmtDetailView('B.xlsx', () => { hit++; closeModal(true); }); const b = [...document.querySelectorAll('#modalRoot .mfoot button')]; const label = b[0].textContent; b[0].click(); return { label, hit }; });
       assert.deepEqual(back, { label: '← 뒤로', hit: 1 });

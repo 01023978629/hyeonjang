@@ -81,7 +81,7 @@ const SEED = () => {
   const P = (name, customer) => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: Object.assign({ name: '', phone: '', addr: '' }, customer || {}), archived: false });
   state.projects = [P('가온아파트', { name: '김가온', phone: '010-1111-2222', addr: '시험시 가온로 1' }), P('나래마을아파트', { name: '이나래' }), P('다솜아파트')];
   state.contacts = [{ id: 'k1', name: '김타일', phone: '010-3333-4444', team: true }, { id: 'k2', name: '박도배', phone: '010-5555-6666', team: true }];
-  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state._demo = false; state.dirHandle = null; state.goals = {}; window.__tabStale = false;
+  state.quotes = []; state.notes = []; state.payLog = []; state.expenses = []; state.files = []; state._demo = false; state.dirHandle = null; state.goals = {}; __tabStale = false;
   const S = (id, date, time, title, project, extra) => Object.assign({ id, date, time, title, project, workers: '', hours: 8, memo: '', report: null }, extra || {});
   state.schedule = [
     S('A', '2026-11-12', '', '타일', '가온아파트', { crew: '김타일', memo: '2026-11-12~2026-11-14 (3일)\n현관 1234#\n자재는 문 앞' }),
