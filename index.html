@@ -41297,6 +41297,22 @@ function hjCalSyncHours(a,b){   // 'HH:MM' 둘 → 시간(0.5 단위), 모르면
   const f=x=>{const m=String(x||'').match(/^(\d{2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;},s=f(a),e=f(b);
   return s==null||e==null||e<=s?1:Math.max(0.5,Math.round((e-s)/30)/2);
 }
+/* v595 시각 있는 여러 날 일정 — 예전에는 시각이 있으면 끝 날짜가 뒤여도 시작일 하루로 읽었다(.ics·구글 바로 읽기·화면 글 모두 — v580·v588 '안 한 것').
+   제미나이가 '11/16 오전 9시 ~ 11/18 오후 6시'처럼 넣은 사흘 공정이 앱에서는 하루로 들어가 둘째·셋째 날이 대시보드·내 업무·달력에서 사라졌다(종일 여러 날이 v576·v580 전에 겪던 것과 같다).
+   · 끝이 한국 날짜로 뒤이고 24시간 이상일 때만 여러 날 — to = 끝 날짜, 끝이 정확히 0시면 그 전날까지(그날은 일하지 않는다).
+     24시간이 안 되는 밤샘(22시~새벽 2시)은 예전처럼 시작일 하루 — 이튿날을 공정 날로 만들면 하루 작업이 이틀로 보인다.
+   · 60일 넘으면 하루짜리(종일 여러 날과 같은 상한). 시작 시각은 그대로, 하루 시간 수는 끝 시각이 시작 시각보다 늦을 때만 그 차이 — 아니면 예전 기본값 1.
+   · 돌려준 to 는 종일 여러 날과 같은 칸이라 맞추기 계획·반영(같은 날 짝·⏳ 기간 다름·날짜 옮김의 메모 머리·반영 뒤 기간으로 보는 이어지는 날)이 그대로 쓴다.
+   s·e = {date:'YYYY-MM-DD', time:'HH:MM'}(한국 시각으로 바꾼 뒤). 여러 날이 아니면 null. */
+function hjCalSyncTimedRange(s,e){
+  const f=x=>{const m=String(x||'').match(/^(\d{2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;};
+  if(!s||!e||!s.time||!e.time||!isRealIsoDate(String(s.date))||!isRealIsoDate(String(e.date))||!(e.date>s.date))return null;
+  const a=f(s.time),b=f(e.time);if(a==null||b==null)return null;
+  if(hjDaysBetween(s.date,e.date)*1440+b-a<1440)return null;   // 24시간 안 — 밤샘 작업은 하루
+  const to=b===0?hjAddDays(e.date,-1):e.date;
+  if(!(to>s.date)||hjDaysBetween(s.date,to)>60)return null;
+  return {to,hours:b>a?hjCalSyncHours(s.time,e.time):1};
+}
 function hjCalSyncParseIcs(text){
   const out=[];
   icsUnfold(text).split(/BEGIN:VEVENT/i).slice(1).forEach(b=>{
@@ -41311,7 +41327,8 @@ function hjCalSyncParseIcs(text){
     const e=when(get('DTEND')),st=get('STATUS');
     // v576 종일 여러 날: DTEND 는 '끝난 다음 날'이라 하루 뺀 날이 마지막 날. 60일 넘으면(잘못 적힌 끝 날짜) 하루짜리로 둔다.
     const last=!s.time&&e&&!e.time&&e.date>s.date?hjAddDays(e.date,-1):'',to=last>s.date&&hjDaysBetween(s.date,last)<=60?last:'';
-    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,to:to,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
+    const tr=s.time?hjCalSyncTimedRange(s,e):null;   // v595 시각 있는 여러 날(24시간 이상)
+    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,to:tr?tr.to:to,hours:s.time?(tr?tr.hours:(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1)):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
       location:icsUnescape((get('LOCATION')||{}).val||''),memo:icsUnescape((get('DESCRIPTION')||{}).val||''),cancelled:!!(st&&/CANCELLED/i.test(st.val))});
   });
   return out;
@@ -41320,13 +41337,16 @@ function hjCalSyncParseIcs(text){
 /* v580 여러 날 종일 일정 — 두 날짜 '2026년 11월 16일~2026년 11월 18일'(끝의 연도·월은 빠질 수 있다: '~11월 18일'·'~18일').
    '종일, …, 시작~끝' 은 줄 끝에서, '시작~끝, 제목, …' 은 줄 머리에서 읽는다. 예전에는 앞 꼴의 끝 날짜를 시작일로 읽었고 뒤 꼴은 아예 안 읽었다.
    화면 글의 끝 날짜는 그날까지 포함한다(.ics DTEND 는 끝난 다음 날이라 하루를 뺀다). 끝은 종일 일정만, 60일 넘으면 하루짜리(.ics 와 같은 규칙).
-   시각이 있는 여러 날 줄('…오후 7:20~2026년 11월 8일 오후 9:30')은 .ics 처럼 시작일 하루로 둔다.
+   시각이 있는 여러 날 줄('…오후 7:20~2026년 11월 8일 오후 9:30')은 v595 부터 .ics·구글 바로 읽기와 같은 규칙(hjCalSyncTimedRange — 24시간 이상이면 끝 날짜까지,
+   그보다 짧은 밤샘은 시작일 하루). 끝의 연도·월이 빠진 꼴('~12월 2일 오전 7:00'·'~2일 …')도 종일 두 날짜처럼 읽는다. 끝 날짜 없이 시각만 있으면('~오후 9:30') 하루.
    줄 끝에 두 날짜가 '~·–·—·-' 로 이어져 있는데 위 꼴이 아니면(요일 괄호 '(월)~', 하이픈 ' - ', 뒤에 글이 더 붙음 등) 그 줄은 건너뛰고 '못 읽은 줄'로 센다
    — 예전처럼 마지막 날짜를 시작일로 읽으면 3일 공정의 시작이 끝 날짜로 밀린다(잘못 읽는 것보다 안 읽는 것이 낫다). 읽은 목록의 .unread 에 수. */
 const HJ_CALSYNC_LINE_RE=/^(?:(?:\d{4}년 \d{1,2}월 \d{1,2}일 )?(?:종일|오전|오후)|\d{4}년 \d{1,2}월 \d{1,2}일\s*[~–])/;
 const HJ_CALSYNC_RANGE_HEAD_RE=/^(\d{4})년 (\d{1,2})월 (\d{1,2})일\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일/;
 const HJ_CALSYNC_RANGE_TAIL_RE=/(\d{4})년 (\d{1,2})월 (\d{1,2})일\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일,?\s*$/;
 const HJ_CALSYNC_AMPM_RE=/오전|오후/;
+// v595 시각 있는 두 날짜 줄 머리 '2026년 11월 16일 오전 9:00~2026년 11월 18일 오후 6:00' — 괄호 묶음 차례가 HJ_CALSYNC_RANGE_HEAD_RE 와 같아 hjCalSyncRangeOf 가 그대로 읽는다
+const HJ_CALSYNC_TIMED_HEAD_RE=/^(\d{4})년 (\d{1,2})월 (\d{1,2})일 (?:오전|오후) \d{1,2}(?::\d{2})?시?\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일 (?:오전|오후)/;
 const HJ_CALSYNC_LOOSE_RANGE_RE=/\d{4}년 \d{1,2}월 \d{1,2}일[^,]*?[~–—-]\s*(?:\d{4}년 )?(?:\d{1,2}월 )?\d{1,2}일/;
 // 두 날짜 정규식 결과 → {date,end} — 끝 연도가 없고 끝이 앞서면 다음 해, 끝 월이 없고 날이 앞서면 다음 달. 없는 날짜면 null(끝만 이상하면 end '')
 function hjCalSyncRangeOf(m){
@@ -41354,10 +41374,13 @@ function hjCalSyncParseText(text){
       const d=dateStart?ds[0]:ds[ds.length-1];date=d[1]+'-'+p2(d[2])+'-'+p2(d[3]);}
     const oc=mid.lastIndexOf(', '),raw=(oc>0?mid.slice(0,oc):mid).trim();if(!raw)return;
     const allDay=!HJ_CALSYNC_AMPM_RE.test(head),times=head.replace(DATE,'').split('~'),time=allDay?'':clock(times[0]);
-    const to=allDay&&end>date&&hjDaysBetween(date,end)<=60?end:'';
+    // v595 시각 있는 여러 날 줄 — 끝 날짜·시각을 읽어 .ics·구글 바로 읽기와 같은 규칙으로(24시간 이상만 여러 날)
+    const tm=dateStart&&!allDay?head.match(HJ_CALSYNC_TIMED_HEAD_RE):null,te=tm?hjCalSyncRangeOf(tm):null;
+    const tr=te&&te.end&&te.date===date?hjCalSyncTimedRange({date,time},{date:te.end,time:clock(times[1])}):null;
+    const to=allDay?(end>date&&hjDaysBetween(date,end)<=60?end:''):(tr?tr.to:'');
     const lm=tail.match(/^위치: (.*?)(?:, \d{4}년 \d{1,2}월 \d{1,2}일.*|,)?$/);
     const k=date+'|'+time+'|'+raw+'|'+to;if(seen.has(k))return;seen.add(k);
-    out.push({uid:'',date,time,to,hours:allDay?8:(dateStart?1:hjCalSyncHours(time,clock(times[1]))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
+    out.push({uid:'',date,time,to,hours:allDay?8:(tr?tr.hours:(dateStart?1:hjCalSyncHours(time,clock(times[1])))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
   });
   out.unread=unread;
   return out;
@@ -41762,7 +41785,8 @@ function hjCalApiEvent(ev){
   const last=!s.time&&e&&!e.time&&e.date>s.date?hjAddDays(e.date,-1):'',to=last>s.date&&hjDaysBetween(s.date,last)<=60?last:'';
   // v588 검토 — 남이 보낸 초대: 내가 거절한 것은 건너뛰고(declined), 아직 응답하지 않은 것(needsAction·tentative)은 새 일정이라도 체크 해제(invite)
   const me=(Array.isArray(ev.attendees)?ev.attendees:[]).find(x=>x&&x.self),rs=me?String(me.responseStatus||''):'';
-  return {uid:String(ev.iCalUID||ev.id||''),date:s.date,time:s.time,to,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,
+  const tr=s.time?hjCalSyncTimedRange(s,e):null;   // v595 시각 있는 여러 날(한국 시각으로 바꾼 뒤 24시간 이상) — .ics·화면 글과 같은 규칙
+  return {uid:String(ev.iCalUID||ev.id||''),date:s.date,time:s.time,to:tr?tr.to:to,hours:s.time?(tr?tr.hours:(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1)):8,
     raw:String(ev.summary||''),location:String(ev.location||''),memo:hjCalApiText(ev.description).slice(0,300),cancelled:ev.status==='cancelled',series:!!ev.recurringEventId,
     invite:!!me&&!(ev.organizer&&ev.organizer.self)&&rs!=='accepted'&&rs!=='declined',declined:rs==='declined'};
 }
