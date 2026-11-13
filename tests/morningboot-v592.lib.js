@@ -37,6 +37,8 @@ const MUT = {
   'no-fresh': [['        relayFreshComplete();   // v592 자료는 최신', '        // v592 자료는 최신']],
   // [⑥] 서버 최신 자료 띠 위에 띄움
   'no-relaybar-busy': [["||document.getElementById('relayNewBar')", '']],
+  // [⑥] 통합 검토 — 자동 반영 뒤 '최신' 신호를 사진 목록 맞추기가 끝난 뒤로(예전)
+  'fresh-after-photos': [["    relayFreshComplete();   // v592 통합 검토 — 자료는 이미 최신.", "    // v592 통합 검토 — 자료는 이미 최신."]],
   // [⑦] 한눈 보기 위에 띄움 · [⑦] 오늘 창이 남은 부팅에도 한눈 보기
   'no-glance-busy': [["||document.getElementById('hjGlance')", '']],
   'glance-always': [['    }else if(!opts.noGlance){', '    }else{']],

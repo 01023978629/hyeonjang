@@ -1,12 +1,12 @@
 /* v592 하루 자동 창 — 실제 대표 기기 조건(검토에서 나온 것). morningboot-v592 의 뒤편, 틀은 morningboot-v592.lib.js.
    ⑥ 서버(relay) — PC 가 밤에 올린 rev 2 · 폰 콜드 스타트(요청마다 1.5초 지연): v530 자동 반영이 먼저 끝나고 🌅 는 새 자료(PC 에서 넣은 일정)로 · 배너 없음 ·
-      안 올린 변경이 있는 기기는 '서버 최신 자료' 띠 → 그 위엔 안 띄움(표시 없음) · 서버 자료가 같으면 느린 사진 목록 맞추기는 안 기다림 ·
+      안 올린 변경이 있는 기기는 '서버 최신 자료' 띠 → 그 위엔 안 띄움(표시 없음) · 서버 자료가 같거나 더 최신이어도(자동 반영 뒤) 느린 사진 목록 맞추기는 안 기다림 ·
       서버가 답하지 않으면 상한(12초) 뒤 이번 부팅은 건너뜀(표시 없음) (RELAY)
    ⑦ 설치 앱(standalone) 한눈 보기 — 오늘 브리핑이 남은 부팅엔 한눈 보기를 건너뛰고 🌅 하나 · 🔔 시스템 알림은 같은 요약이라 안 보내고 보낸 것으로 ·
       다음 부팅은 한눈 보기만 · 복원 전 짐작이 틀려 한눈 보기가 떠 있으면 그 위엔 안 띄움(표시 없음) (GLANCE)
    ⑧ 쓰는 중·두 브리핑·오류·새벽·빈 기기 — 새벽 0:40 은 창 없음(표시 없음) · 복원 직후 검색칸에 치는 중이면 안 띄우고 친 글자는 그대로 ·
       🌅 가 오류로 죽으면 표시를 되돌림 → 아침 7:10 에 🌅 · 손으로 연 🌅/🤖 뒤엔 다른 브리핑 없음 · 시험·세금 일정만 있는 기기엔 매일 빈 🌅 없음 (USER)
-   HJ_V592_BASELINE=<commit> 는 ⑥ 에서, HJ_V592_MUTATION=no-relay-wait·no-relaybar-busy·no-fresh 는 ⑥, no-glance-busy·glance-always·no-notify-skip 은 ⑦,
+   HJ_V592_BASELINE=<commit> 는 ⑥ 에서, HJ_V592_MUTATION=no-relay-wait·no-relaybar-busy·no-fresh·fresh-after-photos 는 ⑥, no-glance-busy·glance-always·no-notify-skip 은 ⑦,
    no-night·no-touch·mark-first·no-sibling·no-active-mark·no-nodata 는 ⑧ 에서 실패해야 한다(변이 표는 lib). */
 'use strict';
 const assert = require('node:assert/strict');
@@ -67,6 +67,18 @@ function pcData(base) {
       assert.ok(fctx.__relay.calls.includes('listFiles'), '사진 목록 요청은 나갔다(답만 없음) ' + JSON.stringify(fctx.__relay.calls));
       await f.page.close();
       await fctx.close();
+      // 통합 검토 — 서버가 더 최신(PC 가 밤에 저장 — 가장 흔한 아침)이고 사진 목록이 끝나지 않을 때. 예전엔 자동 반영 뒤 사진 목록 맞추기까지 기다려
+      // 상한(12초)을 넘기고 🌅·한눈 보기·🔔 모두 없이 건너뛰었다. 자료를 적용하면 바로 '최신' — 🌅 는 새 자료로 뜬다.
+      const nctx = await newContext(true);
+      nctx.__relay.data = pcData(await seed(nctx, THU, { relay: {} }));
+      nctx.__relay.hangActions = ['listFiles'];
+      const n = await cold(nctx, THU, '', { noRelayWait: true });
+      assert.ok(n.projects.includes('다온아파트'), '자동 반영됨 ' + JSON.stringify(n.projects));
+      assert.deepEqual(n.log, ['🌅 오늘의 브리핑'], '더 최신 서버 + 느린 사진 목록에도 🌅 ' + JSON.stringify(n.log) + JSON.stringify(n.result));
+      assert.ok(n.modalText.includes('PC에서 넣은 실측'), '브리핑은 새 자료로');
+      assert.ok(nctx.__relay.calls.includes('listFiles'), '사진 목록 요청은 나갔다(답만 없음) ' + JSON.stringify(nctx.__relay.calls));
+      await n.page.close();
+      await nctx.close();
       // 서버가 답하지 않음 — 상한(12초) 뒤 이번 부팅은 건너뜀(낡은 자료로 띄우거나 늦게 불쑥 띄우지 않는다)
       const cctx = await newContext(true);
       cctx.__relay.data = pcData(await seed(cctx, THU, { relay: {} }));

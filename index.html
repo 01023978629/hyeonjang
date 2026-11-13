@@ -3290,6 +3290,7 @@ async function relayLoadApply(silent,snapLabel,guard){
     try{const nb=document.getElementById('relayNewBar');if(nb)nb.remove();}catch(e){}   // v530 이미 받았으니 '더 최신 자료' 배너는 내린다(충돌 창 ①로 받은 뒤에도 남아 있었다)
     try{await guardedPersistCurrentState();}catch(e){}   // v530 받은 자료를 이 기기에도 바로 저장 — 앱을 그냥 닫아도 다음에 옛 자료가 뜨지 않게(revision 만 새것으로 남던 틈)
     relaySetStatus('saved');
+    relayFreshComplete();   // v592 통합 검토 — 자료는 이미 최신. 부팅 아침 창이 느린 사진 목록 맞추기(아래)를 12초 넘게 기다리다 건너뛰지 않게(부팅 밖에서는 아무 일 없음)
     await relayLoadDriveFiles(true);   // 서버 JSON 적용 직후 Drive 사진 누락분도 함께 복구
     if(!silent)toast('☁️ 서버에서 불러옴 — 현장 '+state.projects.length+'곳 (이전 자료는 🛡 스냅샷에 보관)');
     return true;
@@ -16096,7 +16097,7 @@ function hjCustSchedView(projectName,back){
    읽기 전용 — 이 창은 아무것도 바꾸지 않는다. 각 버튼이 여는 기존 화면이 저장한다. 자동 발송 없음. */
 function hjDayCloseData(today){
   today=today||localDate();const tomorrow=hjAddDays(today,1);
-  const rows=hjMyWorkSchedules(today).map(s=>{const sp=hjSchSpan(s);return {s,c:s.date===today?null:hjSchContOn(s,today),done:hjSchReported(s),endsToday:sp.to<=today};});
+  const rows=hjMyWorkSchedules(today).map(s=>{const sp=hjSchSpan(s);return {s,c:s.date===today?null:hjSchContOn(s,today),done:sp.days>1?hjSchContEnded(s):hjSchReported(s),endsToday:sp.to<=today};});   // 통합 검토 — 여러 날 공정은 v591 끝 규칙(진행 중 보고면 '내일도 계속'·마지막 날 '보고할 일정'), 하루짜리는 예전처럼 보고 있음
   const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.when&&localDate(new Date(f.when))===today);
   const tmr=hjMyWorkSchedules(tomorrow).map(s=>({s,c:s.date===tomorrow?null:hjSchContOn(s,tomorrow)}));
   const team=hjTeamContacts().length>0;
@@ -41529,6 +41530,9 @@ function hjCalSyncSpanMemo(memo,from,to){
 const HJ_CALSYNC_RANK={new:0,time:1,span:2,rename:3,move:4,apponly:5};
 /* v588 같은 구글 일정(uid)으로 짝을 지을 때 보지 않는 합성 uid — 'gcal:날짜|열쇠'(v567 맞추기가 uid 없는 화면 글 일정에 붙인 것)·'nouid:'(📥 importICS) */
 const HJ_CALSYNC_SYNTH_UID_RE=/^(?:gcal|nouid):/;
+/* 통합 검토 — 진행 중 보고가 있는 여러 날 공정(v591 hjSchContEnded 가 아직 끝나지 않았다고 보는 것). 맞추기는 이런 공정의 날짜·기간을 바꾸지 않는다(보고가 붙은 날). */
+function hjCalSyncGoing(s){return hjSchReported(s)&&!hjSchContEnded(s)&&hjSchSpan(s).days>1;}
+function hjCalSyncGoingRef(s){return {going:{id:s.id,date:s.date,to:hjSchSpan(s).to,title:String(s.title||'')}};}
 function hjCalSyncPlan(events,opts){
   const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
   // v588 events.skipped = 구글 캘린더에서 바로 읽을 때 건너뛴 자동 일정(생일·근무지·메일에서 온 예약·거절한 초대 등), events.api = 구글에서 받은 일정 수
@@ -41605,7 +41609,7 @@ function hjCalSyncPlan(events,opts){
     try{cands=hjStmtMatch(base.title+(base.location?' '+base.location:'')).filter(c=>c.score>=0.5).slice(0,3);}catch(e){}
     if(!project&&cands[0]&&cands[0].score>=0.6)project=cands[0].name;
     if(base.invite)project='';
-    const quiet=!!(base.invite||base.series||(extra&&extra.done));
+    const quiet=!!(base.invite||base.series||(extra&&(extra.done||extra.going)));
     return Object.assign(base,{status:'new',check:!quiet,project,cands:cands.map(c=>c.name)},extra||{});
   };
   /* v588 같은 구글 일정(uid)으로 먼저 짝 — 앱 일정의 icsUid 가 구글 일정의 uid(iCalUID)와 같으면 제목·날짜와 상관없이 같은 일정이다
@@ -41663,7 +41667,7 @@ function hjCalSyncPlan(events,opts){
       // v588 검토 — 다른 날로 옮겨진 같은 구글 일정은 숨기지 않고 새 일정 줄로(체크 해제 — 다시 하는 작업이면 체크). 예전처럼 미리보기에 보인다.
       if(hjSchReported(a.s)){
         if(a.s.date===g.date){stats.same++;plan(a.key,a.s.project,a.s.date,endOf(a));return;}
-        rows.push(newRow(g,base,{done:{id:a.s.id,date:a.s.date,title:String(a.s.title||'')}}));return;}
+        rows.push(newRow(g,base,hjCalSyncGoing(a.s)?hjCalSyncGoingRef(a.s):{done:{id:a.s.id,date:a.s.date,title:String(a.s.title||'')}}));return;}
       const app=Object.assign(appOf(a),{title:String(a.s.title||'')}),ren=a.key!==g.key;
       if(a.s.date!==g.date){const mv=moveTo(g,base,a);
         rows.push(Object.assign(base,{status:'move',check:true,own:hjCalSyncMemoOwn(a.s),rename:ren,uidPair:true,app},mv.to?{to:mv.to}:{}));plan(g.key,a.s.project,g.date,mv.plan);return;}
@@ -41699,7 +41703,11 @@ function hjCalSyncPlan(events,opts){
     if(moved){moved.used=true;const sp=hjSchSpan(moved.s),mv=moveTo(g,base,moved);
       rows.push(Object.assign(base,{status:'move',check:true,own:hjCalSyncMemoOwn(moved.s),app:{id:moved.s.id,date:moved.s.date,time:moved.s.time||'',to:sp.days>1?sp.to:''}},mv.to?{to:mv.to}:{}));
       plan(g.key,moved.s.project,g.date,mv.plan);return;}
-    rows.push(newRow(g,base));
+    /* 통합 검토(v591×v580/v588) — 진행 중 보고(진행·진행중·NN%)가 있는 여러 날 공정은 v591 부터 둘째·셋째 날이 이어진다. 그런 공정은 완료 보고처럼
+       옮김 후보에서 빠지므로(보고가 붙은 날짜를 바꾸지 않는다) 구글에서 그 공정을 하루 미뤄 놓으면 체크된 '새 일정'으로 한 번 더 들어가 같은 날 두 번 보였다.
+       같은 열쇠·현장의 진행 중 공정이 앞뒤 21일 안에 있으면 체크 해제로 두고 까닭을 적는다(따로 하는 작업이면 사람이 체크). */
+    const going=apps.find(a=>!a.recur&&a.key===g.key&&projOk(g,a.s.project)&&hjCalSyncGoing(a.s)&&Math.abs(hjDaysBetween(a.s.date,g.date))<=HJ_CALSYNC_MOVE);
+    rows.push(newRow(g,base,going?hjCalSyncGoingRef(going.s):undefined));
   });
   if(lo){const a0=lo>from?lo:from;
     apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
@@ -41787,7 +41795,7 @@ function hjCalSyncRowText(r){
   if(r.status==='apponly')return when+' '+r.title+(r.overlap?' — 구글 여러 날 일정('+hjMdDow(r.overlap.from)+'~'+hjMdDow(r.overlap.to)+')과 겹쳐요(체크하면 앱에서 지움)':' — 구글 캘린더에 없음(체크하면 앱에서 지움)');
   // v588 검토 — 반복 회차 한 줄·받은 초대·완료 보고한 일정의 같은 구글 일정은 체크 해제로 두고 까닭을 적는다
   const occ=Array.isArray(r.occ)&&r.occ.length>1?' 🔁 반복 '+r.occ.length+'회('+r.occ.slice(0,4).map(o=>hjMdDow(o.date)).join('·')+(r.occ.length>4?'…':'')+')':'';
-  const why=r.invite?' — 받은 초대(응답 전)라 체크 해제 · 맞으면 체크':r.done?' — 완료 보고한 ‘'+hjCut(String(r.done.title||'').trim()||'일정',30)+'’('+hjMdDow(r.done.date)+')과 같은 구글 일정이라 체크 해제 · 다시 하는 작업이면 체크':r.series?' — 반복 일정이라 체크 해제 · 맞으면 체크':'';
+  const why=r.invite?' — 받은 초대(응답 전)라 체크 해제 · 맞으면 체크':r.going?' — 진행 중인 ‘'+hjCut(String(r.going.title||'').trim()||'일정',30)+'’('+hjMdDow(r.going.date)+'~'+hjMdDow(r.going.to)+')과 같은 작업일 수 있어 체크 해제 · 따로 하는 작업이면 체크':r.done?' — 완료 보고한 ‘'+hjCut(String(r.done.title||'').trim()||'일정',30)+'’('+hjMdDow(r.done.date)+')과 같은 구글 일정이라 체크 해제 · 다시 하는 작업이면 체크':r.series?' — 반복 일정이라 체크 해제 · 맞으면 체크':'';
   return when+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'')+occ+' '+r.title+(r.location?' · '+r.location:'')+why;
 }
 /* v581 🔄 맞추기 반영 뒤 '바뀐 일정 알리기' — 반영하고 나면 토스트만 떠서, 팀·고객에게 알리려면 📤 일정 공유에서 범위를 다시 골라야 했다
