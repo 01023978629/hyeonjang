@@ -426,11 +426,13 @@ test('v5 캘린더에 넣을 일정 — 작업만, 시각/종일, 여러 날 공
   const keys = r.items.map(i => i.key);
   assert(keys.indexOf('pay') < 0 && keys.indexOf('mid') < 0 && keys.indexOf('tax') < 0 && keys.indexOf('me') < 0, '💰·수금·세금·개인 일정 제외: ' + keys);
   const mokDays = r.items.filter(i => i.key === 'mok' || i.key.indexOf('mok-d') === 0);
-  const span = []; for (let n = 2; n <= 6; n++) { const d = new Date(today); d.setDate(d.getDate() + n); if (d.getDay() !== 0) span.push(localYmd(d)); }
-  eq(mokDays.map(i => i.date).join(','), span.slice(0, mokDays.length).join(','), '여러 날 공정 날짜 — 일요일 제외');
+  // 시작일은 일요일이어도 넣고(그날 잡은 일정 그대로 — 앱 hjSchSpan·hjSchContDates 와 같음), 이어지는 날만 일요일을 뺀다.
+  // 예전 기대값은 시작일까지 일요일을 빼서, 모레가 일요일인 날(금요일)에 돌면 떨어졌다(2026-11-13 CI). 공정 일수도 날짜에서 센다.
+  const span = []; for (let n = 2; n <= 6; n++) { const d = new Date(today); d.setDate(d.getDate() + n); if (n === 2 || d.getDay() !== 0) span.push(localYmd(d)); }
+  eq(mokDays.map(i => i.date).join(','), span.join(','), '여러 날 공정 날짜 — 이어지는 날은 일요일 제외');
   assert(mokDays.length >= 4 && mokDays.length <= 5, '4일 공정이면 날마다 하나: ' + mokDays.length);
-  eq(mokDays[0].title, '[목동] 철거 (4일 · ~' + sandbox.watchMdDow_(ahead(6)) + ')', '첫날 제목');
-  eq(mokDays[1].title, '[목동] 철거 (2/4일째)', '이어지는 날 제목');
+  eq(mokDays[0].title, '[목동] 철거 (' + span.length + '일 · ~' + sandbox.watchMdDow_(ahead(6)) + ')', '첫날 제목');
+  eq(mokDays[1].title, '[목동] 철거 (2/' + span.length + '일째)', '이어지는 날 제목');
   eq(mokDays[0].time + '/' + mokDays[0].hours, '09:00/4', '시각 일정 — 작업 시간 4시간');
   const y = r.items.find(i => i.key === 'yeol');
   eq(y.title, '열매마을 908-903 욕조방수', '제목에 현장 이름이 이미 있으면 [현장] 을 또 붙이지 않는다');
