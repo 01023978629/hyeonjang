@@ -3290,6 +3290,7 @@ async function relayLoadApply(silent,snapLabel,guard){
     try{const nb=document.getElementById('relayNewBar');if(nb)nb.remove();}catch(e){}   // v530 이미 받았으니 '더 최신 자료' 배너는 내린다(충돌 창 ①로 받은 뒤에도 남아 있었다)
     try{await guardedPersistCurrentState();}catch(e){}   // v530 받은 자료를 이 기기에도 바로 저장 — 앱을 그냥 닫아도 다음에 옛 자료가 뜨지 않게(revision 만 새것으로 남던 틈)
     relaySetStatus('saved');
+    relayFreshComplete();   // v592 통합 검토 — 자료는 이미 최신. 부팅 아침 창이 느린 사진 목록 맞추기(아래)를 12초 넘게 기다리다 건너뛰지 않게(부팅 밖에서는 아무 일 없음)
     await relayLoadDriveFiles(true);   // 서버 JSON 적용 직후 Drive 사진 누락분도 함께 복구
     if(!silent)toast('☁️ 서버에서 불러옴 — 현장 '+state.projects.length+'곳 (이전 자료는 🛡 스냅샷에 보관)');
     return true;
@@ -3892,6 +3893,16 @@ function relayBootComplete() {
   __hjRelayBootResolve = null;
   resolve();
 }
+/* v592 '서버 자료가 최신인지 정해졌다' — health 확인과 (더 최신이면) 자동 반영·배너까지. 그 뒤의 서버 사진 목록 맞추기(relayLoadDriveFiles,
+   Drive 목록이라 느리다)는 기다리지 않는다. 부팅 하루 자동 창(🌅 등)이 이것을 기다린다 — 창이 먼저 뜨면 자동 반영이 '손대는 중'으로 막힌다. */
+let __hjRelayFreshResolve;
+window.__hjRelayFreshDone = new Promise(resolve => { __hjRelayFreshResolve = resolve; });
+function relayFreshComplete() {
+  if (!__hjRelayFreshResolve) return;
+  const resolve = __hjRelayFreshResolve;
+  __hjRelayFreshResolve = null;
+  resolve();
+}
 async function relayBoot(){
   try{
     try{
@@ -3942,11 +3953,12 @@ async function relayBoot(){
       }else if(h&&h.ok&&(!h.dataFileExists||(h.revision||0)===(__relay.rev||0))){
         // v530 서버는 그대로인데 지난번에 못 올린 변경이 남아 있으면 지금 올린다(서버 revision 검사가 그대로 지킨다)
         if(h.dataFileExists&&typeof __relayUnsynced==='number'&&__relayUnsynced>0&&!state._demo&&!(typeof __tabStale!=='undefined'&&__tabStale)){try{await relaySaveNow();}catch(e){}}
+        relayFreshComplete();   // v592 자료는 최신 — 사진 목록 맞추기는 기다리지 않는다
         await relayLoadDriveFiles(true);   // 서버/기기 자료가 같은 때만 누락 사진을 안전하게 합침
       }
     }catch(e){}   // 오프라인 등은 정상 시나리오 — 조용히(상태 표시만 유지)
   }catch(e){}
-  finally{ try{__relayResumeAt=Date.now();}catch(e){} relayBootComplete(); }   // 이른 return(relayReady 아님)에도 반드시 알린다
+  finally{ try{__relayResumeAt=Date.now();}catch(e){} relayFreshComplete(); relayBootComplete(); }   // 이른 return(relayReady 아님)에도 반드시 알린다
 }
 // v530 서버가 더 최신일 때 — 자동 반영('applied') 또는 예전 배너('banner')
 async function relayServerNewer(why){
@@ -4040,7 +4052,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v590-stmtdone';
+const APP_BUILD='hyeonjang-v597-revmemo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4293,6 +4305,10 @@ function gdLoginRedirect(){
     }
   }
 }catch(_){}})();
+// v592 #hjreq=(작업 요청)·#hjcontract=(전자계약 QR)로 들어온 첫 화면 — 아래 두 즉시 함수가 주소에서 지우기 전에 읽어 둔다.
+// 그 첫 화면에는 하루 자동 창(🌅 브리핑 등)을 띄우지 않는다(hjBootAutoAfterRestore).
+const HJ_BOOT_LINK_RE=/[#&](?:hjreq|hjcontract)=/;
+const __hjBootLinkEntry=HJ_BOOT_LINK_RE.test(location.hash||'');
 // 전자계약 설치 QR. 비밀값은 서버에 전송되지 않는 # 조각으로만 받고,
 // 읽기 전에 주소창에서 즉시 지운다. 저장은 대표가 배포 ID 뒤 4자리를 쳐서 확인했을 때만 한다(v574 — 전엔 [확인] 한 번이면 서버 주소·토큰이 덮였다).
 //   ⓐ 이 기기에 이미 **다른** 계약 서버 주소가 있으면 링크로는 바꾸지 않는다 — 누가 보낸 QR 한 장으로 고객 계약이 남의 서버로 나가는 길을 막는다.
@@ -12997,7 +13013,7 @@ async function aiToolRun(name,a){
       let est=0,recv=0;const sc=[0,0,0,0];
       acts.forEach(p=>{const s=projStats(p.name);est+=s.est;recv+=s.recv;sc[Math.min(s.stage||0,3)]++;});
       const today=localDate();
-      const ts=(state.schedule||[]).filter(s=>s.date===today).sort((x,y)=>String(x.time||'').localeCompare(String(y.time||''))).map(s=>({시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));
+      const ts=hjDaySchView(today).sort((x,y)=>String(x.time||'').localeCompare(String(y.time||''))).map(s=>({시간:s.time||'',제목:s._cont?hjDaySchCutTitle(s,40):cut(s.title),현장:cut(s.project)}));   // v591 이어지는 날 포함(💰 도 예전처럼 셈 — aiBriefData 와 같은 목록)
       const up=(state.schedule||[]).filter(s=>s.date>today).sort((x,y)=>(x.date+(x.time||'')).localeCompare(y.date+(y.time||''))).slice(0,5).map(s=>({날짜:s.date,시간:s.time||'',제목:cut(s.title),현장:cut(s.project)}));
       return {오늘:today,현장수:acts.length,단계별:{상담:sc[0],실측:sc[1],시공:sc[2],완료:sc[3]},
         견적합계원:est,수금합계원:recv,
@@ -14847,6 +14863,23 @@ function hjDaySchView(day,filter){
   return (state.schedule||[]).filter(s=>s&&s.date===day&&ok(s)).concat(hjSchContinuing(day,s=>!!s&&ok(s)).map(x=>Object.assign({},x.s,{date:day,
     title:(String(x.s.title||'').replace(HJ_PLAN_SUFFIX_RE,'')||'작업')+' ('+x.c.day+'/'+x.c.days+'일째)',_cont:x.c})));
 }
+/* v591 '오늘 일정'을 세던 나머지 아홉 곳(AI get_overview·🔔 스마트 알림·📅 일정 브리핑·🤖 능동 브리핑·🗣 음성 브리핑·운영 루프 계획·
+   ☀️ 운영 일일 브리핑·🗺 오늘 동선·🧠 AI 브레인)은 v586 뒤에도 date===오늘만 세어 3일짜리 공정 둘째·셋째 날이 빠졌다
+   (🗺 동선은 그 현장에 오늘 가는데도 '방문할 현장 없음'). 이제 모두 hjDaySchView(그날, 그곳이 예전에 거르던 조건) — 이어지는 날 복사본(제목 '(2/3일째)',
+   date 그날, id 원본 그대로)을 더한다. 거르던 것(💰 수금)은 이어지는 날에도 그대로 거르고, 예전에 안 거르던 것(세금·개인 일정)은 새로 거르지 않는다.
+   그래서 💰 를 거르는 여덟 곳은 🤖 오늘 챙길 일(hjTodaySchRows — 💰·세금도 셈)보다 그날 💰 일정 수만큼 적을 수 있다 — 같은 목록은 get_overview 뿐이다.
+   이 차이는 일부러다: 맞추겠다고 여덟 곳의 💰 거르기를 빼지 마라(수금 일정이 '현장 일정'으로 읽히고 🗺 동선 방문지가 된다).
+   일요일·완료된 공정은 hjSchContOn 이 뺀다(진행 중 보고는 끝난 것이 아니다 — hjSchContEnded). 읽기만 — 원본 일정은 바꾸지 않는다. */
+const HJ_MONEY_SCH_RE=/^💰/;
+function hjDaySchNoMoney(day){return hjDaySchView(day,s=>!HJ_MONEY_SCH_RE.test(String(s.title||'')));}
+/* v591 hjDaySchView 복사본의 제목을 n자로 자를 때 — 복사본 제목 끝의 '(2/3일째)'까지 한꺼번에 자르면 긴 공정 이름에서 '몇째 날'이 '…'로 사라진다
+   (🤖 능동 브리핑 10자·🗣 음성 브리핑 20자). 바탕 제목만 자르고 꼬리를 붙인다. speak 면 귀로 듣기 좋게 '3일 중 2일째'('2/3'은 분수로 읽힌다). */
+function hjDaySchCutTitle(s,n,speak){
+  const c=s&&s._cont,t=String((s&&s.title)||'');
+  if(!c)return hjCut(t,n);
+  const tag=' ('+c.day+'/'+c.days+'일째)',base=t.endsWith(tag)?t.slice(0,-tag.length):t;
+  return hjCut(base,n)+(speak?' '+c.days+'일 중 '+c.day+'일째':tag);
+}
 // 한 줄 글 — 이어지는 날이면 공정표 꼬리 '(N일차 시작)' 를 떼고 '(2/3일째)' 를 붙인다
 function hjTodaySchLine(r,tn,pn){
   const s=r.s,t=r.c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,''):s.title;
@@ -15207,9 +15240,17 @@ function hjSchSpan(s){
   return {from,to:m[2],days:hjWorkDaysBetween(m[1],m[2])+1};
 }
 function hjSchReported(s){return !!(s&&s.report&&(s.report.progress==='완료'||String(s.report.done||'').trim()));}
+/* v591 여러 날 공정이 '끝났나'는 보고가 있느냐가 아니라 진행률로 본다. 예전(v354)에는 hjSchReported(보고 글만 있어도 참)를 써서,
+   1일째 저녁에 🎙 음성 일지·첫 화면 [기록]·AI add_work_log(workLogSave — 진행률 '진행')나 📋 일일 작업 보고(진행률 '진행중'·'50%')를 남기면
+   그 공정이 끝난 것으로 보여 둘째·셋째 날이 오늘 일정·📋 내 업무·달력·알림·🗺 동선 어디에도 안 나왔다(현장에서 가장 흔한 흐름).
+   진행률이 '하는 중'(HJ_SCH_GOING_RE — 시작·진행·진행중·NN%)이면 이어지는 날은 그대로 이어진다. 그 밖의 보고('완료', 그리고 글이 있는데
+   진행률이 비었거나 '보류'인 옛 보고)는 예전처럼 끝난 것 — 진행률을 안 고르고 '오늘 한 작업'만 적어 끝을 알리던 쓰임을 지킨다.
+   hjSchReported 자체는 그대로 둔다 — 지연 점검·고객 일정 안내 등이 '보고가 있나'로 쓴다(🌙 오늘 마감·🔄 맞추기는 통합 검토 뒤 여러 날 공정에 이 규칙 — hjDayCloseData·hjCalSyncGoing). */
+const HJ_SCH_GOING_RE=/^(시작|진행|진행중|\d{1,2}%)$/;
+function hjSchContEnded(s){return hjSchReported(s)&&!HJ_SCH_GOING_RE.test(String(s.report.progress||'').trim());}
 // 그날이 그 일정의 '이어지는 날'이면 {day,days,from,to}, 아니면 null
 function hjSchContOn(s,ymd){
-  if(!s||!s.date||!(ymd>s.date)||hjSchReported(s))return null;
+  if(!s||!s.date||!(ymd>s.date)||hjSchContEnded(s))return null;
   const sp=hjSchSpan(s);if(sp.days<2||ymd>sp.to)return null;
   const d=new Date(String(ymd)+'T00:00:00');if(isNaN(d)||d.getDay()===0)return null;
   return {day:hjWorkDaysBetween(sp.from,ymd)+1,days:sp.days,from:sp.from,to:sp.to};
@@ -15221,7 +15262,7 @@ function hjSchContinuing(ymd,filter){
 function hjSchContLabel(c){return c?'↳ 이어서 '+c.day+'/'+c.days+'일째 · '+hjMdDow(c.from)+'~'+hjMdDow(c.to):'';}
 // 그 일정이 이어지는 날 목록(시작일 제외·일요일 제외·완료 보고면 없음) — 달력 막대·일정 점검이 같이 쓴다
 function hjSchContDates(s){
-  if(!s||!s.date||hjSchReported(s))return [];
+  if(!s||!s.date||hjSchContEnded(s))return [];   // v591 진행 중 보고는 끝난 것이 아니다(위 hjSchContEnded)
   const sp=hjSchSpan(s);if(sp.days<2)return [];
   const dt=new Date(sp.from+'T00:00:00');if(isNaN(dt))return [];
   const out=[];for(let i=0;i<62;i++){dt.setDate(dt.getDate()+1);const ds=hjYmd(dt);if(ds>sp.to)break;if(dt.getDay()!==0)out.push(ds);}
@@ -16056,7 +16097,7 @@ function hjCustSchedView(projectName,back){
    읽기 전용 — 이 창은 아무것도 바꾸지 않는다. 각 버튼이 여는 기존 화면이 저장한다. 자동 발송 없음. */
 function hjDayCloseData(today){
   today=today||localDate();const tomorrow=hjAddDays(today,1);
-  const rows=hjMyWorkSchedules(today).map(s=>{const sp=hjSchSpan(s);return {s,c:s.date===today?null:hjSchContOn(s,today),done:hjSchReported(s),endsToday:sp.to<=today};});
+  const rows=hjMyWorkSchedules(today).map(s=>{const sp=hjSchSpan(s);return {s,c:s.date===today?null:hjSchContOn(s,today),done:sp.days>1?hjSchContEnded(s):hjSchReported(s),endsToday:sp.to<=today};});   // 통합 검토 — 여러 날 공정은 v591 끝 규칙(진행 중 보고면 '내일도 계속'·마지막 날 '보고할 일정'), 하루짜리는 예전처럼 보고 있음
   const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.when&&localDate(new Date(f.when))===today);
   const tmr=hjMyWorkSchedules(tomorrow).map(s=>({s,c:s.date===tomorrow?null:hjSchContOn(s,tomorrow)}));
   const team=hjTeamContacts().length>0;
@@ -16472,7 +16513,8 @@ function hjGlanceCache(items){
     const sch=hjTodaySchRows(today);   // v586 오늘 챙길 일과 같은 목록(여러 날 공정의 이어지는 날 포함)
     localStorage.setItem('hj_glance',JSON.stringify({at:Date.now(),d:today,
       sch:sch.slice(0,2).map(r=>hjTodaySchLine(r,14,7)),
-      schN:sch.length,check:(items||dailyCheckData()).length}));
+      schN:sch.length,check:(items||dailyCheckData()).length,
+      u:(typeof hjDailyAutoHasData==='function'&&hjDailyAutoHasData())?1:0}));   // v592 사용자 자료 있음 — 다음 부팅이 복원 전에 '하루 창이 뜰 기기인가'를 본다(hjDailyAutoOwed)
   }catch(e){}
 }
 function hjBadgeUpdate(n){
@@ -16511,7 +16553,8 @@ function hjGlanceShow(force){
     setTimeout(close,20000); // 20초 후 자동 닫힘(안전)
   }catch(e){}
 }
-function hjBootExtras(){
+function hjBootExtras(opts){
+  opts=opts||{};
   try{
     // Cowork 기본 작업을 부팅 시 1회 결정적으로 초기화 — 지연 초기화(coworkTasksEnsure)가
     // 렌더·조회 도중 coworkTasks(null→기본)·_coworkInit 을 바꿔 직렬화가 세션 중간에 달라지던 비결정성 제거.
@@ -16522,8 +16565,8 @@ function hjBootExtras(){
       if(v==='schedule'){state.tab='schedule';render();}
       else if(v==='ai'){setTimeout(()=>{try{aiAgent();}catch(e){}},600);}
       else if(v==='glance'){hjGlanceShow(true);}
-    }else{
-      hjGlanceShow();
+    }else if(!opts.noGlance){
+      hjGlanceShow();   // v592 오늘 남은 하루 자동 창(🌅 등)이 있는 부팅에는 띄우지 않는다 — 같은 요약을 두 번 보지 않게(그 창이 한눈 보기 내용을 다 담는다)
     }
     setTimeout(()=>{try{const its=dailyCheckData();hjGlanceCache(its);hjBadgeUpdate(its.length);}catch(e){}},2500);
   }catch(e){}
@@ -16765,6 +16808,29 @@ function hjAsForSched(s){
   if(!s)return null;
   const log=state.asLog||[];
   return (s.asId&&log.find(a=>a&&a.id===s.asId))||log.find(a=>a&&a.visitSchedId&&a.visitSchedId===s.id)||null;
+}
+/* v594 AS 방문 일정의 날짜가 바뀌면 그 AS 방문일(visitAt)도 같은 날로 — 잇는 규칙은 이 한 곳.
+   예전에는 일정 창 저장(saveScheduleEdit, v331)만 따라가서 🔄 구글 캘린더 맞추기의 '날짜 옮김'(제미나이가 구글에서 방문을 옮긴 것)은
+   일정만 옮기고 AS 관리·현장 AS 카드·보증 화면·AS 이력 엑셀의 방문일은 옛 날짜로 남았다. 부르는 곳: 일정 창 저장·맞추기 날짜 옮김,
+   그리고 📥 캘린더 파일 가져오기의 같은 uid 갱신(안전장치 — 앱이 만든 AS 방문 일정에는 icsUid·sourceUid 가 없어 지금은 이 길로 날짜가 바뀌지 않는다.
+   나중에 AS 방문 일정에 uid 를 붙이는 판이 생겨도 방문일이 어긋나지 않게).
+   AS 관리의 방문일 칸(asManage)은 반대 방향(AS → 일정)으로 둘 다 옮긴다. 🔁 뒤 일정 같이 옮기기는 AS 방문 일정을 후보에서 뺀다(v365), AI 도구에는 있는 일정의 날짜를 바꾸는 것이 없다.
+   부르지 못하는 곳(v567 부터의 한계): 맞추기가 21일(HJ_CALSYNC_MOVE) 넘게 떨어진 AS 방문을 날짜 옮김이 아니라 '새 일정'으로 넣으면 이어지지 않은 일정이 하나 더 생기고 방문일은 그대로다.
+   잇는 기준은 hjAsForSched 와 같다 — AS 기록의 visitSchedId 가 이 일정이거나, 이 일정의 asId 가 가리키는 AS 기록.
+   단 그 AS 의 visitSchedId 가 지금 있는 다른 일정을 가리키면 그쪽이 그 AS 의 방문 일정이라 건드리지 않는다(예전 방문 일정을 옮겨 새 방문일을 덮지 않게).
+   visitSchedId 가 지워진 일정을 가리키면(일정 삭제·맞추기 '앱에만' 지우기는 visitSchedId 를 비우지 않는다) 이 일정이 남은 방문 일정이라 따라간다.
+   AS 방문 일정이 아니면 아무것도 바꾸지 않는다. 날짜가 바뀌었는지는 부르는 쪽이 본다(날짜를 안 바꾼 저장은 어긋난 옛 자료도 그대로 — v331).
+   바꾼 AS 기록 수를 돌려준다. markDirty 는 부르는 쪽이 — 이 함수는 저장하지 않는다. */
+function hjAsVisitFollow(s){
+  if(!s||!s.id||!HJ_YMD_RE.test(String(s.date||'')))return 0;
+  const live=id=>(state.schedule||[]).some(x=>x&&x.id===id);
+  let n=0;
+  (state.asLog||[]).forEach(a=>{
+    if(!a)return;
+    const mine=a.visitSchedId===s.id||(!!s.asId&&a.id===s.asId&&!(a.visitSchedId&&a.visitSchedId!==s.id&&live(a.visitSchedId)));
+    if(mine&&a.visitAt!==s.date){a.visitAt=s.date;n++;}
+  });
+  return n;
 }
 function hjAsCloseOffer(s,back){
   const a=hjAsForSched(s),r=(s&&s.report)||{};
@@ -21304,11 +21370,13 @@ function hjMorningData(){
   const doing=(state.projects||[]).filter(p=>p&&!p.archived&&(p.stage||0)===2).length;
   return {d,checks,greet,doing};
 }
+// v592 🌅 아침 브리핑·🤖 오늘의 브리핑은 같은 '오늘 브리핑' — 어느 쪽이든 오늘 열었으면(자동이든 손으로든) 다른 쪽도 자동으로 안 띄운다.
+// 표시를 자동 창 계획에만 적으면 AI 도구·더보기로 🌅 를 연 날 다음 부팅에 🤖 가 두 번째 브리핑으로 떴다(v592 검토).
+function hjTodayBriefSeen(){const t=localDate();try{return localStorage.getItem('hj_morning_shown')===t||localStorage.getItem('hj_active_brief')===t;}catch(e){return false;}}
 function hjMorningShouldShow(){
   // 하루 1회(자정 기준), 데이터가 있을 때만
   if(!(state.projects||[]).length&&!(state.schedule||[]).length)return false;
-  const last=localStorage.getItem('hj_morning_shown');
-  return last!==localDate();
+  return !hjTodayBriefSeen();
 }
 function hjMorningBrief(opts){
   opts=opts||{};
@@ -21354,8 +21422,11 @@ function hjMorningBrief(opts){
   if(ask)ask.onclick=()=>{closeModal();try{aiAgent();setTimeout(()=>{const inp=document.getElementById('aiInput');if(inp){inp.value='오늘 뭐부터 하면 좋을까?';inp.focus();}},200);}catch(e){}};
   return {할일:sorted.length,오늘일정:d.오늘일정.length};
 }
+// v592 띄우지 않고 계획만 돌려준다 — 띄우기·표시는 부팅 자동 창 한 곳(hjBootAutoAfterRestore, 복원 뒤·창 하나·열린 뒤에 표시).
+// 🌅 와 🤖 는 hjTodayBriefSeen 으로 서로의 표시를 본다(하루에 브리핑 두 번 금지).
 function hjMorningMaybe(){
-  try{if(hjMorningShouldShow())setTimeout(()=>{try{hjMorningBrief();}catch(e){}},700);}catch(e){}
+  try{if(hjMorningShouldShow())return {k:'morning',marks:{hj_morning_shown:localDate()},open:()=>hjMorningBrief()};}catch(e){}
+  return null;
 }
 
 /* ═══════════ 📈 매출 추이 차트 — 월별 매출·수금 흐름 (SVG, 오프라인 작동) ═══════════ */
@@ -22474,7 +22545,7 @@ async function hjNotifyRequest(){
 function hjNotifyItems(){
   const items=[];const today=localDate();
   // 오늘 일정
-  (state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).forEach(s=>{
+  hjDaySchNoMoney(today).forEach(s=>{   // v591 이어지는 날 포함 — 그날 한 일정은 시작 또는 이어지는 날 중 하나라 'sch-'+id 가 겹치지 않는다
     items.push({key:'sch-'+s.id,ic:'🗓',title:'오늘 일정: '+(s.time?s.time+' ':'')+s.title,body:(s.project?s.project+' · ':'')+(s.workers?'인원 '+s.workers:'')});
   });
   // 무상 A/S 만료 임박(30일 이내)
@@ -22922,8 +22993,10 @@ function weekBriefShouldShow(){
   if(!(state.projects||[]).length)return false;
   return localStorage.getItem('hj_weekbrief_shown')!==localDate();
 }
+// v592 계획만 — 다른 창이 먼저 떠서 건너뛴 날은 표시하지 않는다(그날 나중에 열 때 다시 고른다)
 function weekBriefMaybe(){
-  try{if(weekBriefShouldShow()){localStorage.setItem('hj_weekbrief_shown',localDate());setTimeout(()=>{try{weekBrief();}catch(e){}},1000);}}catch(e){}
+  try{if(weekBriefShouldShow())return {k:'week',marks:{hj_weekbrief_shown:localDate()},open:()=>weekBrief()};}catch(e){}
+  return null;
 }
 
 /* ═══════════ 💳 간편 지출 장부 — 현금·카드 지출 빠른 기록 ═══════════ */
@@ -23988,7 +24061,7 @@ function hjAddrArea(addr){
 }
 function todayScheduleBrief(){
   const today=localDate();
-  const list=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const list=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
   // 각 일정에 현장 정보·준비물 힌트
   const rows=list.map(s=>{
     const p=state.projects.find(x=>x.name===s.project);
@@ -24310,8 +24383,8 @@ function aiActiveBriefData(){
   const parts=[];const urgent=[];
   // 오늘 일정
   const today=localDate();
-  const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
-  if(sch.length){const f=sch[0];parts.push('오늘 일정 '+sch.length+'건'+(f.time?'('+f.time+' '+hjCut(f.title,10)+' 등)':''));urgent.push({ic:'🗓',t:'오늘 일정 '+sch.length+'건',cmd:'오늘 일정 브리핑'});}
+  const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
+  if(sch.length){const f=sch[0];parts.push('오늘 일정 '+sch.length+'건'+(f.time?'('+f.time+' '+hjDaySchCutTitle(f,10)+' 등)':''));urgent.push({ic:'🗓',t:'오늘 일정 '+sch.length+'건',cmd:'오늘 일정 브리핑'});}
   // AI 제안(완료 현장 청구 등)
   try{const sug=(typeof aiSuggestions==='function')?aiSuggestions():[];sug.slice(0,2).forEach(s=>{const clean=String(s.t||'').replace(/<[^>]+>/g,'');urgent.push({ic:s.ic||'💡',t:clean,cmd:s.cmd});});}catch(e){}
   // 목표
@@ -24323,6 +24396,7 @@ function aiActiveBriefData(){
 }
 async function aiActiveBrief(auto){
   const d=aiActiveBriefData();
+  try{localStorage.setItem('hj_active_brief',localDate());}catch(e){}   // v592 손으로 열어도 오늘 본 것 — 🌅 와 같이(hjMorningBrief 는 예전부터 자기 표시를 적는다)
   const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
   // 요약 문장
   let summary=d.hasWork?(d.greet+'. 오늘은 '+d.parts.join(', ')+' 챙기시면 좋겠어요.'):(d.greet+'. 오늘은 특별히 급한 일은 없습니다.');
@@ -24349,16 +24423,15 @@ async function aiActiveBrief(auto){
   };
   return {오늘할일:d.parts.length,급한일:d.urgent.length};
 }
-// 부팅 시 하루 1회 자동(데이터 있을 때만)
+// 부팅 시 하루 1회 자동(데이터 있을 때만) — v592 계획만 돌려준다(🌅 아침 브리핑이 먼저, 둘 중 하나만)
 function aiActiveBriefMaybe(){
   try{
-    if(!(state.projects||[]).length&&!(state.schedule||[]).length)return;
-    if(localStorage.getItem('hj_active_brief')===localDate())return;
+    if(!(state.projects||[]).length&&!(state.schedule||[]).length)return null;
+    if(hjTodayBriefSeen())return null;   // 🌅 든 🤖 든 오늘 본 브리핑이 있으면 조용히
     const d=aiActiveBriefData();
-    if(!d.hasWork&&!d.urgent.length)return;  // 브리핑할 게 없으면 조용히
-    localStorage.setItem('hj_active_brief',localDate());
-    setTimeout(()=>{try{aiActiveBrief(true);}catch(e){}},1200);
-  }catch(e){}
+    if(!d.hasWork&&!d.urgent.length)return null;  // 브리핑할 게 없으면 조용히
+    return {k:'active',marks:{hj_active_brief:localDate()},open:()=>aiActiveBrief(true)};
+  }catch(e){return null;}
 }
 
 /* ═══════════ 🤖 AI 자동 실행 — 안전한 작업은 승인 없이 ═══════════ */
@@ -24572,18 +24645,17 @@ function opsReportNotifyItems(){
   }catch(e){}
   return items;
 }
-// 부팅 시 리포트 자동 표시(주말·월말 하루 1회)
+// 부팅 시 리포트 자동 표시(주말·월말 하루 1회) — v592 계획만(다른 창에 밀린 날은 표시하지 않는다)
 function opsReportMaybe(){
   try{
-    const due=opsReportDue();if(!due)return;
-    if(!(state.projects||[]).length)return;
+    const due=opsReportDue();if(!due)return null;
+    if(!(state.projects||[]).length)return null;
     const key='hj_ops_report_'+due;
-    if(localStorage.getItem(key)===localDate())return;
+    if(localStorage.getItem(key)===localDate())return null;
     const d=opsReportData(due);
-    if(!(d.income>0||d.spend>0||d.done>0))return;  // 활동 없으면 조용히
-    localStorage.setItem(key,localDate());
-    setTimeout(()=>{try{opsReport(due);}catch(e){}},1600);
-  }catch(e){}
+    if(!(d.income>0||d.spend>0||d.done>0))return null;  // 활동 없으면 조용히
+    return {k:'ops',marks:{[key]:localDate()},open:()=>opsReport(due)};
+  }catch(e){return null;}
 }
 
 /* ═══════════ 💬 고객 응대 AI — 문자 초안 자동 작성 ═══════════ */
@@ -26314,7 +26386,7 @@ function routeOptimize(stops,startLat,startLng){
 async function routeToday(dateStr){
   const date=dateStr||localDate();
   // 그 날 일정에서 현장 있는 것
-  const sch=(state.schedule||[]).filter(s=>s.date===date&&s.project&&!/^💰/.test(s.title||''));
+  const sch=hjDaySchView(date,s=>!!s.project&&!HJ_MONEY_SCH_RE.test(String(s.title||'')));   // v591 여러 날 공정의 이어지는 날도 그 현장에 가는 날
   const [c1,c2]=hjBrandGrad('#0e7a6b','#1d6fd8');
   // 좌표 있는 현장만
   const stops=[];const noCoord=[];
@@ -26752,10 +26824,10 @@ function ttsBriefText(){
   parts.push(greet+'. 오늘의 브리핑입니다.');
   // 오늘 일정
   const today=localDate();
-  const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+  const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));   // v591 이어지는 날 포함
   if(sch.length){
     parts.push('오늘 일정은 '+sch.length+'건입니다.');
-    sch.slice(0,4).forEach(s=>{parts.push((s.time?s.time+' ':'')+(s.project?s.project+' ':'')+hjCut(s.title||'',20));});
+    sch.slice(0,4).forEach(s=>{parts.push((s.time?s.time+' ':'')+(s.project?s.project+' ':'')+hjDaySchCutTitle(s,20,true));});   // v591 이어지는 날은 '3일 중 2일째'
   }else{parts.push('오늘은 등록된 일정이 없습니다.');}
   // 보강 항목(보증·AS)
   try{
@@ -28220,7 +28292,7 @@ function aiPlannerScan(scope){
     try{
       const today=aiOpsTodayKey();
       const tmr=new Date();tmr.setDate(tmr.getDate()+1);const tmrKey=tmr.getFullYear()+'-'+pad2(tmr.getMonth()+1)+'-'+pad2(tmr.getDate());
-      const todaySch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||''));
+      const todaySch=hjDaySchNoMoney(today);   // v591 이어지는 날 포함(건수·브리핑 줄만) — 내일 줄은 예전 그대로
       const tmrSch=(state.schedule||[]).filter(s=>s.date===tmrKey&&!/^💰/.test(s.title||''));
       if(todaySch.length)add({category:'일정',type:'brief_today',title:'오늘 일정 브리핑 ('+todaySch.length+'건)',
         reason:todaySch.slice(0,3).map(s=>(s.time||'')+' '+(s.project||s.title||'')).join(', '),
@@ -28231,7 +28303,9 @@ function aiPlannerScan(scope){
         priority:'normal',priorityScore:55,action:{kind:'open',fn:'hjMorningBrief'},readOnly:true,requiresApproval:false,
         source:'brief_tmr:'+tmrKey});
       // 일정 충돌(같은 날 같은 시간 2건↑)
-      const byKey={};todaySch.concat(tmrSch).forEach(s=>{if(s.time){const k=s.date+' '+s.time;byKey[k]=(byKey[k]||0)+1;}});
+      // v591 이어지는 날(_cont)은 세지 않는다 — 🗓 공정표는 공정마다 09:00 이라, 두 현장 여러 날 공정이 겹치는 날마다 '충돌'(높음·폰 알림)이 생겼다.
+      // 담당이 다르면 충돌이 아니라는 🔍 일정 점검(scheduleConflicts, v362)과 어긋난다. 이 대략 규칙은 예전처럼 그날 '시작하는' 일정만 본다.
+      const byKey={};todaySch.filter(s=>!s._cont).concat(tmrSch).forEach(s=>{if(s.time){const k=s.date+' '+s.time;byKey[k]=(byKey[k]||0)+1;}});
       const conflict=Object.keys(byKey).filter(k=>byKey[k]>=2);
       if(conflict.length)add({category:'일정',type:'conflict',title:'일정 충돌 확인',
         reason:conflict[0]+' 에 '+byKey[conflict[0]]+'건 겹침',priority:'high',priorityScore:78,
@@ -28606,7 +28680,7 @@ function aiOpsReportSummary(){
 }
 function aiOpsDailyBrief(){
   const today=aiOpsTodayKey();
-  const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  const sch=hjDaySchNoMoney(today).sort((a,b)=>String(a.time).localeCompare(String(b.time)));   // v591 이어지는 날 포함
   const sum=aiOpsReportSummary();
   const extra=(typeof briefExtraItems==='function')?briefExtraItems():[];
   const lines=[];
@@ -32068,7 +32142,7 @@ async function aiOpsBrain(){
   // 현재 상태 요약(앱 데이터만)
   const sum=aiQueueSummary();
   const active=(state.projects||[]).filter(p=>!p.archived&&p.stage<3).length;
-  const todaySch=(state.schedule||[]).filter(s=>s.date===aiOpsTodayKey()&&!/^💰/.test(s.title||'')).length;
+  const todaySch=hjDaySchNoMoney(aiOpsTodayKey()).length;   // v591 이어지는 날 포함
   const queueTop=sum.top3.map(t=>t.title).join(', ')||'없음';
   const prompt='너는 1인 인테리어 사장의 운영 비서다. 아래는 현재 사업 상태다.\n'+
     '- 진행 현장: '+active+'곳\n- 오늘 일정: '+todaySch+'건\n'+
@@ -38990,7 +39064,7 @@ function viewQuoteMaker(){
         <label>안 (비교표)<select id="qmTier">${hjQuoteTierOptions(q.tier||'')}</select></label>
         <label>입금 계좌<select id="qmAcct">${acctOpts}</select></label>
         <label>연결 현장<select id="qmProj">${projOpts}</select>${q.bathroomImport&&!q.project?'<span class="hint">현장을 골라 연결하세요</span>':''}</label>
-        <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
+        <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금">${hjQuoteMemoOut(q.memo)!==String(q.memo==null?'':q.memo)?'<span class="hint" data-qm-memo-hint>‘[금액 수정]’ 기록은 앱 안 기록이라 견적서·엑셀에는 나가지 않아요</span>':''}</label>
       </div>
       ${hjQuoteCostHintHtml(q)}<div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="ghost tiny" id="qmMeasure" aria-label="실측 노트의 방 면적을 품목으로 가져오기"${hjQuoteMeasureRooms(q).length?'':' hidden style="display:none"'}>📐 실측에서 가져오기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
       <div class="qm-quick">${['철거','방수','타일,기구','도배(실크)','씽크대','화장실','몰딩','장판','인건비','식대,부자재','폐기물','NEGO'].map(n=>`<button class="qm-chip" data-qadd="${escapeAttr(n)}" title="품목 빠른 추가">+ ${escapeHtml(n)}</button>`).join('')}</div>
@@ -40565,6 +40639,37 @@ function parseQuoteFromGrid(grid,filename){
   q.vatIncluded=grid.some(row=>(row||[]).some(c=>VAT_IN.test(norm(c))));
   return q;
 }
+/* ═══════════ v597 견적 비고의 '[금액 수정]' 기록은 앱 안 기록 — 밖으로 나가는 견적서에서는 뺀다 ═══════════
+   v583 hjStmtApply 는 고친 작업내역서를 다시 반영하면 견적 비고(q.memo)에 '[금액 수정] YYYY-MM-DD · 작업 220,000→330,000원 · 원본 ‘파일’' 줄을 덧붙인다
+   (옛 작성 월 매출이 소급해 바뀌니 언제·무엇을·어느 파일로 바꿨는지 남기는 내부 기록). 그런데 비고는 견적서 PDF(📤 보내기·☁️ 드라이브 저장)·🖨 인쇄·
+   엑셀의 '비고' 칸에 그대로 찍혀, 거래처·고객이 받는 견적서에 옛 금액·수정본 파일 이름이 나갔다(AGENTS v583 통합 검토 '다음 판 후보').
+   · hjQuoteMemoOut(memo) 한 곳 — 밖으로 나가는 견적서(quoteHTML → PDF·인쇄, exportQuoteXlsx)가 쓴다. 저장된 비고는 손대지 않는다:
+     견적 작성 화면 비고 칸·세무사용 증빙의 '비고(내부)'·📦 현장 ZIP(보관·세무·분쟁 대비용 — 고객 연락처·미수까지 담긴 내부 묶음)의 '앱견적' 은 기록을 그대로 본다.
+     거래명세서·청구서·고객 페이지·카톡 카드·공사 스토리는 원래 비고를 싣지 않는다.
+   · 빼는 것은 v583 이 쓰는 꼴('[금액 수정] YYYY-MM-DD · …원 · 원본 ‘파일’')뿐이다. 견적 작성 화면의 비고 칸은 한 줄 입력이라 고쳐 저장하면 줄바꿈이 사라져
+     기록이 앞뒤 글에 붙는다 — 그래서 줄 머리가 아니라 기록 하나하나(HJ_REVMEMO_ENTRY_RE)를 먼저 찾아 빼고 남은 글은 살린다(검토 고침: 줄 머리로 줄째 빼면
+     비고가 기록으로 시작할 때 그 뒤에 적은 '계약금 선입금' 같은 글까지 견적서에서 말없이 사라졌다).
+   · 파일 이름에 ’ 가 들어 있어도 끝을 맞게 찾는다: 내역서 확장자(.xlsx·.xls·.xlsm·.csv) 바로 뒤의 ’ → 없으면 뒤가 빈칸·다음 기록·줄 끝인 ’ → 없으면 첫 ’.
+     어느 것도 다음 '[금액 수정]' 을 넘지 않는다(사이에 적은 글을 같이 먹지 않게).
+   · 손으로 고쳐 꼴이 깨진 기록(날짜 머리 '[금액 수정] YYYY-MM-DD · ' 는 남음 — HJ_REVMEMO_STAMP_RE)은 끝을 알 수 없으니 그 머리부터 줄 끝까지 뺀다
+     (옛 금액·파일 이름이 나가는 것보다 낫다). 날짜 머리가 없는 '[금액 수정] …' 은 대표가 고객에게 쓴 글일 수 있어 그대로 둔다(v597 전처럼 찍힌다).
+     그 밖의 줄(v526 '원본:' 줄 포함)도 그대로.
+   · 견적 작성 화면 비고 칸에는 기록이 그대로 보이니, 빠지는 글이 있으면 칸 아래에 '견적서·엑셀에는 나가지 않아요' 한 줄(data-qm-memo-hint)로 알린다
+     — 칸만 보고는 무엇이 나가는지 알 수 없다(검토 고침). */
+const HJ_REVMEMO_STAMP_RE=/\[금액 수정\] \d{4}-\d{2}-\d{2} · /;
+const HJ_REVMEMO_ENTRY_RE=/\[금액 수정\] \d{4}-\d{2}-\d{2} · (?:(?!\[금액 수정\]).)*?-?[\d,]+→-?[\d,]+원 · 원본 ‘(?:(?:(?!\[금액 수정\]).)*?\.(?:xlsx|xlsm|xls|csv)’|(?:(?!\[금액 수정\]).)*?’(?=\s|\[금액 수정\]|$)|(?:(?!\[금액 수정\])[^’])*’)/gi;
+const HJ_REVMEMO_GAP_RE=/\s{2,}/g;
+function hjQuoteMemoOut(memo){
+  const out=[];
+  String(memo==null?'':memo).split('\n').forEach(l=>{
+    let t=l.replace(HJ_REVMEMO_ENTRY_RE,'');
+    const k=t.search(HJ_REVMEMO_STAMP_RE);if(k>=0)t=t.slice(0,k);
+    if(t===l){out.push(l);return;}
+    const u=t.replace(HJ_REVMEMO_GAP_RE,' ').trim();   // 기록만 있던 자리는 남기지 않는다
+    if(u)out.push(u);
+  });
+  return out.join('\n');
+}
 /* ===== 편집 중인 견적을 엑셀(.xlsx)로 저장 ===== */
 async function exportQuoteXlsx(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return;}
@@ -40587,7 +40692,7 @@ async function exportQuoteXlsx(){
   aoa.push(['','','','','총 액('+vatLabel+')',c.total,'']);
   aoa.push(['결제방법','계좌: '+((COMPANY.accounts[q.accountIdx]||{}).label||'')]);
   aoa.push(['장소',q.place||'']);
-  aoa.push(['비고',q.memo||'']);
+  aoa.push(['비고',hjQuoteMemoOut(q.memo)]);   // v597 '[금액 수정]' 기록은 빼고
   aoa.push(['견적 유효기간','견적서 일 기준 1개월']);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:6},{wch:18},{wch:16},{wch:7},{wch:13},{wch:14},{wch:12}];
@@ -41005,8 +41110,9 @@ function saveScheduleEdit(id,isNew,link,draftReport){
   const asRec=link&&link.asId?(state.asLog||[]).find(a=>a&&a.id===link.asId):null;
   if(asRec&&isNew){s.asId=asRec.id;asRec.visitSchedId=s.id;}
   /* v331 AS 에서 올린 방문 일정(AS 기록의 visitSchedId)의 날짜를 여기서 바꾸면 AS 방문일(visitAt)도 따라간다.
-     반대 방향(AS 화면 → 일정)은 asManage 가 이미 옮긴다. 날짜를 바꾼 때만 — 다른 칸만 고친 저장은 AS 를 건드리지 않는다. */
-  if(!isNew&&prevDate!==date)(state.asLog||[]).forEach(a=>{if(a&&a.visitSchedId===s.id&&a.visitAt!==date){a.visitAt=date;asMoved++;}});
+     반대 방향(AS 화면 → 일정)은 asManage 가 이미 옮긴다. 날짜를 바꾼 때만 — 다른 칸만 고친 저장은 AS 를 건드리지 않는다.
+     v594 맞추기 날짜 옮김과 같은 규칙 한 곳(hjAsVisitFollow) — 일정의 asId 만 남은 옛 기록(visitSchedId 없음·지워진 일정)도 따라간다. */
+  if(!isNew&&prevDate!==date)asMoved=hjAsVisitFollow(s);
   if(asRec&&asRec.visitAt!==s.date)asRec.visitAt=s.date;
   markDirty();closeModal();render();toast('일정 저장됨'+(asMoved?' · AS 방문일도 '+date+' 로 맞췄습니다':''));if(isNew)hjGcalMaybeOpen(s);
   // v353 현장 일정의 날짜만 옮긴 저장이면 같은 현장의 뒤 일정도 같이 옮길지 묻는다(현장을 바꾼 저장은 묻지 않는다)
@@ -41263,7 +41369,9 @@ async function importICS(text){
     if(e.cancelled){ if(i>=0){state.schedule.splice(i,1);removed++;} return; }
     const memo=[e.location?('장소: '+e.location):'',e.memo].filter(Boolean).join('\n');
     if(i>=0){
+      const prev=state.schedule[i].date;
       Object.assign(state.schedule[i],{date:e.date,time:e.time,title:e.title,memo:memo,icsUid:key});
+      if(prev!==e.date)hjAsVisitFollow(state.schedule[i]);   // v594 안전장치 — 같은 uid 로 날짜가 바뀐 일정이 AS 방문이면 방문일도(앱이 만든 AS 방문 일정에는 지금 uid 가 없다)
       updated++;
     }else{
       state.schedule.push(Object.assign(newSchedule(),{date:e.date,time:e.time,title:e.title,memo:memo,hours:e.time?8:0,icsUid:key}));
@@ -41285,17 +41393,46 @@ async function importICS(text){
    · [파수꾼]·💰·생일·취소된 일정과 7일보다 오래된 일정은 건너뛴다. 현장은 '[현장명]' → 이름 맞추기(hjStmtMatch 0.6↑) 제안, 사람이 바꿀 수 있다.
    · 반영 전 🛡 안전판 1회(못 만들면 무변경), 미리보기 뒤 일정표가 바뀌었으면 거부. 구글 캘린더는 건드리지 않는다(읽기만). 새 저장 키 없음. */
 const HJ_CALSYNC_BACK=7,HJ_CALSYNC_MOVE=21;
+/* v595 검토 — 앱 일정의 구글 사본(apps-script Watchdog watch-v5/v6 매시간 맞추기 — 📤 일정 공유의 hjSchShareTitle 과 같은 꼴)은 여러 날 공정을
+   날마다 따로 '[현장] 제목 (3일 · ~11/18(수))'·'[현장] 제목 (2/3일째)' 로 올리고, 공정표 꼬리 ' (N일차 시작)' 는 떼고 올린다.
+   꼬리를 남긴 채 견주면 열쇠가 앱 일정과 달라 다음 읽기에서 사본마다 체크된 '새 일정'이 생겼다(반영하면 같은 공정이 겹치고 그 사본이 또 올라간다 —
+   v595 로 제미나이의 시각 있는 여러 날 일정이 여러 날 공정이 되면서 매번 생긴다). 구글·앱 양쪽 다 떼고 견준다(열쇠만 — 앱 제목은 그대로 둔다). */
+const HJ_CALSYNC_COPY_TAIL_RE=/\s*\((?:\d+\/\d+일째|\d+일 · ~\d{1,2}\/\d{1,2}\([일월화수목금토]\))\)\s*$/;
 function hjCalSyncTitle(raw){
   let t=String(raw||'').replace(/\s+/g,' ').trim(),mark='',tag='';
   if(t.charAt(0)==='@'){mark='@';t=t.slice(1).trim();}
   const m=t.match(/^\[([^\]]{1,40})\]\s*(.+)$/);if(m){tag=m[1].trim();t=m[2].trim();if(!mark)mark='app';}
+  const u=t.replace(HJ_CALSYNC_COPY_TAIL_RE,'').replace(HJ_PLAN_SUFFIX_RE,'').trim();if(u)t=u;
   return {title:t,mark,tag};
 }
+/* v595 검토 — 앱이 구글에 올린 사본인가(구글 바로 읽기의 태그 hjKey · 제목 머리 '[현장]' · Watchdog 설명 끝줄 '…현장 앱 일정(자동)').
+   사본은 앱 기록이 기준이라 시각 여러 날 규칙(hjCalSyncTimedRange)을 쓰지 않는다: Watchdog 은 여러 날 공정을 날마다 따로 올리고 하루를 최대 24시간으로
+   올리므로, 24시간짜리 하루 일정(양생 09:00~이튿날 09:00)의 사본이 이틀로 읽혀 체크된 '⏳ 기간 다름'이 하루 공정을 이틀로 늘렸다.
+   .ics 에는 태그가 없어 제목 머리·설명 끝줄로 알아보고, 화면 글(설명 없음)은 제목 머리로만 — 현장 없는 24시간 일정의 사본은 화면 글에서 알아볼 수 없다.
+   사장님이 손으로 '[현장] 제목' 꼴로 넣은 시각 여러 날 일정도 예전처럼 시작일 하루로 읽는다. */
+const HJ_CALSYNC_COPY_NOTE='현장 앱 일정(자동)';   // apps-script/Watchdog.gs watchCalItem_ 설명 끝줄 — 바꾸면 두 곳 같이(timedspan-v595 가 Watchdog.gs 를 돌려 대조한다)
+function hjCalSyncAppCopy(raw,xp,memo){return !!(xp&&xp.private&&xp.private.hjKey)||hjCalSyncTitle(raw).mark==='app'||String(memo||'').includes(HJ_CALSYNC_COPY_NOTE);}
 function hjCalSyncKey(t){return String(t||'').toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
 function hjCalSyncSkip(raw){const t=String(raw||'').trim();return /^\[(파수꾼|일정 알림)\]/.test(t)||/^💰/.test(t)||/happy birthday|^생일/i.test(t);}   // v590 apps-script Watchdog watch-v6 의 매일 9시 '[일정 알림]' 일정도 앱 일정이 아니다
 function hjCalSyncHours(a,b){   // 'HH:MM' 둘 → 시간(0.5 단위), 모르면 1
   const f=x=>{const m=String(x||'').match(/^(\d{2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;},s=f(a),e=f(b);
   return s==null||e==null||e<=s?1:Math.max(0.5,Math.round((e-s)/30)/2);
+}
+/* v595 시각 있는 여러 날 일정 — 예전에는 시각이 있으면 끝 날짜가 뒤여도 시작일 하루로 읽었다(.ics·구글 바로 읽기·화면 글 모두 — v580·v588 '안 한 것').
+   제미나이가 '11/16 오전 9시 ~ 11/18 오후 6시'처럼 넣은 사흘 공정이 앱에서는 하루로 들어가 둘째·셋째 날이 대시보드·내 업무·달력에서 사라졌다(종일 여러 날이 v576·v580 전에 겪던 것과 같다).
+   · 끝이 한국 날짜로 뒤이고 24시간 이상일 때만 여러 날 — to = 끝 날짜, 끝이 정확히 0시면 그 전날까지(그날은 일하지 않는다).
+     24시간이 안 되는 밤샘(22시~새벽 2시)은 예전처럼 시작일 하루 — 이튿날을 공정 날로 만들면 하루 작업이 이틀로 보인다.
+   · 60일 넘으면 하루짜리(종일 여러 날과 같은 상한). 시작 시각은 그대로, 하루 시간 수는 끝 시각이 시작 시각보다 늦을 때만 그 차이 — 아니면 예전 기본값 1.
+   · 돌려준 to 는 종일 여러 날과 같은 칸이라 맞추기 계획·반영(같은 날 짝·⏳ 기간 다름·날짜 옮김의 메모 머리·반영 뒤 기간으로 보는 이어지는 날)이 그대로 쓴다.
+   s·e = {date:'YYYY-MM-DD', time:'HH:MM'}(한국 시각으로 바꾼 뒤). 여러 날이 아니면 null. */
+function hjCalSyncTimedRange(s,e){
+  const f=x=>{const m=String(x||'').match(/^(\d{2}):(\d{2})$/);return m?(+m[1])*60+(+m[2]):null;};
+  if(!s||!e||!s.time||!e.time||!isRealIsoDate(String(s.date))||!isRealIsoDate(String(e.date))||!(e.date>s.date))return null;
+  const a=f(s.time),b=f(e.time);if(a==null||b==null)return null;
+  if(hjDaysBetween(s.date,e.date)*1440+b-a<1440)return null;   // 24시간 안 — 밤샘 작업은 하루
+  const to=b===0?hjAddDays(e.date,-1):e.date;
+  if(!(to>s.date)||hjDaysBetween(s.date,to)>60)return null;
+  return {to,hours:b>a?hjCalSyncHours(s.time,e.time):1};
 }
 function hjCalSyncParseIcs(text){
   const out=[];
@@ -41311,8 +41448,10 @@ function hjCalSyncParseIcs(text){
     const e=when(get('DTEND')),st=get('STATUS');
     // v576 종일 여러 날: DTEND 는 '끝난 다음 날'이라 하루 뺀 날이 마지막 날. 60일 넘으면(잘못 적힌 끝 날짜) 하루짜리로 둔다.
     const last=!s.time&&e&&!e.time&&e.date>s.date?hjAddDays(e.date,-1):'',to=last>s.date&&hjDaysBetween(s.date,last)<=60?last:'';
-    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,to:to,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,raw:icsUnescape((get('SUMMARY')||{}).val||''),
-      location:icsUnescape((get('LOCATION')||{}).val||''),memo:icsUnescape((get('DESCRIPTION')||{}).val||''),cancelled:!!(st&&/CANCELLED/i.test(st.val))});
+    const raw=icsUnescape((get('SUMMARY')||{}).val||''),memo=icsUnescape((get('DESCRIPTION')||{}).val||'');
+    const tr=s.time&&!hjCalSyncAppCopy(raw,null,memo)?hjCalSyncTimedRange(s,e):null;   // v595 시각 있는 여러 날(24시간 이상) — 앱이 올린 사본은 빼고
+    out.push({uid:(get('UID')||{}).val||'',date:s.date,time:s.time,to:tr?tr.to:to,hours:s.time?(tr?tr.hours:(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1)):8,raw,
+      location:icsUnescape((get('LOCATION')||{}).val||''),memo,cancelled:!!(st&&/CANCELLED/i.test(st.val))});
   });
   return out;
 }
@@ -41320,13 +41459,18 @@ function hjCalSyncParseIcs(text){
 /* v580 여러 날 종일 일정 — 두 날짜 '2026년 11월 16일~2026년 11월 18일'(끝의 연도·월은 빠질 수 있다: '~11월 18일'·'~18일').
    '종일, …, 시작~끝' 은 줄 끝에서, '시작~끝, 제목, …' 은 줄 머리에서 읽는다. 예전에는 앞 꼴의 끝 날짜를 시작일로 읽었고 뒤 꼴은 아예 안 읽었다.
    화면 글의 끝 날짜는 그날까지 포함한다(.ics DTEND 는 끝난 다음 날이라 하루를 뺀다). 끝은 종일 일정만, 60일 넘으면 하루짜리(.ics 와 같은 규칙).
-   시각이 있는 여러 날 줄('…오후 7:20~2026년 11월 8일 오후 9:30')은 .ics 처럼 시작일 하루로 둔다.
+   시각이 있는 여러 날 줄('…오후 7:20~2026년 11월 8일 오후 9:30')은 v595 부터 .ics·구글 바로 읽기와 같은 규칙(hjCalSyncTimedRange — 24시간 이상이면 끝 날짜까지,
+   그보다 짧은 밤샘은 시작일 하루). 끝의 연도·월이 빠진 꼴('~12월 2일 오전 7:00'·'~2일 …')도 종일 두 날짜처럼 읽는다. 끝 날짜 없이 시각만 있으면('~오후 9:30') 하루.
    줄 끝에 두 날짜가 '~·–·—·-' 로 이어져 있는데 위 꼴이 아니면(요일 괄호 '(월)~', 하이픈 ' - ', 뒤에 글이 더 붙음 등) 그 줄은 건너뛰고 '못 읽은 줄'로 센다
    — 예전처럼 마지막 날짜를 시작일로 읽으면 3일 공정의 시작이 끝 날짜로 밀린다(잘못 읽는 것보다 안 읽는 것이 낫다). 읽은 목록의 .unread 에 수. */
 const HJ_CALSYNC_LINE_RE=/^(?:(?:\d{4}년 \d{1,2}월 \d{1,2}일 )?(?:종일|오전|오후)|\d{4}년 \d{1,2}월 \d{1,2}일\s*[~–])/;
 const HJ_CALSYNC_RANGE_HEAD_RE=/^(\d{4})년 (\d{1,2})월 (\d{1,2})일\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일/;
 const HJ_CALSYNC_RANGE_TAIL_RE=/(\d{4})년 (\d{1,2})월 (\d{1,2})일\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일,?\s*$/;
 const HJ_CALSYNC_AMPM_RE=/오전|오후/;
+// v595 검토 — 시각 머리의 시작~끝 구분. 정규식들(HJ_CALSYNC_LINE_RE·RANGE·TIMED_HEAD)은 '~·–' 둘 다 받는데 끝 시각은 '~' 로만 잘라, '–' 줄은 끝 시각을 잃고 하루로 들어갔다
+const HJ_CALSYNC_DASH_RE=/[~–]/;
+// v595 시각 있는 두 날짜 줄 머리 '2026년 11월 16일 오전 9:00~2026년 11월 18일 오후 6:00' — 괄호 묶음 차례가 HJ_CALSYNC_RANGE_HEAD_RE 와 같아 hjCalSyncRangeOf 가 그대로 읽는다
+const HJ_CALSYNC_TIMED_HEAD_RE=/^(\d{4})년 (\d{1,2})월 (\d{1,2})일 (?:오전|오후) \d{1,2}(?::\d{2})?시?\s*[~–]\s*(?:(?:(\d{4})년 )?(\d{1,2})월 )?(\d{1,2})일 (?:오전|오후)/;
 const HJ_CALSYNC_LOOSE_RANGE_RE=/\d{4}년 \d{1,2}월 \d{1,2}일[^,]*?[~–—-]\s*(?:\d{4}년 )?(?:\d{1,2}월 )?\d{1,2}일/;
 // 두 날짜 정규식 결과 → {date,end} — 끝 연도가 없고 끝이 앞서면 다음 해, 끝 월이 없고 날이 앞서면 다음 달. 없는 날짜면 null(끝만 이상하면 end '')
 function hjCalSyncRangeOf(m){
@@ -41353,11 +41497,16 @@ function hjCalSyncParseText(text){
       const ds=[...line.matchAll(DATE)];if(!ds.length)return;
       const d=dateStart?ds[0]:ds[ds.length-1];date=d[1]+'-'+p2(d[2])+'-'+p2(d[3]);}
     const oc=mid.lastIndexOf(', '),raw=(oc>0?mid.slice(0,oc):mid).trim();if(!raw)return;
-    const allDay=!HJ_CALSYNC_AMPM_RE.test(head),times=head.replace(DATE,'').split('~'),time=allDay?'':clock(times[0]);
-    const to=allDay&&end>date&&hjDaysBetween(date,end)<=60?end:'';
+    const allDay=!HJ_CALSYNC_AMPM_RE.test(head),times=head.replace(DATE,'').split(HJ_CALSYNC_DASH_RE),time=allDay?'':clock(times[0]);
+    // v595 시각 있는 여러 날 줄 — 끝 날짜·시각을 읽어 .ics·구글 바로 읽기와 같은 규칙으로(24시간 이상만 여러 날)
+    // v595 검토 — 줄 끝 두 날짜 꼴('오전 9시~오후 6시, …, 2026년 11월 16일~2026년 11월 18일')도 같은 규칙. 머리 시각을 날마다의 시간으로 읽든
+    // 이어진 한 일정으로 읽든 사흘·하루 9시간으로 같다(.ics·구글 바로 읽기에서 같은 일정이 어디로 들어오든 같은 답). 예전에는 끝 날짜를 버리고 하루로 넣었다.
+    const tm=dateStart&&!allDay?head.match(HJ_CALSYNC_TIMED_HEAD_RE):null,te=tm?hjCalSyncRangeOf(tm):(!dateStart&&!allDay&&rg&&end?{date,end}:null);
+    const tr=te&&te.end&&te.date===date&&!hjCalSyncAppCopy(raw)?hjCalSyncTimedRange({date,time},{date:te.end,time:clock(times[1])}):null;
+    const to=allDay?(end>date&&hjDaysBetween(date,end)<=60?end:''):(tr?tr.to:'');
     const lm=tail.match(/^위치: (.*?)(?:, \d{4}년 \d{1,2}월 \d{1,2}일.*|,)?$/);
     const k=date+'|'+time+'|'+raw+'|'+to;if(seen.has(k))return;seen.add(k);
-    out.push({uid:'',date,time,to,hours:allDay?8:(dateStart?1:hjCalSyncHours(time,clock(times[1]))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
+    out.push({uid:'',date,time,to,hours:allDay?8:(tr?tr.hours:(dateStart?1:hjCalSyncHours(time,clock(times[1])))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
   });
   out.unread=unread;
   return out;
@@ -41381,6 +41530,9 @@ function hjCalSyncSpanMemo(memo,from,to){
 const HJ_CALSYNC_RANK={new:0,time:1,span:2,rename:3,move:4,apponly:5};
 /* v588 같은 구글 일정(uid)으로 짝을 지을 때 보지 않는 합성 uid — 'gcal:날짜|열쇠'(v567 맞추기가 uid 없는 화면 글 일정에 붙인 것)·'nouid:'(📥 importICS) */
 const HJ_CALSYNC_SYNTH_UID_RE=/^(?:gcal|nouid):/;
+/* 통합 검토 — 진행 중 보고가 있는 여러 날 공정(v591 hjSchContEnded 가 아직 끝나지 않았다고 보는 것). 맞추기는 이런 공정의 날짜·기간을 바꾸지 않는다(보고가 붙은 날). */
+function hjCalSyncGoing(s){return hjSchReported(s)&&!hjSchContEnded(s)&&hjSchSpan(s).days>1;}
+function hjCalSyncGoingRef(s){return {going:{id:s.id,date:s.date,to:hjSchSpan(s).to,title:String(s.title||'')}};}
 function hjCalSyncPlan(events,opts){
   const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
   // v588 events.skipped = 구글 캘린더에서 바로 읽을 때 건너뛴 자동 일정(생일·근무지·메일에서 온 예약·거절한 초대 등), events.api = 구글에서 받은 일정 수
@@ -41426,6 +41578,11 @@ function hjCalSyncPlan(events,opts){
      예전에는 앱의 지금 기간을 그대로 써서, 제미나이가 공정을 하루 늦추면(시작일 일정이 없음) 앞쪽 날을 '이어지는 날'로 삼키고
      그 공정을 마지막 구글 날로 옮겼다(다음 읽기에서 같은 작업이 겹침). uid 로 다른 날로 옮겨질 공정의 옛 기간도 썼다. */
   const planned=[],plan=(key,proj,f,t)=>{planned.push({key,proj:proj||'',from:f,to:t&&t>f?t:f});};
+  /* v595 검토 — v595 전 맞추기는 시각 있는 여러 날 일정을 시작일 하루·1시간(예전 기본값)으로 넣었다. 그 일정을 다시 읽어 '⏳ 기간 다름'으로 늘릴 때
+     하루 시간 수가 1시간으로 남으면 🔍 일정 점검·담당 겹침이 사흘을 한 시간짜리로 본다(새로 넣은 같은 일정은 9시간). 그 구글 일정이 넣은 기록
+     (같은 uid, 또는 화면 글 맞추기의 'gcal:날짜|열쇠')이고 아직 하루짜리·1시간일 때만 구글의 하루 시간 수를 같이 싣는다 — 사람이 고친 시간은 그대로. */
+  const hfixOf=(g,a,to)=>{const syn='gcal:'+a.s.date+'|'+a.key,ge=g.list.find(x=>x.time&&x.to&&(a.uid?String(x.uid||'')===a.uid:String(a.s.icsUid||'')===syn));
+    return ge&&ge.to===to&&Number(a.s.hours)===1&&Number(ge.hours)>1&&hjSchSpan(a.s).days<=1?Number(ge.hours):0;};
   const contOf=g=>{
     if(g._base.to)return false;
     let hit=planned.some(p=>p.key===g.key&&p.from<g.date&&g.date<=p.to&&projOk(g,p.proj));
@@ -41452,7 +41609,7 @@ function hjCalSyncPlan(events,opts){
     try{cands=hjStmtMatch(base.title+(base.location?' '+base.location:'')).filter(c=>c.score>=0.5).slice(0,3);}catch(e){}
     if(!project&&cands[0]&&cands[0].score>=0.6)project=cands[0].name;
     if(base.invite)project='';
-    const quiet=!!(base.invite||base.series||(extra&&extra.done));
+    const quiet=!!(base.invite||base.series||(extra&&(extra.done||extra.going)));
     return Object.assign(base,{status:'new',check:!quiet,project,cands:cands.map(c=>c.name)},extra||{});
   };
   /* v588 같은 구글 일정(uid)으로 먼저 짝 — 앱 일정의 icsUid 가 구글 일정의 uid(iCalUID)와 같으면 제목·날짜와 상관없이 같은 일정이다
@@ -41494,9 +41651,9 @@ function hjCalSyncPlan(events,opts){
     }
     const sp=hjSchSpan(tgt.s),app=appOf(tgt);
     const span=!covered&&!!(base.to&&base.to>g.date&&base.to!==sp.to&&hjCalSyncMemoOwn(tgt.s)&&!hjSchReported(tgt.s)),shorter=span&&sp.days>1&&base.to<sp.to;
-    const timeDiff=!!(rep.time&&String(a.s.time||'')!==rep.time),own=tgt===a;
-    if(timeDiff)rows.push(Object.assign({},base,{status:'time',check:true,span:own&&span&&!shorter,app:appOf(a)}));
-    if(span&&(shorter||!timeDiff||!own))rows.push(Object.assign({},base,{status:'span',check:true,span,shorter,app},own?{}:{date:tgt.s.date,time:tgt.s.time||''}));
+    const timeDiff=!!(rep.time&&String(a.s.time||'')!==rep.time),own=tgt===a,hf=own&&span&&!shorter?hfixOf(g,a,base.to):0;
+    if(timeDiff)rows.push(Object.assign({},base,{status:'time',check:true,span:own&&span&&!shorter,hfix:hf,app:appOf(a)}));
+    if(span&&(shorter||!timeDiff||!own))rows.push(Object.assign({},base,{status:'span',check:true,span,shorter,hfix:timeDiff?0:hf,app},own?{}:{date:tgt.s.date,time:tgt.s.time||''}));
     if(!timeDiff&&!(own&&span))stats.same++;
     if(!own&&!span)stats.same++;
     plan(g.key,a.s.project,a.s.date,own&&span?base.to:endOf(a));
@@ -41510,13 +41667,13 @@ function hjCalSyncPlan(events,opts){
       // v588 검토 — 다른 날로 옮겨진 같은 구글 일정은 숨기지 않고 새 일정 줄로(체크 해제 — 다시 하는 작업이면 체크). 예전처럼 미리보기에 보인다.
       if(hjSchReported(a.s)){
         if(a.s.date===g.date){stats.same++;plan(a.key,a.s.project,a.s.date,endOf(a));return;}
-        rows.push(newRow(g,base,{done:{id:a.s.id,date:a.s.date,title:String(a.s.title||'')}}));return;}
+        rows.push(newRow(g,base,hjCalSyncGoing(a.s)?hjCalSyncGoingRef(a.s):{done:{id:a.s.id,date:a.s.date,title:String(a.s.title||'')}}));return;}
       const app=Object.assign(appOf(a),{title:String(a.s.title||'')}),ren=a.key!==g.key;
       if(a.s.date!==g.date){const mv=moveTo(g,base,a);
         rows.push(Object.assign(base,{status:'move',check:true,own:hjCalSyncMemoOwn(a.s),rename:ren,uidPair:true,app},mv.to?{to:mv.to}:{}));plan(g.key,a.s.project,g.date,mv.plan);return;}
       // 같은 날·제목만 바뀜(구글에서 이름을 고침) — 시각·기간도 구글대로 같이 싣는다
       const sp=hjSchSpan(a.s),timeChg=!!(rep.time&&String(a.s.time||'')!==rep.time),span=!!(base.to&&base.to>g.date&&base.to!==sp.to&&hjCalSyncMemoOwn(a.s));
-      rows.push(Object.assign(base,{status:'rename',check:true,timeChg,span,shorter:span&&sp.days>1&&base.to<sp.to,app}));
+      rows.push(Object.assign(base,{status:'rename',check:true,timeChg,span,shorter:span&&sp.days>1&&base.to<sp.to,hfix:span?hfixOf(g,a,base.to):0,app}));
       plan(g.key,a.s.project,a.s.date,span?base.to:sp.to);return;}
     // 같은 날 같은 제목 — '[현장명]' 표시와 현장이 맞는 앱 일정을 먼저
     const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key).sort((x,y)=>(projOk(g,y.s.project)?1:0)-(projOk(g,x.s.project)?1:0))[0];
@@ -41546,7 +41703,11 @@ function hjCalSyncPlan(events,opts){
     if(moved){moved.used=true;const sp=hjSchSpan(moved.s),mv=moveTo(g,base,moved);
       rows.push(Object.assign(base,{status:'move',check:true,own:hjCalSyncMemoOwn(moved.s),app:{id:moved.s.id,date:moved.s.date,time:moved.s.time||'',to:sp.days>1?sp.to:''}},mv.to?{to:mv.to}:{}));
       plan(g.key,moved.s.project,g.date,mv.plan);return;}
-    rows.push(newRow(g,base));
+    /* 통합 검토(v591×v580/v588) — 진행 중 보고(진행·진행중·NN%)가 있는 여러 날 공정은 v591 부터 둘째·셋째 날이 이어진다. 그런 공정은 완료 보고처럼
+       옮김 후보에서 빠지므로(보고가 붙은 날짜를 바꾸지 않는다) 구글에서 그 공정을 하루 미뤄 놓으면 체크된 '새 일정'으로 한 번 더 들어가 같은 날 두 번 보였다.
+       같은 열쇠·현장의 진행 중 공정이 앞뒤 21일 안에 있으면 체크 해제로 두고 까닭을 적는다(따로 하는 작업이면 사람이 체크). */
+    const going=apps.find(a=>!a.recur&&a.key===g.key&&projOk(g,a.s.project)&&hjCalSyncGoing(a.s)&&Math.abs(hjDaysBetween(a.s.date,g.date))<=HJ_CALSYNC_MOVE);
+    rows.push(newRow(g,base,going?hjCalSyncGoingRef(going.s):undefined));
   });
   if(lo){const a0=lo>from?lo:from;
     apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
@@ -41578,7 +41739,7 @@ async function hjCalSyncApply(plan,picks){
   // 안전판을 기다리는 사이 다른 창이 저장했을 수 있다 — 오래된 창이면 바꾸지 않는다(바꿔도 저장은 막혀 '바뀐 일정 알리기'가 저장 안 된 날짜를 알리게 된다)
   if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
-  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,ids:[],list:[]};
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,asMoved:0,ids:[],list:[]};   // v594 asMoved = 날짜를 옮긴 AS 방문 일정을 따라 방문일을 맞춘 AS 기록 수
   const note=(s,kind,from,fix,t0)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);const t=String(s.title||'');
     out.list.push({id:s.id,kind,fix:!!fix,title:t,fromTitle:t0!=null&&String(t0)!==t?String(t0):'',project:String(s.project||''),from,to:null,_s:s});};
   sel.forEach(({r,project})=>{
@@ -41606,8 +41767,12 @@ async function hjCalSyncApply(plan,picks){
       if(own){if(r.to&&r.to>r.date)s.memo=hjCalSyncSpanMemo(s.memo,r.date,r.to);
         else if(sp.days>1){let nm=hjShiftRangeMemo(s.memo,old,hjWorkDaysBetween(old,r.date));const m=nm&&nm.match(HJ_RANGE_MEMO_RE);
           if(!m||m[1]!==r.date)nm=hjCalSyncSpanMemo(s.memo,r.date,hjShiftWorkDays(r.date,sp.days-1));s.memo=nm;}}
+      if(old!==s.date)out.asMoved+=hjAsVisitFollow(s);   // v594 AS 방문 일정이면 AS 기록의 방문일도 구글 날짜로(일정 창 저장 v331 과 같은 규칙)
       out.changed++;}
     else if(r.status==='apponly'){state.schedule.splice(state.schedule.indexOf(s),1);out.removed++;}
+    // v595 검토 — 예전 맞추기가 1시간으로 넣은 시각 여러 날 일정(시간 다름·기간 다름·제목 바뀜 줄의 hfix): 기간을 실제로 늘렸고 아직 1시간이면 구글의 하루 시간 수로
+    // (미리보기 뒤 사람이 시간을 고쳤거나 메모 머리를 손으로 고쳐 기간이 안 늘었으면 그대로)
+    if(r.hfix>1&&Number(s.hours)===1&&hjSchSpan(s).days>1)s.hours=r.hfix;
     if(out.changed>changed0)note(s,r.status,before,r.fix,t0);
   });
   // 한 일정을 두 줄(시간 다름 + 기간 다름)이 바꿀 수 있어 '바뀐 뒤'는 다 바꾼 다음에 찍는다
@@ -41618,7 +41783,7 @@ async function hjCalSyncApply(plan,picks){
 }
 function hjCalSyncRowText(r){
   const when=hjMdDow(r.date)+' '+(r.time||'종일');
-  const spanTxt=()=>' 기간 '+(r.app.to?'~'+hjMdDow(r.app.to):'하루')+' → ~'+hjMdDow(r.to);
+  const spanTxt=()=>' 기간 '+(r.app.to?'~'+hjMdDow(r.app.to):'하루')+' → ~'+hjMdDow(r.to)+(r.hfix>1?' · 하루 1시간 → '+r.hfix+'시간':'');
   if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time+(r.span?' ·'+spanTxt():'');
   // v588 구글이 기준 — 앱 기간보다 짧아도 구글대로 줄이는 쪽(체크된 채)
   if(r.status==='span')return when+' '+r.title+' —'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':'');
@@ -41630,7 +41795,7 @@ function hjCalSyncRowText(r){
   if(r.status==='apponly')return when+' '+r.title+(r.overlap?' — 구글 여러 날 일정('+hjMdDow(r.overlap.from)+'~'+hjMdDow(r.overlap.to)+')과 겹쳐요(체크하면 앱에서 지움)':' — 구글 캘린더에 없음(체크하면 앱에서 지움)');
   // v588 검토 — 반복 회차 한 줄·받은 초대·완료 보고한 일정의 같은 구글 일정은 체크 해제로 두고 까닭을 적는다
   const occ=Array.isArray(r.occ)&&r.occ.length>1?' 🔁 반복 '+r.occ.length+'회('+r.occ.slice(0,4).map(o=>hjMdDow(o.date)).join('·')+(r.occ.length>4?'…':'')+')':'';
-  const why=r.invite?' — 받은 초대(응답 전)라 체크 해제 · 맞으면 체크':r.done?' — 완료 보고한 ‘'+hjCut(String(r.done.title||'').trim()||'일정',30)+'’('+hjMdDow(r.done.date)+')과 같은 구글 일정이라 체크 해제 · 다시 하는 작업이면 체크':r.series?' — 반복 일정이라 체크 해제 · 맞으면 체크':'';
+  const why=r.invite?' — 받은 초대(응답 전)라 체크 해제 · 맞으면 체크':r.going?' — 진행 중인 ‘'+hjCut(String(r.going.title||'').trim()||'일정',30)+'’('+hjMdDow(r.going.date)+'~'+hjMdDow(r.going.to)+')과 같은 작업일 수 있어 체크 해제 · 따로 하는 작업이면 체크':r.done?' — 완료 보고한 ‘'+hjCut(String(r.done.title||'').trim()||'일정',30)+'’('+hjMdDow(r.done.date)+')과 같은 구글 일정이라 체크 해제 · 다시 하는 작업이면 체크':r.series?' — 반복 일정이라 체크 해제 · 맞으면 체크':'';
   return when+(r.to&&r.to>r.date?' ~ '+hjMdDow(r.to):'')+occ+' '+r.title+(r.location?' · '+r.location:'')+why;
 }
 /* v581 🔄 맞추기 반영 뒤 '바뀐 일정 알리기' — 반영하고 나면 토스트만 떠서, 팀·고객에게 알리려면 📤 일정 공유에서 범위를 다시 골라야 했다
@@ -41762,7 +41927,8 @@ function hjCalApiEvent(ev){
   const last=!s.time&&e&&!e.time&&e.date>s.date?hjAddDays(e.date,-1):'',to=last>s.date&&hjDaysBetween(s.date,last)<=60?last:'';
   // v588 검토 — 남이 보낸 초대: 내가 거절한 것은 건너뛰고(declined), 아직 응답하지 않은 것(needsAction·tentative)은 새 일정이라도 체크 해제(invite)
   const me=(Array.isArray(ev.attendees)?ev.attendees:[]).find(x=>x&&x.self),rs=me?String(me.responseStatus||''):'';
-  return {uid:String(ev.iCalUID||ev.id||''),date:s.date,time:s.time,to,hours:s.time?(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1):8,
+  const tr=s.time&&!hjCalSyncAppCopy(ev.summary,ev.extendedProperties,ev.description)?hjCalSyncTimedRange(s,e):null;   // v595 시각 있는 여러 날(한국 시각으로 바꾼 뒤 24시간 이상) — .ics·화면 글과 같은 규칙, 앱이 올린 사본은 빼고
+  return {uid:String(ev.iCalUID||ev.id||''),date:s.date,time:s.time,to:tr?tr.to:to,hours:s.time?(tr?tr.hours:(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1)):8,
     raw:String(ev.summary||''),location:String(ev.location||''),memo:hjCalApiText(ev.description).slice(0,300),cancelled:ev.status==='cancelled',series:!!ev.recurringEventId,
     invite:!!me&&!(ev.organizer&&ev.organizer.self)&&rs!=='accepted'&&rs!=='declined',declined:rs==='declined'};
 }
@@ -41859,7 +42025,7 @@ function hjCalSyncView(){
       if(!picks.length){toast('반영할 줄을 체크하세요');return;}
       const del=picks.filter(p=>plan.rows[p.i]&&plan.rows[p.i].status==='apponly').length;
       if(del&&!confirm('앱에만 있는 일정 '+del+'건을 앱 일정표에서 지웁니다. 계속할까요?\n(🛡 안전판에서 되돌릴 수 있어요)'))return;
-      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+' — 되돌리려면 🛡 안전판');
+      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+(r.asMoved?' · AS 방문일 '+r.asMoved+'건도 맞춤':'')+' — 되돌리려면 🛡 안전판');
         if(r.list.length)hjCalSyncDone(r);}   // v581 바뀐 일정 팀·고객에게 알리기
       catch(e){toast(String(e&&e.message||e));}
     }}],true);
@@ -42980,7 +43146,7 @@ function quoteHTML(q){
     <table class="qcond">
       <tr><td class="vlabel2" rowspan="4">견적조건</td><td class="l">결제방법</td><td>계좌: ${escapeHtml(acct.label)}</td></tr>
       <tr><td class="l">장소</td><td>${escapeHtml(q.place||'')}</td></tr>
-      <tr><td class="l">비고</td><td>${escapeHtml(q.memo||'')}</td></tr>
+      <tr><td class="l">비고</td><td>${escapeHtml(hjQuoteMemoOut(q.memo))}</td></tr>
       <tr><td class="l">견적 유효기간</td><td>견적서 일 기준 1개월</td></tr>
     </table>
   </div>`;
@@ -43383,6 +43549,8 @@ function openLightbox(id, listIds){
     __lbHistoryCleanup=mobileSheetHistoryOpen(()=>{__lbHistoryCleanup=null;closeLightbox();},{nested:!!__lbParentModal});
   }
 }
+// v593 사진 크게 보기 안내 글(#lbNote) — 사진 칸 아래 흐름. 좌우 84px 는 ‹ ›(left/right 20px + 52px) 자리라 단추를 덮지 않고, 글자는 눌림을 막지 않는다(pointer-events:none).
+const HJ_LB_NOTE_CSS='margin-top:12px;max-width:min(86vw,calc(100vw - 168px));color:#cbd5e1;font-size:13px;text-align:center;line-height:1.5;overflow-wrap:anywhere;pointer-events:none';
 function renderLightbox(){
   const id=__lightboxList[__lightboxIdx];
   const f=state.files.find(x=>x.id===id);if(!f){closeLightbox();return;}
@@ -43440,41 +43608,60 @@ function renderLightbox(){
     if(im&&__stillCurrent()){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;}
   }catch(_){}})();}
   } else if(!f.thumb && !f._driveId && IMG.includes(f.ext)){
-    // driveId 없는 사진("IMG" 빈칸) → 드라이브 전체에서 같은 이름으로 찾아 받아오기(읽기전용 권한 사용)
-    const im0=document.getElementById('lbImg');
+    /* v593 미리보기도 서버 사본(Drive ID)도 없는 사진 — PC 폴더 스캔 직후(미리보기 만들기 전)·폰의 PC 전용 사진·🏢 동·호수 화면에서 넘겨 보는 사진.
+       예전에는 이 기기에 원본이 있어도 드라이브 전체를 '같은 이름'으로 찾아, 같은 이름이 여럿이거나 크기가 달라도 첫 것을 열고 그 Drive ID 를 사진에 적어 저장했다
+       — 다른 해의 IMG_1001 이 열리고 남의 Drive ID 가 저장됐다(v584 검토). 그 ID 로 다음부터 엉뚱한 사진이 미리보기·보고서·고객 페이지에 쓰인다.
+       ① 이 기기 원본(파일 핸들·_file·_heicFile·공유함 — getFileOf)을 먼저 그린다. 드라이브를 건드리지 않고 아무것도 적지 않는다.
+       ② 원본이 없을 때만 마지막으로 드라이브에서 '이름이 정확히 같은' 사진을 찾는다(받은 목록도 이름을 글자 그대로 다시 대조 — 드라이브의 name= 은 대소문자를 가리지 않는다).
+          딱 하나여야 하고, 이 사진 크기를 알면 바이트 수까지 같아야 연다. 아니면 받지도 적지도 않고 '열지 않았습니다'만 보인다. 사본 꼬리표를 뗀 '이름 일부'로 찾던 것은 이름이 다른 사진이라 뺐다.
+          같은 이름이 여럿이어도 이 사진 크기를 알고 모두 그 크기·같은 내용(드라이브 MD5)이면 같은 사진의 사본(정리본·_중복정리_보관 — 중복은 지우지 않고 옮겨 둔다)이라 보여 주기만 한다.
+          크기 하나만 같은 것은 고르지 않는다 — 어느 것인지 모른다.
+       ③ Drive ID 는 ②의 '딱 하나·크기 같음'을 지나 받은 원본 크기까지 같을 때만 적는다. 크기를 모르는 사진(0)은 같은 사진이라는 근거가 없어(v584 의 바로 그 경우) 보여 주되 조심 글을 남기고,
+          사본 여럿은 어느 사본에 이을지 몰라(보관 사본은 나중에 지워질 수 있다) 보여 주기만 한다. 그 사이 다른 곳에서 정했거나·기록이 바뀌었거나·다른 기록이 이미 쓰는 ID 면 적지 않는다(v556·v570).
+       안내 글은 사진 칸 '아래' 흐름에 둔다 — 사진 칸 안에 띄우면 폰에서 ‹ › 단추 윗부분과 파일 이름을 덮어 눌리지 않았다(검토). 좌우 84px 는 ‹ ›(20+52px) 자리.
+       그림은 다 그려진 뒤에 안내를 지운다 — 손상·열 수 없는 형식이면 빈 화면 대신 까닭을 남긴다. */
     const stage=document.querySelector('.lb-stage');
-    if(stage){const note=document.createElement('div');note.id='lbNote';note.style.cssText='position:absolute;color:#cbd5e1;font-size:13px';note.textContent='드라이브에서 사진 찾는 중…';stage.appendChild(note);}
+    const say=(t,k)=>{ if(!__stillCurrent())return; let n=document.getElementById('lbNote');
+      if(!n&&stage&&stage.isConnected){n=document.createElement('div');n.id='lbNote';n.style.cssText=HJ_LB_NOTE_CSS;stage.after(n);}
+      if(n){n.textContent=t;n.setAttribute('data-lb-note',k);} };
+    const show=(b,fail,after)=>{ const im=document.getElementById('lbImg'); if(!im||!__stillCurrent())return false;
+      const u=URL.createObjectURL(b);window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;
+      im.onload=()=>{ if(!__stillCurrent())return; if(after)return say(after[0],after[1]); const n=document.getElementById('lbNote');if(n)n.remove(); };
+      im.onerror=()=>say(fail,'decode');
+      im.src=u; return true; };
+    const toJpg=async b=>{ const e=String(f.ext||'').toLowerCase(); if(e!=='heic'&&e!=='heif')return b;
+      await ensureHeic2any(); const o=await heic2any({blob:b,toType:'image/jpeg',quality:0.9}); return Array.isArray(o)?o[0]:o; };
+    say('사진 여는 중…','open');
     (async()=>{ try{
-      let tok; try{ tok=await getRoToken(false); }catch(e){ try{ tok=await getRoToken(true); }catch(e2){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진을 찾으려면 ☁️설정 → 📂 통합 불러오기 권한이 필요합니다'; return; } }
-      // 이름으로 검색(size도 받아 크기 매칭). "의 사본" 등 꼬리표 포함 정확매칭 우선, 없으면 원래이름 contains
-      const nm=f.name.replace(/'/g,"\\'");
-      let list=await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok);
-      if(!list.length){ const base=f.name.replace(/(의 사본.*|의 복사본.*| \(\d+\).*| - copy.*)$/i,'').replace(/'/g,"\\'"); if(base&&base!==f.name) list=await roList("name contains '"+base+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok); }
-      if(!list.length){ const n=document.getElementById('lbNote'); if(n)n.textContent='드라이브에서 이 사진을 찾지 못했습니다('+escapeHtml(f.name)+')'; return; }
-      // 크기(size)로 정확매칭 우선 — 같은 이름 사진이 여럿일 때 엉뚱한 것 방지
-      let hit=null;
-      if(f.size){ const exact=list.filter(x=>x.size&&Math.abs(+x.size-f.size)<=2); if(exact.length===1)hit=exact[0]; else if(exact.length>1)hit=exact[0]; }
-      if(!hit){
-        if(list.length===1) hit=list[0];
-        else {
-          // 이름 같은 게 여럿인데 크기로 못 좁힘 → 잘못 열 위험 → 사용자에게 알림
-          const n=document.getElementById('lbNote'); if(n)n.textContent='같은 이름의 사진이 '+list.length+'개라 정확히 못 고릅니다 — 📂 통합 불러오기로 연결하세요';
-          hit=list[0];   // 그래도 첫 번째를 시도(완전 실패보다는 나음)
-        }
+      let local=null; try{ local=f._heicFile||await getFileOf(f); }catch(_){ local=null; }   // 새로고침 뒤 폴더 권한이 풀린 핸들 등 — 원본 없음으로 보고 ②로
+      if(!__stillCurrent())return;   // 그 사이 넘겼거나 닫았으면 드라이브 찾기·로그인 창을 띄우지 않는다
+      if(local){
+        let b; try{ b=await toJpg(local); }catch(_){ say('이 기기의 원본(HEIC)을 그리지 못했습니다 — 잠시 뒤 다시 열어 주세요','local-fail'); return; }
+        show(b,'이 기기의 원본을 그리지 못했습니다 — 파일이 손상됐거나 이 기기에서 열 수 없는 형식일 수 있습니다(원본 파일을 확인하세요)'); return;   // 기기 원본이 있으면 드라이브는 보지 않는다
       }
+      say('드라이브에서 사진 찾는 중…','search');
+      let tok; try{ tok=await getRoToken(false); }catch(e){ try{ tok=await getRoToken(true); }catch(e2){ say('사진을 찾으려면 ☁️설정 → 📂 통합 불러오기 권한이 필요합니다','auth'); return; } }
+      const nm=String(f.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const list=(await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size,md5Checksum)",tok)).filter(x=>x&&x.id&&x.name===f.name);
+      if(!__stillCurrent())return;
+      if(!list.length){ say('드라이브에서 이 사진을 찾지 못했습니다('+f.name+')','notfound'); return; }
+      const sz=Number(f.size)||0;
+      const copies=list.length>1&&sz>0&&list.every(x=>Number(x.size)===sz&&x.md5Checksum&&x.md5Checksum===list[0].md5Checksum);
+      if(list.length>1&&!copies){ say('드라이브에 같은 이름 사진이 '+list.length+'장이라 어느 것인지 알 수 없어 열지 않았습니다 — 원본이 있는 기기(PC)에서 확인하세요','ambiguous'); return; }
+      const hit=list[0];
+      if(sz>0&&Number(hit.size)!==sz){ say('드라이브에 같은 이름 사진이 있지만 크기가 달라 다른 사진일 수 있어 열지 않았습니다','size'); return; }
       const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+hit.id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
-      if(!dr.ok){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 받기 실패'; return; }
-      let b=await dr.blob();
-      const e=(f.ext||'').toLowerCase();
-      if(e==='heic'||e==='heif'){ try{ await ensureHeic2any(); const out=await heic2any({blob:b,toType:'image/jpeg',quality:0.9}); b=Array.isArray(out)?out[0]:out; }catch(_){}}
-      const u=URL.createObjectURL(b); const im=document.getElementById('lbImg');
-      const n=document.getElementById('lbNote'); if(n)n.remove();
-      if(im&&__stillCurrent()){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;
-        // 찾은 driveId를 기록 → 다음부턴 바로 받음 + 썸네일 캐시
-        f._driveId=hit.id; try{ const t=await makeThumbDataUrl(b,480); if(t){f.thumb=t;await idbSet('thumb:'+hit.id,t);} }catch(_){}
-        markDirty();
-      }
-    }catch(err){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 표시 오류'; } })();
+      if(!dr.ok){ say('사진 받기 실패','fail'); return; }
+      const raw=await dr.blob();
+      if(sz>0&&raw.size!==sz){ say('받은 사진 크기가 달라 열지 않았습니다','size'); return; }
+      let b=raw; try{ b=await toJpg(raw); }catch(_){}
+      if(!show(b,'받은 사진을 그리지 못했습니다 — 파일이 손상됐거나 이 기기에서 열 수 없는 형식일 수 있습니다',
+        sz>0?null:['이 사진은 크기 기록이 없어 같은 사진인지 확인하지 못했습니다 — 보여 주기만 하고 연결하지 않았습니다','unverified']))return;
+      if(copies||sz<=0)return;   // 사본 여럿·크기 모름 — 보여 주기만(Drive ID·markDirty 없음)
+      if(f._driveId||!state.files.includes(f)||state.files.some(x=>x&&x!==f&&x._driveId===hit.id))return;
+      f._driveId=hit.id; try{ const t=await makeThumbDataUrl(b,480); if(t){f.thumb=t;await idbSet('thumb:'+hit.id,t);} }catch(_){}
+      markDirty();
+    }catch(err){ say('사진 표시 오류','error'); } })();
   }
   document.getElementById('lbClose').onclick=closeLightbox;
   const done=document.getElementById('lbDone');if(done)done.onclick=closeLightbox;
@@ -45817,15 +46004,29 @@ function hjWoNextId(source=state,day=localDate()){
   return 'wo_'+date+'_'+String(max+1).padStart(3,'0');
 }
 function hjWoText(v,max){return typeof v==='string'?v.replace(/\s+$/,'').slice(0,max||200):'';}
-/* 지시 후보 — 현장의 할 일(개인 todo·팀 업무)·준비물·앞으로의 일정. 읽기 전용. */
+/* 지시 후보 — 현장의 할 일(개인 todo·팀 업무)·준비물·앞으로의 일정. 읽기 전용.
+   v596 앞으로의 일정에 여러 날 공정의 이어지는 날도 — 예전에는 date>=기준일만 골라, 어제 시작한 3일짜리 타일은 오늘(2/3일째)·내일(3/3일째)이
+   후보에 아예 없었다(AGENTS v587 '안 한 것'). 이어지는 날은 기준일과 다음 작업일(일요일 건너뜀)만 날마다 한 줄씩 — 기간 전체를 늘어놓으면
+   두 주짜리 목공 한 건이 일정 칸 10개를 다 채워 같은 현장의 다른 일정(입주 청소 등)이 후보에서 사라지고, 기본 체크라 '내일 기한' 지시 하나에
+   열흘치가 실렸다(검토). 그래서 시작일 후보는 예전 그대로 따로 10개까지 고르고, 이어지는 날은 그 몫을 빼앗지 않게 따로 더한다(공정마다 많아야 2줄).
+   오늘 시작한 공정도 내일이 둘째 날이면 넣는다 — 어제 시작한 공정의 내일(3/3)은 보이는데 오늘 시작한 공정의 내일(2/3)은 안 보이던 것.
+   다음 작업일 뒤의 이어지는 날은 그날그날 [📤 내일 일정 팀에 보내기](v587)나 다음 날 이 화면에서 보낸다.
+   이어지는 날 규칙은 hjSchContDates/hjSchContOn 그대로(일요일·완료 보고 제외), 💰·세금 자동 제외는 시작일 후보와 같다(v587 hjWoDayOk 와 같은
+   거르기 — 현장은 이 현장으로 이미 정해짐). 기록(items)은 v587 하루치와 같은 꼴 {kind:'sched',ref,day,n,text} — n 은 몇째 날(시작일 1). */
+function hjWoSchOk(s,name){return !!(s&&s.project===name&&isRealIsoDate(String(s.date||''))&&!/^💰/.test(String(s.title||''))&&!s._taxAuto);}
 function hjWoCandidates(name,fromDay){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return [];
   const out=[],from=isRealIsoDate(String(fromDay||''))?fromDay:localDate();
   (state.notes||[]).filter(n=>n&&n.todo&&!n.done&&String(n.project||'')===name).forEach(n=>{const team=hjIsTeamTask(n),t=team?hjTeamData(n):null;
     out.push({key:'todo:'+n.id,kind:team?'team':'todo',text:hjWoText(team?(t.title||n.text):n.text,200),ref:String(n.id),assignee:team?hjWoText(t.assignee,20):'',due:team&&hjTeamDate(t.due)?t.due:''});});
   (Array.isArray(p.checklist)?p.checklist:[]).filter(c=>c&&!c.done&&String(c.text||'').trim()).forEach(c=>out.push({key:'prep:'+c.id,kind:'prep',text:'준비물: '+hjWoText(c.text,120),ref:String(c.id)}));
-  (state.schedule||[]).filter(s=>s&&s.project===name&&isRealIsoDate(String(s.date||''))&&s.date>=from&&!/^💰/.test(String(s.title||''))&&!s._taxAuto).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||''))).slice(0,10)
-    .forEach(s=>out.push({key:'sch:'+s.id,kind:'sched',text:hjWoText(s.title||'일정',120)+' ('+s.date+(s.time?' '+s.time:'')+(s.workers?' · 👷 '+s.workers+'명':'')+')',ref:String(s.id),due:s.date,startTime:typeof s.time==='string'?s.time:'',endTime:typeof s.endTime==='string'?s.endTime:'',crew:hjCrewList(s.crew)}));
+  const byDay=(a,b)=>String(a.day).localeCompare(String(b.day))||String(a.s.time||'').localeCompare(String(b.s.time||''));
+  const rows=(state.schedule||[]).filter(s=>hjWoSchOk(s,name)&&s.date>=from).map(s=>({s,day:s.date,c:null})).sort(byDay).slice(0,10),to=hjShiftWorkDays(from,1);
+  (state.schedule||[]).filter(s=>hjWoSchOk(s,name)&&s.date<=from).forEach(s=>hjSchContDates(s).filter(d=>d>=from&&d<=to).forEach(d=>{const c=hjSchContOn(s,d);if(c)rows.push({s,day:d,c});}));
+  rows.sort(byDay)
+    .forEach(({s,day,c})=>{const tail=' ('+day+(s.time?' '+s.time:'')+(s.workers?' · 👷 '+s.workers+'명':'')+')';
+      out.push({key:'sch:'+s.id+(c?':'+c.day:''),kind:'sched',text:(c?hjWoText(String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업',100)+' ('+c.day+'/'+c.days+'일째)':hjWoText(s.title||'일정',120))+tail,
+        ref:String(s.id),due:day,day,n:c?c.day:1,startTime:typeof s.time==='string'?s.time:'',endTime:typeof s.endTime==='string'?s.endTime:'',crew:hjCrewList(s.crew)});});
   return out;
 }
 function hjWoAddrSafe(addr){return hjWoText(String(addr||'').replace(/\d+\s*동\s*\d+\s*호/g,'').replace(/\d+\s*호/g,'').replace(/\s{2,}/g,' ').trim(),120);}
@@ -45855,11 +46056,12 @@ function hjWoPrivacyIssues(packet,p){
 }
 /* 인터페이스 스키마 검증 — 팀 앱이 그대로 읽을 수 있는지(보내기 전 자가 검사·검사용). */
 function hjWoValidate(packet){
-  const e=[];
+  const e=[],ids=new Set();
   if(!packet||packet.type!==HJ_WO_TYPE||packet.version!==1)e.push('type/version');
   if(!packet||!Array.isArray(packet.orders)||!packet.orders.length)e.push('orders');
   (packet&&Array.isArray(packet.orders)?packet.orders:[]).forEach((o,i)=>{
     if(!o||!HJ_WO_ID_RE.test(String(o.id||'')))e.push('orders['+i+'].id');
+    else if(ids.has(o.id))e.push('orders['+i+'].id 중복');else ids.add(o.id);   // v596 팀 앱은 같은 번호를 같은 지시로 덮는다 — 한 패킷에 두 번이면 한 팀 지시가 조용히 사라진다
     if(!o||!o.project||typeof o.project.name!=='string'||!o.project.name||!['interior','leak'].includes(o.project.kind))e.push('orders['+i+'].project');
     if(!o||typeof o.title!=='string'||!o.title)e.push('orders['+i+'].title');
     if(!o||!HJ_WO_PRIORITY.includes(o.priority))e.push('orders['+i+'].priority');
@@ -45875,7 +46077,11 @@ function hjWoValidate(packet){
 /* 보낸 기록 — 같은 packetId 면 sentAt 만 갱신(재전송 같은 id). 원자 저장 + 현장 노트 한 줄. */
 async function hjWoRecord(name,order,via,items){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)throw new Error('현장을 찾을 수 없어요');
-  const at=new Date().toISOString(),refs=(Array.isArray(items)?items:[]).map(x=>({kind:String(x.kind||''),ref:String(x.ref||''),text:hjWoText(x.text,120)})).slice(0,40);
+  // v596 일정 항목은 v587 하루치와 같은 꼴로 그날(day)·몇째 날(n)을 남긴다 — 빼면 v587 sentId 가 n 없는 기록을 시작일(1)로 읽어, 여기서 이어지는 날
+  // 하나만 보낸 지시를 [📤 내일 일정 팀에 보내기]가 못 찾고 새 번호로 또 보낸다(여러 항목을 묶은 지시는 그쪽에서 원래 새 번호 — hjWoBuildDay sentId).
+  const at=new Date().toISOString(),refs=(Array.isArray(items)?items:[]).map(x=>{const r={kind:String(x.kind||''),ref:String(x.ref||'')};
+    if(r.kind==='sched'){if(isRealIsoDate(String(x.day||'')))r.day=x.day;const n=Number(x.n);if(Number.isSafeInteger(n)&&n>0)r.n=n;}
+    r.text=hjWoText(x.text,120);return r;}).slice(0,40);
   return durableLocalMutation({snapshotLabel:'팀 지시 기록 전',mutateDraft:draft=>{
     const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;
     if(!target)throw new Error('현장을 찾을 수 없습니다.');
@@ -45905,7 +46111,11 @@ function hjTeamPacketSendView(name,opts){
   const cands=hjWoCandidates(name,o.date),names=[...new Set([...hjTeamContacts().map(c=>String(c.name).trim()),...hjTeamList().map(n=>String(hjTeamData(n).assignee||'').trim())].filter(Boolean))];
   if(s.picked===null)s.picked=cands.filter(c=>!o.date||c.kind!=='sched'||c.due===o.date).map(c=>c.key);
   if(s.notes===null){const safe=hjSiteRulesSafe(hjSiteRules(p));s.notes=hjSiteFilled(safe)?hjSiteText(p.name,safe).split('\n').slice(1).join('\n'):'';}
-  if(!s.assignee){const a=cands.find(c=>c.assignee)||null,crew=cands.find(c=>Array.isArray(c.crew)&&c.crew.length===1);s.assignee=a?a.assignee:(crew?crew.crew[0]:'');}
+  // v596 담당 기본값은 체크된 일정의 팀원이 한 사람일 때만 — 예전엔 첫 일정의 팀원을 골라, 이어지는 날이 들어와 타일(김타일)·전기(박전기)가
+  // 함께 기본 체크되면 전기 지시까지 김타일에게 갔다. 여럿이면 비우고 알린다(창을 연 때의 체크 기준 안내).
+  const crews=[...new Set(cands.filter(c=>c.kind==='sched'&&s.picked.includes(c.key)).flatMap(c=>Array.isArray(c.crew)?c.crew:[]))];
+  if(!s.assignee){const a=cands.find(c=>c.assignee)||null;s.assignee=a?a.assignee:(crews.length===1?crews[0]:'');}
+  const crewMix=!s.assignee&&crews.length>1?crews:[];
   const C=(id,label,on)=>'<label style="display:flex;gap:8px;align-items:flex-start;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" '+id+(on?' checked':'')+' style="width:18px;height:18px;flex:none;margin-top:3px"> <span>'+label+'</span></label>';
   const F=(id,label,val,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' value="'+escapeAttr(val||'')+'" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
   const T=(id,label,val,rows)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><textarea id="'+id+'" rows="'+(rows||3)+'" style="width:100%;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(val||'')+'</textarea>';
@@ -45916,6 +46126,7 @@ function hjTeamPacketSendView(name,opts){
     F('woTitle','제목',s.title||p.name+' 작업')+
     T('woDetail','내용 (체크한 항목으로 채움 · 고칠 수 있음)',s.detail==null?cands.filter(c=>s.picked.includes(c.key)).map(c=>'· '+c.text).join('\n'):s.detail,4)+
     '<label for="woAssignee" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">담당 (👷 팀원 이름)</label><input id="woAssignee" list="woNames" maxlength="20" value="'+escapeAttr(s.assignee)+'" placeholder="예: 이윤규" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box"><datalist id="woNames">'+names.map(n=>'<option value="'+escapeAttr(n)+'"></option>').join('')+'</datalist>'+
+    (crewMix.length?'<div data-wo-crew-mixed style="font-size:11.5px;color:var(--muted);margin-top:3px">👷 고른 일정에 여러 팀원('+escapeHtml(crewMix.join('·'))+')이 섞여 담당을 비워 두었어요 — 한 사람씩 나눠 보내면 각자 자기 지시만 받습니다</div>':'')+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr));gap:8px">'+F('woDue','기한',s.due,'type="date"')+F('woStart','시작(선택)',s.startTime,'type="time"')+F('woEnd','끝(선택)',s.endTime,'type="time"')+'</div>'+
     '<div role="radiogroup" aria-label="우선순위" style="display:flex;gap:6px;margin-top:8px">'+HJ_WO_PRIORITY.map(k=>'<button type="button" data-wo-priority="'+k+'" aria-pressed="'+(s.priority===k)+'" class="'+(s.priority===k?'blue':'ghost')+'" style="min-height:44px">'+(k==='urgent'?'🚨 급함':'보통')+'</button>').join('')+'</div>'+
     T('woChecklist','체크리스트 (한 줄에 하나)',s.checklist,4)+
@@ -49015,10 +49226,16 @@ function hjWoBuildDay(day){
   // v587 여러 날 공정은 날마다 지시가 따로라 '몇째 날'(items[].n — 시작일 1, 이어지는 날 hjSchContOn().day)까지 맞아야 같은 번호.
   // 달력 날짜가 아니라 몇째 날로 맞추므로 보낸 뒤 일정을 옮겨도(비로 하루 밀림·v353 뒤 일정 같이 미루기) 같은 번호로 다시 보낸다(v444 그대로).
   // n 이 없는 옛 기록(v444)은 1(시작일)로 읽는다.
-  const sentId=(p,s,nth)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&Array.isArray(w.items)&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)&&(Number(x.n)||1)===nth));return w?w.packetId:'';};
+  // v596 다시 쓰는 번호는 일정 하나짜리 지시(이 화면·v444 기록, 📤 팀에 업무 보내기로 일정 하나만 보낸 것)만 — 📤 팀에 업무 보내기(v432)는 기본으로
+  // 할 일·준비물·여러 날을 한 지시로 묶는데, 그 번호를 하루치로 다시 쓰면 ① 둘째·셋째 날이 같은 번호로 나가 팀 앱에서 셋째 날이 둘째 날을 덮고
+  // ② 같은 묶음에 든 같은 날 일정 둘이 한 패킷에 같은 번호로 실려 한 팀 지시가 사라지고 ③ 그 하루치 완료 보고가 묶음의 준비물·할 일까지 완료로 만든다
+  // (hjWrApply). 묶음 번호와 이 화면을 잇는 것은 팀 앱 규칙(묶음을 하루치로 바꿔도 되는지)을 정해야 하는 일이라, 묶음에 든 날은 새 번호로 보낸다.
+  // 한 패킷 안에서 같은 번호는 두 번 쓰지 않는다(used — 섞인 옛 자료 방어, hjWoValidate 도 막는다).
+  const used=new Set();
+  const sentId=(p,s,nth)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&!used.has(w.packetId)&&Array.isArray(w.items)&&w.items.length===1&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)&&(Number(x.n)||1)===nth));return w?w.packetId:'';};
   rows.forEach(s=>{
     const c=s.date===day?null:hjSchContOn(s,day),contTail=c?' ('+c.day+'/'+c.days+'일째)':'',nth=c?c.day:1;   // v587 이어지는 날이면 '(2/3일째)' — 공정표 꼬리 '(N일차 시작)' 는 뗀다
-    const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s,nth);
+    const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s,nth);if(again)used.add(again);
     const tail=(trade?' ('+trade+')':'')+contTail,rawTitle=c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업':(s.title||'작업');
     const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo),
       assignee:hjWoText(crew.join(','),20),due:day,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
@@ -53696,7 +53913,118 @@ var __hjLead=/[#&]lead=/.test(location.hash);
 /* v411 상담에서 돌아온 첫 방문은 인입 확인이 온보딩에 가려지지 않게 한다. */
 var __hjBathArrival=!!hjBathHandoffRead();
 hjBathHandoffBoot();
-try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead&&!__hjBathArrival&&!__hjShareEntry.view){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+/* v592 첫 안내·하루 자동 창은 기기 자료 복원(__hjRestoreDone) 뒤에 정한다.
+   예전 이 줄은 복원보다 먼저 돌아 늘 빈 state 를 봤다 — 🌅 아침 브리핑·🤖 오늘의 브리핑·📅 주간 브리핑·📊 운영 리포트가 콜드 스타트에서 한 번도 안 떴고(v586 기록),
+   🔔 알림은 빈 목록으로 '오늘 보냄'을 적어 그날 알림을 막았고, 자료가 IDB 에만 있는 기존 사용자(hj_onboard_done 없음)에게는 첫 안내가 떴다.
+   규칙: 부팅 한 번에 자동 창은 하나 · 이미 떠 있는 창 위에는 띄우지 않고 건너뜀(openModal 은 열린 창을 통째로 갈아 끼운다) ·
+   리드(#lead=)·욕실 상담·공유·작업 요청(#hjreq=)·전자계약 QR(#hjcontract=)·바로가기(?view=)로 들어온 첫 화면에는 하루 창도 첫 안내도 띄우지 않음.
+   hjBootExtras(Cowork 기본 작업·바로가기 화면·한눈 보기)는 복원 전 자리 그대로 — 복원 뒤로 옮기면 유상 저장본에 기본값을 끼워 넣는다.
+   예전에는 첫 안내가 뜰 갈래에서 hjBootExtras 를 건너뛰었는데, 그 갈래가 '빈 state' 로 정해져 기존 사용자도 건너뛰었다 — 이제 늘 부른다.
+   검토(v592)로 더한 것:
+   ① 서버(relay) 자료 확인이 끝난 뒤에 고른다(__hjRelayFreshDone, 최대 HJ_DAILY_AUTO_RELAY_WAIT) — 창이 먼저 뜨면 v530 '다른 기기 최신 자료 자동 반영'이 '손대는 중'(relayEditingNow)으로 막혀
+      배너로 바뀌고, 브리핑은 어제 자료로 떴다(PC 에서 밤에 넣은 일정이 아침 폰 브리핑에 빠짐). 상한 안에 안 끝나면 이번 부팅은 건너뛴다(표시 없음 — 다음에 열 때).
+      🔔 알림도 같은 대기 뒤 — 낡은 자료로 '오늘 보냄'을 적지 않게.
+   ② 쓰는 중이면 건너뜀 — 입력칸 포커스·견적 편집(relayEditingNow 와 같은 기준)·화면이 숨겨짐(카메라 등)·부팅 뒤 누르거나 친 적 있음·서버 최신 자료 띠·한눈 보기.
+   ③ 표시는 창이 실제로 열린 뒤에 적는다 — 브리핑이 오류로 죽으면(v564→v586 처럼) 그날 🌅·🤖 를 말없이 잃지 않게.
+   ④ 사용자 자료가 없는 기기(부팅이 넣는 시험·세금 일정만)엔 하루 창 없음 · 새벽(5시 전)엔 하루 창·알림 없음(표시 없음 — 그날 아침 몫을 남긴다).
+   ⑤ 설치 앱의 한눈 보기와 겹치지 않게 — 오늘 남은 하루 창이 있는 부팅에는 복원 전에 한눈 보기를 건너뛴다(hjDailyAutoOwed). 🌅·🤖 가 뜬 부팅엔 🔔 시스템 알림도 보내지 않는다(같은 오늘 요약). */
+const HJ_DAILY_AUTO_DELAY=700;
+const HJ_DAILY_AUTO_RELAY_WAIT=12000;   // 서버 자료 확인을 기다리는 상한 — 보통 health 한 번(Apps Script 수 초), 다른 기기가 저장했으면 load·안전판·사진 목록까지
+const HJ_DAILY_AUTO_FROM_HOUR=5;        // 이 시각 전(자정 넘은 밤)에 연 앱은 그날 아침 몫의 창·알림을 쓰지 않는다
+const __hjBootView=new URLSearchParams(location.search).get('view')||'';   // hjBootExtras 가 주소에서 지우기 전에 읽는다
+// 사용자 일정 — 부팅이 저절로 넣는 일정(세금 _taxAuto·앱에 든 시험 일정 BUILTIN_CALENDAR_IMPORTS)은 빼고 센다(hjDemoRealCount 와 같은 기준)
+function hjBootUserSched(){
+  const builtin=new Set();try{BUILTIN_CALENDAR_IMPORTS.forEach(b=>(b.events||[]).forEach(e=>builtin.add(e.id)));}catch(e){}
+  return (state.schedule||[]).some(x=>x&&!x._taxAuto&&!builtin.has(x.id));
+}
+function hjBootHasUserData(){return ['projects','files','quotes'].some(k=>Array.isArray(state[k])&&state[k].length>0)||hjBootUserSched();}   // 첫 안내 판단
+function hjDailyAutoHasData(){return (Array.isArray(state.projects)&&state.projects.length>0)||hjBootUserSched();}   // 하루 창 판단 — 브리핑이 보여 줄 현장·일정
+function hjDailyAutoOwed(){
+  // 복원 전(localStorage·날짜만) — 이번 부팅에 하루 창이 뜰 차례인가. 맞으면 한눈 보기를 건너뛴다(같은 요약 두 번 금지).
+  try{
+    if(new Date().getHours()<HJ_DAILY_AUTO_FROM_HOUR)return false;
+    const g=JSON.parse(localStorage.getItem('hj_glance')||'null');if(g&&g.u===0)return false;   // 지난번에 사용자 자료가 없던 기기 — 하루 창이 안 뜬다
+    const t=localDate();
+    if(!hjTodayBriefSeen())return true;
+    if(new Date().getDay()===1&&localStorage.getItem('hj_weekbrief_shown')!==t)return true;
+    const due=opsReportDue();if(due&&localStorage.getItem('hj_ops_report_'+due)!==t)return true;
+  }catch(e){}
+  return false;
+}
+// 부팅 뒤 사람이 누르거나 친 적이 있나 — 이미 앱을 쓰기 시작했으면 그 위에 창을 띄우지 않는다(스크롤만 한 것은 세지 않는다 — click 이 안 생긴다)
+let __hjBootTouched=false;
+function hjBootTouchMark(e){if(e&&e.isTrusted)__hjBootTouched=true;}
+const HJ_BOOT_TOUCH_EVENTS=['click','keydown','input'];
+try{HJ_BOOT_TOUCH_EVENTS.forEach(t=>document.addEventListener(t,hjBootTouchMark,true));}catch(e){}
+function hjDailyAutoBusy(){
+  // 이미 떠 있는 창·사진 크게 보기·시트(AI 비서·현장 고르기·촬영)·사진 넣는 중·새 버전 띠·서버 최신 자료 띠·한눈 보기 — 그 위에는 하루 창을 띄우지 않는다
+  // 입력칸 포커스·견적 편집은 v530 자동 반영과 같은 '손대는 중'(relayEditingNow) · 화면이 숨겨짐(카메라 앱 등) · 부팅 뒤 누르거나 친 적 있음
+  const b=document.body?document.body.classList:null;
+  return !!(document.querySelector('#modalRoot .modal')||document.getElementById('lightbox')||document.getElementById('hjShareInbox')||document.getElementById('hjVerNew')
+    ||document.getElementById('relayNewBar')||document.getElementById('hjGlance')
+    ||(b&&(b.contains('ai-sheet-open')||b.contains('mobile-sheet-open')||b.contains('camera-sheet-open')))||(typeof photoIntakePending==='function'&&photoIntakePending())
+    ||(typeof relayEditingNow==='function'&&relayEditingNow())||document.visibilityState==='hidden'||__hjBootTouched);
+}
+function hjDailyAutoPick(){
+  // 우선순위: 🌅 아침 브리핑 → 🤖 오늘의 브리핑 → 📅 주간 브리핑(월요일) → 📊 운영 리포트(일요일·월말). 첫 후보 하나만 고른다.
+  const list=[()=>hjMorningMaybe(),()=>aiActiveBriefMaybe(),()=>weekBriefMaybe(),()=>opsReportMaybe()];
+  for(const f of list){let p=null;try{p=f();}catch(e){}if(p&&typeof p.open==='function')return p;}
+  return null;
+}
+// 창을 연 뒤에 표시 — 여는 중 오류(동기 throw·거절)면 표시를 열기 전 값으로 되돌린다(창 함수가 스스로 적은 표시까지)
+async function hjDailyAutoOpen(plan){
+  const keys=Object.keys(plan.marks||{}).concat(plan.k==='morning'||plan.k==='active'?['hj_morning_shown','hj_active_brief']:[]),prev={};
+  keys.forEach(k=>{try{prev[k]=localStorage.getItem(k);}catch(e){}});
+  const undo=()=>keys.forEach(k=>{try{if(prev[k]==null)localStorage.removeItem(k);else localStorage.setItem(k,prev[k]);}catch(e){}});
+  let failed=false,r;
+  try{r=plan.open();}catch(e){undo();return false;}
+  if(r&&typeof r.then==='function'){
+    const p=Promise.resolve(r).catch(()=>{failed=true;undo();});
+    await Promise.race([p,new Promise(x=>setTimeout(x,3000))]);   // 오래 붙잡히면 열린 것으로 본다 — 나중에 거절되면 그때 되돌린다
+    if(failed)return false;
+  }
+  Object.keys(plan.marks||{}).forEach(k=>{try{localStorage.setItem(k,plan.marks[k]);}catch(e){}});
+  return true;
+}
+async function hjBootAutoAfterRestore(entry){
+  let restored=null;try{restored=await Promise.resolve(window.__hjRestoreDone);}catch(e){}
+  const ok=!(restored&&restored.ok===false);   // 복원이 실패했으면 state 가 비었거나 반쪽 — 첫 안내·브리핑·알림 모두 건너뛴다
+  const entered=!!(entry.lead||entry.bath||entry.share||entry.link||entry.view);
+  try{if(ok&&!entered&&localStorage.getItem('hj_onboard_done')!=='1'&&!hjBootHasUserData()){
+    // 첫 안내 — 들어온 길(바로가기·작업 요청·QR 포함)로 연 첫 화면이면 다음에 평범하게 열 때로 미룬다. 연 사이 창·시트가 떴거나 누르기 시작했으면 건너뜀.
+    await new Promise(r=>setTimeout(r,400));
+    if(hjDailyAutoBusy())return {k:'onboard',shown:false,why:'busy'};
+    try{hjOnboardShow();}catch(e){}
+    return {k:'onboard',shown:true};
+  }}catch(e){}
+  if(!ok)return {k:'',why:'restore'};
+  if(new Date().getHours()<HJ_DAILY_AUTO_FROM_HOUR)return {k:'',why:'night'};   // 자정 넘은 밤 — 그날 아침 몫(창·🔔 알림)을 쓰지 않는다
+  // 서버 자료 확인(자동 반영·배너 포함 — __hjRelayFreshDone, 사진 목록 맞추기는 빼고)이 끝나기를 기다린다 — 브리핑·알림을 최신 자료로, 그리고 창이 v530 자동 반영을 막지 않게
+  let relayDone=false;
+  try{await Promise.race([Promise.resolve(window.__hjRelayFreshDone||window.__hjRelayBootDone).then(()=>{relayDone=true;},()=>{relayDone=true;}),new Promise(r=>setTimeout(r,HJ_DAILY_AUTO_RELAY_WAIT))]);}catch(e){}
+  if(!relayDone)return {k:'',why:'relay'};
+  let notifyOn=false;try{notifyOn=hjNotifyEnabled();}catch(e){}
+  const notify=()=>{if(notifyOn){try{hjNotifyFire();}catch(e){}}};   // 시스템 알림은 창이 아니라 들어온 길과 상관없이
+  if(entered){notify();return {k:'',why:'entry'};}
+  // 자동화 브라우저는 하루 창을 띄우지 않는다 — v443 일정 알림 타이머와 같은 이유(복원 뒤 뜨는 창이 기존 검사들의 화면을 가린다).
+  // 검사는 navigator.webdriver 를 false 로 바꿔 진짜 브라우저처럼 돈다(morningboot-v592).
+  if(navigator.webdriver){notify();return {k:'',why:'webdriver'};}
+  if(!hjDailyAutoHasData()){notify();return {k:'',why:'nodata'};}   // 시험·세금 일정만 있는 기기에 빈 브리핑을 매일 띄우지 않는다
+  const plan=hjDailyAutoPick();if(!plan){notify();return {k:''};}
+  // 공유받은 사진 수신함(사용자 자료)이 뜰지 먼저 본다 — 뜨면 아래 '이미 떠 있는 창' 으로 건너뛴다. 오래 걸리면 기다리지 않는다.
+  try{await Promise.race([Promise.resolve(window.__hjShareInboxBootDone).catch(()=>null),new Promise(r=>setTimeout(r,3000))]);}catch(e){}
+  await new Promise(r=>setTimeout(r,HJ_DAILY_AUTO_DELAY));
+  if(hjDailyAutoBusy()){notify();return {k:plan.k,shown:false,why:'busy'};}   // 표시를 남기지 않는다 — 다음에 열 때 다시 고른다
+  const now=hjDailyAutoPick();if(!now||now.k!==plan.k){notify();return {k:plan.k,shown:false,why:'changed'};}   // 그 사이 다른 탭이 띄워 표시가 바뀌었으면 건너뜀
+  if(!(await hjDailyAutoOpen(now))){notify();return {k:now.k,shown:false,why:'error'};}
+  // 🌅·🤖 오늘 브리핑이 뜬 부팅 — 🔔 오늘의 알림은 같은 요약이라 보내지 않고 오늘 보낸 것으로 적는다
+  if(notifyOn&&(now.k==='morning'||now.k==='active')){try{localStorage.setItem('hj_notify_fired',localDate());}catch(e){}}else notify();
+  return {k:now.k,shown:true};
+}
+try{window.__hjBootEntry={lead:__hjLead,bath:__hjBathArrival,share:!!__hjShareEntry.view,link:__hjBootLinkEntry,view:!!__hjBootView};}catch(e){window.__hjBootEntry={};}
+try{const be=window.__hjBootEntry;hjBootExtras({noGlance:!(be.lead||be.bath||be.share||be.link||be.view)&&hjDailyAutoOwed()});}catch(e){}
+try{window.__hjBootAutoDone=hjBootAutoAfterRestore(window.__hjBootEntry);
+  window.__hjBootAutoDone.then(()=>{try{HJ_BOOT_TOUCH_EVENTS.forEach(t=>document.removeEventListener(t,hjBootTouchMark,true));}catch(e){}},()=>{});}catch(e){}
 /* 리드 인입은 로컬 복원(__hjRestoreDone) 완료 후 실행 — 늦은 applyData가 등록분을 덮어쓰거나 중복검사가 빈 notes를 보는 경합 방지 */
 try{if(__hjLead)Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);});}catch(e){}
 /* 앱이 이미 열린 탭에서 #lead= 링크로 재진입(주소만 변경, 재로드 없음)해도 인입되도록 */

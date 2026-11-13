@@ -3,6 +3,185 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-12 v591~v597 다음 판 후보 묶음 (v598 은 이미 됨) — 오늘 일정의 이어지는 날 · 아침 자동 창 · 사진 크게 보기 찾기 · AS 방문일 · 시각 여러 날 · 팀 지시 이어지는 날 · 견적 비고 내부 기록
+
+대표 답(11/12, v590 뒤 물음 여섯): ① "문제 되면 이야기할께"(기본값 그대로) ② 같은 서버의 `#hjcontract=` 토큰 교체 "허용"(지금 동작 그대로) ③ 후기 QR "넣어줘"(v446 부터 기본 켬 — 그대로)
+④ 외부 스크립트 integrity 를 못 단 것들 "클로드에 필요할 때 지시할께" ⑤ 엑셀 실물 확인 "다음에 확인할께" ⑥ "나머지는 진행해줘" → 이 문서의 '다음 판 후보'를 v591~v598 로.
+갈래마다 작업 트리에서 구현·새 검사·변이·기준선 실패 확인 → 두 관점(자료 무결성·현장 사용) 검토 → 재현된 것을 모두 고침(반박 0건, 실재하지만 범위 밖 2건은 '남은 것') → 합침(충돌 없음) → 세 관점 통합 검토.
+**핀은 묶음 끝 번호 하나** `hyeonjang-v597-revmemo`. 새 최상위 저장 키 없음, apps-script 무변경, 고객 발송 없음, AI_TOOLS·SAFE_AUTO 무변경.
+
+**v598 남은 것 점검 — 코드 변경 없음**: AGENTS v329/v330 '남은 것' 다섯 가지를 a510e95 에서 다시 확인하니 모두 v331(v334 #165 로 병합)에서 이미 고쳐져 있었다.
+① 대기열 업로드 성공 뒤 기록에 못 붙인 경우 → '기록 연결 대기'(relayLinkItemFrom·relayLinkItemRetry, photo-intake-safety ③-2) ② AI set_labor → '현장전체일당합계원'(laborProjectTotal)
+③ 선택 복원의 같은 이름 현장 → 근거 있는 '(삭제됨)' 한 벌이면 다시 잇고 수금 약속일은 dueTaken(restore-delete-safety ⑥) ④ 전체장부 AS이력 시트 새 칸(ledger-roundtrip ⑧) ⑤ 사례 내보내기 #cpCand summary 44px(case-pack ⑦·mobile-more-sweep).
+v330 의 '남은 것' 줄을 다시 후보로 고르기 전에 위 함수·검사를 먼저 보라.
+
+
+**v591 '오늘 일정' 아홉 곳에 여러 날 공정의 이어지는 날 · 진행 중 보고가 공정을 끝내지 않게 (v586 '아직 date===오늘만 세는 곳' 해결)**
+
+- 아홉 곳 — AI get_overview·🔔 스마트 알림(hjNotifyItems)·📅 일정 브리핑(todayScheduleBrief)·🤖 능동 브리핑(aiActiveBriefData)·🗣 음성 브리핑(ttsBriefText)·운영 루프 계획(aiPlannerScan)·☀️ 운영 일일 브리핑(aiOpsDailyBrief)·🗺 오늘 동선(routeToday)·🧠 AI 브레인(aiOpsBrain) — 이 hjDaySchView(그날, 그곳이 예전에 거르던 조건)를 쓴다(이어지는 날 복사본 제목 '(2/3일째)', date 그날, id 원본). 💰 를 거르던 여덟 곳은 `hjDaySchNoMoney`(정규식은 상수 `HJ_MONEY_SCH_RE`), get_overview 는 hjDaySchView(today) 그대로(aiBriefData 와 같은 목록), 🗺 동선은 현장 있음 + 💰 아님(현장 없는 일정은 방문지도 '위치 정보 없는 현장'도 아님). 세금·개인 일정은 새로 거르지 않는다. hjAlertTodayHtml(시작 시각 알림)·aiPlannerScan 내일 줄은 그대로. 읽기만 — 원본 일정은 안 바뀐다.
+- **수는 일부러 다르다**: get_overview 만 🤖 오늘 챙길 일(hjTodaySchRows — 💰·세금도 셈)과 같은 목록이고, 💰 를 거르는 여덟 곳은 그날 💰 일정 수만큼 적다. 맞춘다고 여덟 곳의 💰 거르기를 빼지 마라(수금 일정이 '현장 일정'·🗺 방문지가 된다).
+- 운영 루프 계획의 '일정 충돌'(같은 날 같은 시각 2건↑, 담당 안 봄) 대략 규칙은 이어지는 날(`_cont`)을 세지 않는다 — 🗓 공정표가 공정마다 09:00 이라 두 현장 여러 날 공정이 겹치는 날마다 높음 작업·폰 알림이 생겼고, 담당이 다르면 충돌이 아니라는 🔍 일정 점검(scheduleConflicts, v362)과 어긋났다. 이어지는 날은 건수·브리핑 줄에만.
+- 긴 공정 이름은 `hjDaySchCutTitle(s,n,speak)` — 바탕 제목만 hjCut 하고 '(2/3일째)'를 붙인다(🤖 능동 10자·get_overview 40자), 🗣 음성은 '3일 중 2일째'('2/3'은 분수로 읽힌다). 복사본 제목을 통째로 hjCut 하지 마라(꼬리가 '…'로 사라진다).
+- **v354 고침 `hjSchContEnded`**: hjSchContOn·hjSchContDates 는 hjSchReported(보고 글만 있어도 참) 대신 hjSchContEnded = 보고 있음 && 진행률이 `HJ_SCH_GOING_RE`(시작·진행·진행중·NN%)가 아님. 예전엔 1일째 저녁 🎙 음성 일지·첫 화면 [기록]·AI add_work_log(workLogSave — 진행률 '진행')나 📋 일일 작업 보고('진행중'·'50%')를 남기면 둘째·셋째 날이 오늘 일정·📋 내 업무·달력·알림·🗺 동선·🤖 오늘 챙길 일 어디에도 안 나왔다(가장 흔한 흐름). '완료', 글이 있는데 진행률이 비었거나 '보류'인 옛 보고는 예전처럼 끝. **hjSchReported 자체는 그대로**(지연 점검·고객 일정 안내 등이 '보고가 있나'로 쓴다 — 🌙 오늘 마감·🔄 맞추기는 아래 통합 검토 고침에서 여러 날 공정에 이 규칙).
+- 검사 `tests/todaycount-v591.e2e.js` 4/4(시계 고정·합성 자료): ① 아홉 곳 모두 어제 시작 3일 공정을 오늘 '(2/3일째)'(🗣 은 '3일 중 2일째') ② 💰·완료 보고·내일 제외, get_overview 수 = hjTodaySchRows, 여덟 곳 = 💰 뺀 수, 저장 자료 불변 ③ 토요일 시작 공정 — 일요일 없음·월요일 2/3 ④ REVIEW: 실제 workLogSave('진행')·'진행중' 보고 뒤 다음 날 아홉 곳·hjTodaySchRows·hjSchContDates 에 이어지는 날, 글만 있는 옛 보고는 끝, 담당 다른 09:00 두 공정 → 계획 충돌 없음(🔍 일정 점검도 0), 현장 없는 여러 날 일정은 동선 아님, 33자 이름도 몇째 날 남음. 기준선 a510e95 는 ① 실패. 변이 19종 모두 검출(overview/notify/brief/active/tts/planner/opsdaily/route/brain-old·tts-cut ①, no-money·overview-money ②, cont-reported·contdates-reported·going-legacy·planner-conflict-cont·route-noproject·active-cut·overview-cut ④). 관련 38개(dailyfix-v586·multiday-v354·dayinfo-v355·crewclash-v362·dayclose-v359·wodaymulti-v587·calmulti-v580·calapi-v588·calsync 계열·my-work·schcopy-v361·team2-v444 등)·watchdog.unit·정적 *.check.js 통과.
+- 다음 판 후보(이 판에서 안 함 — 🌙 오늘 마감의 '보고함' 셈은 아래 통합 검토에서 고침): 공정 진행률 hjPhaseProgress(v346 — '진행중'을 완료 공정으로 셈)·지연 점검 hjPhaseDelays(v347)·고객 일정 안내 hjCustSchedRows(v363)·현장 일정 칸(v364)은 아직 '보고 글 있음 = 끝' · workLogSave 는 2일째에 그 공정이 아니라 새 '작업일지' 일정을 만든다(date===그날로 찾음 — 그날 수가 하나 늘어난다) · 운영 루프 계획 충돌 규칙은 시작하는 일정끼리도 담당을 안 본다(🔍 일정 점검과 다를 수 있음, v591 전부터).
+
+**v592 🌅 아침 자동 창 콜드 스타트 — 첫 안내·하루 자동 창을 기기 자료 복원·서버 자료 확인 뒤에 정한다**
+
+- **문제**: 부팅 끝 줄(첫 안내·hjMorningMaybe·weekBriefMaybe·aiActiveBriefMaybe·opsReportMaybe·hjNotifyFire)이 IDB 복원(`__hjRestoreDone`)보다 먼저 돌아 늘 빈 state 를 봤다. 그래서 다음 문제가 있었다(v586 기록).
+  - 🌅·🤖·📅·📊 하루 창이 콜드 스타트에서 한 번도 안 떴다.
+  - 🔔 은 빈 목록으로 '오늘 보냄'을 적었다.
+  - hj_onboard_done 이 없는 기존 사용자에게 첫 안내가 떴다.
+- **고침 — `hjBootAutoAfterRestore(entry)` 한 곳에서 정한다**. 결과는 `window.__hjBootAutoDone` = `{k,shown,why}`.
+  - **복원 뒤**: 복원이 실패하면 아무것도 하지 않는다.
+  - **서버 자료 확인 뒤**: relayBoot 의 새 신호 `__hjRelayFreshDone` 을 최대 `HJ_DAILY_AUTO_RELAY_WAIT`(12초) 기다린다.
+    - 이 신호는 health 확인과 (더 최신이면) v530 자동 반영·배너까지다. 느린 사진 목록 맞추기 relayLoadDriveFiles 는 빼고, relayBoot finally 에서도 알린다.
+    - 창이 먼저 뜨면 v530 자동 반영이 relayEditingNow('손대는 중')에 막혀 배너로 바뀌고, 아침 브리핑이 어제 자료로 떴다.
+    - 상한을 넘기면 `why:'relay'` 로 이번 부팅은 건너뛴다(표시 없음).
+  - **🔔 hjNotifyFire 도 같은 대기 뒤**에 보낸다. 들어온 길과 상관없이 보내지만, 🌅·🤖 가 뜬 부팅에는 보내지 않고 `hj_notify_fired` 만 적는다(같은 오늘 요약).
+- **부팅 한 번에 자동 창은 하나**. 우선순위는 🌅 → 🤖 → 📅(월요일) → 📊(일요일·월말)이고, 각 `…Maybe()` 는 띄우지 않고 계획 `{k,marks,open}` 만 돌려준다.
+  - **표시는 창이 실제로 열린 뒤에 적는다**(`hjDailyAutoOpen`). 동기 throw 나 거절이면 창 함수가 스스로 적은 표시까지 되돌린다 — 브리핑이 오류로 죽어도(v564→v586) 그날 몫을 잃지 않는다.
+  - 다른 창에 밀린 주간·운영 리포트는 표시하지 않는다. 그날 나중 부팅에서 뜬다.
+- **🌅 와 🤖 는 같은 '오늘 브리핑'**이다. `hjTodayBriefSeen()` 로 두 키(hj_morning_shown·hj_active_brief)를 같이 보고, 손으로 연 🤖(aiActiveBrief)도 hj_active_brief 를 적는다. AI 도구·더보기로 연 날 두 번째 브리핑이 뜨지 않는다.
+- **띄우지 않는 경우**(`hjDailyAutoBusy`, 표시 없이 다음에): 아래 중 하나라도 해당하면 띄우지 않는다.
+  - 열린 창·사진 크게 보기·공유 수신함·새 버전 띠
+  - 서버 최신 자료 띠(`#relayNewBar`)·한눈 보기(`#hjGlance`)
+  - 시트(AI·현장 고르기·촬영)·사진 넣는 중
+  - relayEditingNow(입력 포커스·견적 편집)
+  - 숨겨진 화면
+  - 부팅 뒤 사람이 누르거나 친 적 있음(trusted click·keydown·input — 스크롤만은 안 셈)
+- **들어온 길이면 하루 창도 첫 안내도 없음**: 리드(#lead=)·욕실 상담·공유·#hjreq=·#hjcontract=·?view=.
+  - #hjreq=·#hjcontract= 는 즉시 함수가 주소에서 지우기 전에 `HJ_BOOT_LINK_RE` 로 읽어 둔다.
+  - ?view= 는 hjBootExtras 가 지우기 전에 `__hjBootView` 로 읽어 둔다.
+- **하루 창이 뜨지 않는 경우**:
+  - 사용자 자료가 없는 기기(`hjDailyAutoHasData` — 현장 또는 _taxAuto·BUILTIN_CALENDAR_IMPORTS 를 뺀 사용자 일정)에는 띄우지 않는다.
+  - 새벽 5시 전(`HJ_DAILY_AUTO_FROM_HOUR`)에는 창·🔔 모두 없다.
+  - 자동화 브라우저(navigator.webdriver)에는 띄우지 않는다. 기존 검사 화면을 가리지 않게(v443 과 같은 이유).
+- **첫 안내**: 복원 뒤 `hjBootHasUserData()`(현장·파일·견적·사용자 일정)가 없고 hj_onboard_done 이 아닐 때만 띄운다. 이것도 바쁨 검사를 거친다.
+- **한눈 보기**: hjBootExtras 는 복원 전 자리 그대로 늘 부른다. 복원 뒤로 옮기면 유상 저장본에 기본값을 끼운다.
+  - 설치 앱 한눈 보기는 `hjDailyAutoOwed()`(복원 전 localStorage·날짜만)가 참이면 건너뛴다. 하루 창이 같은 요약을 대신한다.
+  - 한눈 보기 캐시에 `u`(사용자 자료 있음)를 더했다.
+- 검사: `morningboot-v592`(①~⑤ COLD·WEEK·ENTRY·ONBOARD·GUARD)와 `morningboot2-v592`(⑥ RELAY — 가짜 relay 지연·띠·사진 목록 무응답·상한 / ⑦ GLANCE — standalone·🔔 / ⑧ USER — 새벽·입력 중·오류 주입·손으로 연 브리핑·빈 기기).
+  - 공통 틀은 `tests/morningboot-v592.lib.js`(검사 파일 아님, 변이 표 포함)에 있다. 파일당 180초 상한 때문에 검사를 둘로 나눴다.
+  - 콜드 스타트 페이지는 navigator.webdriver 를 false 로 바꾼다. 기준선 a510e95 는 두 파일 모두 실패하고, 변이 21종도 모두 실패한다.
+- 대표 확인 대기:
+  - ① 새벽 기준 5시
+  - ② 서버 확인 상한 12초 — 넘기는 날은 그 부팅 건너뜀
+  - ③ 손으로 연 🤖 도 그날 자동 🌅 를 막음
+  - ④ 🌅 가 뜬 부팅엔 🔔 시스템 알림을 보내지 않음
+- 남은 것: 설치 앱 한눈 보기가 켜진 기기에서 일요일·월말에 운영 리포트가 활동이 없어 안 뜨면, 그날 부팅마다 한눈 보기도 건너뛴다(복원 전에는 활동을 모른다).
+
+**v593 🔍 사진 크게 보기 — 미리보기·서버 사본 없는 사진을 '같은 이름'으로 아무 Drive 사진이나 열고 그 ID 를 저장하던 것** (`tests/lightboxname-v593.e2e.js` 5/5 · 변이 16종)
+
+무엇이 문제였나(AGENTS v584 '다음 판 후보'): `renderLightbox` 는 미리보기(thumb)도 Drive ID 도 없는 사진을 크게 볼 때, 이 기기에 원본(핸들·_file)이 있어도 드라이브 전체를 같은 이름으로 찾았다. 같은 이름이 여럿이거나 크기가 달라도 첫 것을 열고, 그 ID 를 f._driveId 에 적고 markDirty 했다. 이름 일부(name contains)로도 찾았다. 그래서 다른 해의 IMG_1001 이 열리고 남의 Drive ID 가 저장됐다.
+
+이제 이렇게 연다.
+- **① 이 기기 원본을 먼저 그린다.** f._heicFile → getFileOf(핸들·_file·공유함) 순서다. 드라이브 요청·토큰·쓰기는 없다.
+  - 원본을 못 그리면(손상·열 수 없는 형식) 빈 화면 대신 'decode' 까닭을 남기고, 드라이브로 넘어가지 않는다.
+  - 안내는 그림이 다 그려진 뒤(onload)에 지운다. onerror 면 까닭을 남긴다.
+- **② 원본이 없을 때만, 마지막 수단으로 드라이브에서 이름이 정확히 같은 사진을 찾는다.**
+  - 질의는 `name='…'` 만 쓴다(이름 일부 질의는 지웠다).
+  - 드라이브의 name= 은 대소문자를 가리지 않으므로, 받은 목록도 `x.name===f.name` 로 다시 대조한다.
+  - 딱 하나여야 하고, 사진 크기를 알면(>0) 목록 크기와 받은 원본 크기가 모두 같아야 한다.
+  - 같은 이름이 여럿이면 크기 하나가 맞아도 고르지 않는다('ambiguous'). 단 하나의 예외: 사진 크기를 알고, 모든 사본이 그 크기·같은 `md5Checksum` 이면 같은 사진의 사본으로 본다. 정리본이나 `_중복정리_보관`처럼 중복을 지우지 않고 옮겨 둔 경우다. 이때는 하나를 받아 보여 주기만 한다.
+  - 그 밖에는 받지도 적지도 않고 안내만 남긴다. `#lbNote[data-lb-note]` 값은 open·search·ambiguous·size·notfound·auth·fail·decode·unverified·local-fail 이다.
+- **③ Drive ID 는 '딱 하나·크기 같음·받은 원본 크기 같음'일 때만 적는다.**
+  - 크기를 모르는 사진(0)은 보여 주되 'unverified' 조심 글을 남기고 연결하지 않는다. 같은 사진이라는 근거가 없는, v584 의 바로 그 경우다.
+  - 사본이 여럿이면 어느 사본에 이을지 몰라 보여 주기만 한다.
+  - 다음 경우에도 적지 않는다(v556·v570): 그 사이 다른 곳에서 _driveId 가 정해졌을 때, 기록이 새 객체로 바뀌었을 때(state.files.includes), 다른 기록이 이미 그 ID 를 쓸 때.
+  - 원본을 찾은 뒤와 목록을 받은 뒤에 `__stillCurrent()` 를 다시 본다. 그 사이 넘기거나 닫았으면 드라이브 찾기·로그인 창·원본 받기를 하지 않는다.
+- **안내 글 자리.** 안내 글은 사진 칸 '아래' 흐름에 둔다(`stage.after`, 상수 `HJ_LB_NOTE_CSS`).
+  - 좌우 84px 는 ‹ ›(20+52px) 자리로 비우고, pointer-events:none 을 준다.
+  - 예전처럼 사진 칸 안에 절대 위치로 띄우면, 폰 390·360 에서 ‹ › 단추 윗부분이 글자에 막혀 눌리지 않고 파일 이름과 겹친다.
+- **그대로인 것:** 미리보기·Drive ID 있는 사진, 동영상, 로컬 HEIC(_file) 변환 길.
+
+검사 방법
+- 드라이브 대역은 둘로 나눈다.
+  - 페이지에서는 getRoToken 만 바꿔 끼운다.
+  - 목록·원본 받기는 앱의 진짜 roList·fetch 가 돌고, www.googleapis.com/drive/v3/files 를 Playwright route 로 가로챈다. 대역의 name= 은 대소문자를 가리지 않고 md5Checksum 을 준다.
+  - gates('list:이름'·'media:id')로 응답을 붙잡아 ④ 늦은 응답을 시험한다.
+- 기준선 a510e95 는 ① 에서 실패한다. 변이 16종도 각자 실패한다.
+  - ①: drive-first, no-decode-note
+  - ②: first-hit, size-pick, no-size, no-raw-size, copies-size-only, no-name-filter, note-overlay
+  - ③: no-taken, size0-write, copies-write
+  - ④: no-still-after-local, no-still-after-list, no-own-driveid-guard, no-includes-guard
+
+**사진 크게 보기에 새 '찾아 잇기' 길을 만들 때**
+- 이름만으로 Drive ID 를 적지 마라. 크기·유일성 근거가 있어야 한다.
+- 안내 글을 .lb-stage 안에 절대 위치로 띄우지 마라.
+
+**v594 AS 방문일은 일정 날짜를 따라간다 — 🔄 구글 캘린더 맞추기에서도 (AGENTS v580~v587 '통합 검토'·v330 남은 것)**
+
+- 문제: AS 방문 일정의 날짜를 바꾸면 AS 기록의 방문일(visitAt)도 같이 바뀌어야 하는데(v331 '날짜 따라가기'), 그 규칙이 일정 창 저장(saveScheduleEdit) 안에만 있었다. 🔄 구글 캘린더 맞추기의 '날짜 옮김'(hjCalSyncApply — 제미나이가 구글에서 AS 방문을 옮긴 것)은 일정만 옮겨 AS 관리·현장 AS 카드·보증 화면·AS 이력 엑셀의 방문일이 옛 날짜로 남았다.
+- 규칙 한 곳 `hjAsVisitFollow(s)` → 바꾼 AS 기록 수(저장·markDirty 는 부르는 쪽). 잇는 기준은 `hjAsForSched` 와 같다 — AS 의 visitSchedId 가 이 일정이거나 이 일정의 asId 가 가리키는 AS. 단 그 AS 의 visitSchedId 가 **지금 있는 다른 일정**이면 그쪽이 방문 일정이라 건드리지 않는다(예전 방문 일정을 옮겨 새 방문일을 덮지 않게). visitSchedId 가 **지워진 일정**을 가리키면(일정 삭제·맞추기 '앱에만' 지우기는 visitSchedId 를 비우지 않는다) 남은 asId 일정이 방문 일정이라 따라간다. AS 방문 일정이 아니면 아무것도 바꾸지 않는다. 날짜가 바뀌었는지는 부르는 쪽이 본다(날짜 그대로인 저장은 어긋난 옛 자료도 그대로 — v331).
+- 부르는 곳: 일정 창 저장(이제 asId 만 남은 옛 기록·지워진 방문 일정 기록도 따라감) · 맞추기 날짜 옮김(move·fix 줄 — 안전판·오래된 창·stamp 가드·결과 list 는 그대로, 결과에 `asMoved`, 토스트 'AS 방문일 n건도 맞춤'). 📥 캘린더 파일 가져오기(importICS)의 같은 uid 갱신도 부르지만 **안전장치**다 — 앱이 만든 AS 방문 일정(AS 관리 [📅 방문 일정]·방문일 칸)에는 icsUid·sourceUid 가 없고(uid 는 가져오기·맞추기 '새 일정'만 붙인다) uid 없는 짝은 같은 날짜일 때만이라 지금은 그 길로 AS 방문 날짜가 바뀌지 않는다(나중에 AS 방문 일정에 uid 를 붙이면 그때 살아난다). 반대 방향(AS 방문일 칸 → 일정)은 asManage 가 둘 다 옮기고, 🔁 뒤 일정 같이 옮기기는 AS 방문 일정을 후보에서 빼며(v365), AI 도구에는 있는 일정의 날짜를 바꾸는 것이 없다. **일정 날짜를 바꾸는 새 길을 만들면 hjAsVisitFollow 를 불러라.**
+- 남은 것(v567·v581 부터의 한계, 다음 판 후보): ① 맞추기가 21일(HJ_CALSYNC_MOVE) 넘게 떨어진 AS 방문을 날짜 옮김이 아니라 체크된 '🆕 새 일정'으로 넣어, asId 없는 방문 일정이 하나 더 생기고 방문일은 그대로(같은 현장·같은 열쇠의 AS 이어진 일정이면 짝 짓기 또는 새 일정 줄 체크 해제+안내). ② 맞추기 뒤 '🔄 바뀐 일정 알리기'가 AS 방문 줄에도 일반 '공사 일정 변경' 글을 쓰고, 보관 현장(AS 는 흔히 보관 현장)에는 고객 단추가 없다(AS 줄은 hjAsVisitText 로 — v581 '보관 현장 단추 없음' 계약을 바꾸는 일이라 대표 확인). ③ 구글 .ics 를 가져오면 옮겨진 AS 방문이 이어지지 않은 새 일정으로 들어온다(v594 전부터).
+- 검사 `tests/asvisitsync-v594.e2e.js` 4/4(① 맞추기 날짜 옮김·보통 일정은 AS 안 건드림·list·안전판 1회·오래된 창/stamp 거부 ② asId 만 남은 기록·지워진 방문 일정 기록 따라감·다른 방문 일정 AS 그대로·맞추기 창 토스트·일정 창 같은 규칙 ③ 가져오기 안전장치(uid 를 손으로 붙인 합성 꼴) ④ 폰 390·핀·오류 0·바깥 쓰기 0). 변이 no-calsync ①·visit-only·no-live-guard·live-true ②·no-ics·ics-always ③ 모두 실패, 기준선 a510e95 ① 실패. 관련 v331-follow·asvisit-v365·asclose-v366·asview-v367·as-record·cascade-v353·ics-import·handoff-v374·schedule-safety·calsync-v567·calmulti-v580·calsyncdone-v581·calapi-v588·calextras-v576·calcmd-v569·field-issue-more·dayinfo-v355·ledger-roundtrip·office-ops-isolation 통과, 정적 *.check.js 전부. 검토(자료 무결성·현장 사용) 뒤 지워진 방문 일정 가드 검사·live-true 변이를 더하고 가져오기를 '안전장치'로 바로잡았다.
+
+**v595 🔄 구글 캘린더 맞추기 — 시각 있는 여러 날 일정의 기간** (`tests/timedspan-v595.e2e.js` 6/6 · 변이 17종)
+- 해결한 것: v580·v588 의 '안 한 것'인 시각 있는 여러 날 일정. 제미나이가 '11/16 오전 9시 ~ 11/18 오후 6시'로 넣은 사흘 공정이 앱에서는 하루로 들어가, 둘째·셋째 날이 대시보드·내 업무·달력에서 사라졌다.
+- 규칙 `hjCalSyncTimedRange(s,e)`
+  - 끝이 한국 날짜로 뒤이고 24시간 이상일 때만 여러 날이다. to 는 끝 날짜이고, 끝이 정확히 0시면 그 전날까지다.
+  - 60일을 넘으면 하루짜리다. 시작 시각은 그대로 둔다.
+  - 하루 시간 수는 끝 시각이 시작 시각보다 늦을 때만 그 차이다. 아니면 예전 기본값 1이다.
+  - 24시간이 안 되는 밤샘(22시~새벽 2시)은 하루다.
+  - 이 규칙을 쓰는 곳은 셋이다: 구글 바로 읽기(`hjCalApiEvent`), .ics(`hjCalSyncParseIcs`), 화면 글(`hjCalSyncParseText`).
+  - 화면 글은 세 꼴을 읽는다. 머리 꼴 '2026년 11월 16일 오전 9:00~2026년 11월 18일 오후 6:00, …'(`HJ_CALSYNC_TIMED_HEAD_RE`, 끝의 연도·월 생략 가능), 줄 끝 꼴 '오전 9시~오후 6시, …, 시작일~끝일', 그리고 '–'(대시)로 이은 시각(`HJ_CALSYNC_DASH_RE`)이다.
+  - to 는 종일 여러 날과 같은 칸이다. 그래서 계획·반영(같은 날 짝, ⏳ 기간 다름, 날짜 옮김의 메모 머리, 반영 뒤 기간 planned 로 보는 이어지는 날)이 그대로 쓴다.
+- 앱이 올린 구글 사본 (검토 뒤 고친 것)
+  - 운영 캘린더에는 Watchdog(watch-v5/v6)이 매시간 올린 앱 일정 사본이 함께 있다. 여러 날 공정은 날마다 '[현장] 제목 (3일 · ~11/18(수))'·'(2/3일째)'로 올라가고, 공정표 꼬리 ' (N일차 시작)'는 떼고 올라간다.
+  - `hjCalSyncTitle` 은 구글·앱 양쪽에서 사본 꼬리(`HJ_CALSYNC_COPY_TAIL_RE`)와 공정표 꼬리를 떼고 열쇠를 만든다. 앱 제목은 그대로 둔다. 예전에는 사본마다 체크된 '새 일정'이 생겼다. 종일·공정표 여러 날 공정은 v595 전부터 그랬다.
+  - 사본(`hjCalSyncAppCopy`: 태그 hjKey · 제목 머리 '[현장]' · 설명 끝줄 `HJ_CALSYNC_COPY_NOTE` '현장 앱 일정(자동)')에는 시각 여러 날 규칙을 쓰지 않는다. 24시간짜리 하루 일정의 사본이 이틀로 늘던 것을 막는다.
+  - Watchdog 의 사본 제목 꼴이나 설명 끝줄을 바꾸면 앱도 같이 바꿔라. 검사가 Watchdog.gs 를 vm 으로 돌려 대조한다.
+  - 사장님이 손으로 '[현장] 제목' 꼴로 넣은 시각 여러 날 일정은 예전처럼 시작일 하루로 읽는다.
+  - 남은 한계: 화면 글에는 태그·설명이 없어 현장 없는 24시간 사본은 알아볼 수 없다. 검사 ⑥이 이것을 고정한다.
+- v595 전 맞추기가 시작일 하루·1시간으로 넣은 기록 (검토 뒤 고친 것)
+  - 대상은 그 구글 일정이 넣은 기록이다(같은 uid, 또는 화면 글 맞추기의 'gcal:날짜|열쇠').
+  - 아직 하루짜리이고 1시간이면, 기간 다름·시간 다름·제목 바뀜 줄이 구글의 하루 시간 수를 싣는다(hfix, 줄 글 '· 하루 1시간 → 9시간').
+  - 반영 때는 기간이 실제로 늘었고 아직 1시간일 때만 바꾼다. 사람이 고친 시간과 미리보기 뒤에 고친 시간은 그대로 둔다.
+- 바뀐 옛 검사(의도):
+  - calmulti-v580 ①: '긴 모임' 11/2~11/8, 하루 2시간.
+  - calsync-v567 ①: 날짜로 시작하는 여러 날 줄의 시간 수 2.
+- 대표 확인 대기: 여러 밤 작업(월 22:00 → 목 06:00)은 지금 규칙대로 목요일까지 4일·하루 1시간이다. 끝 시각이 시작 시각 이하이면 끝을 전날로 보고(0시 규칙을 넓힘) 하루 시간 수를 밤샘 차이로 할지 정해 주세요.
+- 실제 구글 화면 글에서 시각 있는 여러 날 일정이 어떤 꼴로 나오는지는 아직 확인하지 못했다.
+
+**v596 📤 팀에 업무 보내기 — 여러 날 공정의 이어지는 날도 지시 후보에** (`tests/packetcont-v596.e2e.js` 4/4 · 변이 10종: no-cont·no-filter-cont·no-window·start-before·joint-slice·crew-first·no-n·bundle-reuse·no-used·no-dup-check)
+- 문제(AGENTS v587 '안 한 것'): v432 한 건 보내기(`hjWoCandidates`)는 date>=오늘인 일정만 골랐다. 그래서 어제 시작한 3일짜리 타일은 오늘(2/3일째)·내일(3/3일째)이 후보에 없었다.
+- 후보 짜는 법: 시작일 후보는 예전처럼 따로 10개까지 고른다(`slice(0,10)`). 이어지는 날은 **기준일과 다음 작업일(`hjShiftWorkDays(from,1)` — 토요일이면 월요일)만** 따로 더해 한데 정렬한다.
+  - 대상은 s.date<=기준일인 공정이다. 오늘 시작한 공정의 내일(2/2일째)도 들어간다.
+  - 공정마다 많아야 2줄이다. 기간 전체를 늘어놓으면 두 주짜리 목공 한 건이 10칸을 다 채워 같은 현장의 다른 일정을 밀어냈다. 기본 체크라 '내일 기한' 지시 하나에 열흘치가 실렸다(검토가 재현).
+  - 거르기는 `hjSchContDates/hjSchContOn`(일요일·완료 보고) + `hjWoSchOk`(💰·세금 자동)로, v587 hjWoDayOk 와 같다.
+  - 제목은 '타일 (2/3일째) (날짜 시각)' 꼴이다. key 는 'sch:<id>:<n>', due·day 는 그날이다.
+- 기록: `hjWoRecord` 가 일정 항목을 v587 꼴 `{kind:'sched',ref,day,n,text}`로 남긴다. 준비물·할 일 항목은 예전 꼴 그대로다.
+- **번호 규칙(검토 고침)**: v587 `hjWoBuildDay` sentId 는 **일정 하나짜리 지시(`w.items.length===1`)의 번호만** 다시 쓴다. 대상은 v587·v444 기록과, v432 로 일정 하나만 보낸 지시다.
+  - v432 는 기본으로 준비물·여러 날·여러 팀원을 한 지시로 묶는다. 그 번호를 하루치로 다시 쓰면 네 가지가 깨졌다.
+    - 둘째·셋째 날이 같은 번호로 나가 팀 앱에서 셋째 날이 둘째 날을 덮었다.
+    - 같은 날 일정 둘이 한 패킷에 같은 번호로 실려 한 팀 지시가 사라졌다.
+    - 묶음 기록의 기한이 날마다 바뀌었다.
+    - 하루치 완료 보고가 묶음의 준비물까지 완료로 만들었다(`hjWrApply`).
+  - 한 패킷 안에서 같은 번호는 한 번만 쓴다(`used`). `hjWoValidate` 도 한 패킷 안의 같은 번호를 'orders[i].id 중복'으로 막는다.
+  - `hjWoRecordMany` 는 기준선 그대로다(찾는 기록이 늘 일정 하나짜리다).
+- 담당 기본값: 체크된 일정의 팀원이 한 사람일 때만 그 사람을 넣는다. 여럿이면 비우고 `[data-wo-crew-mixed]` 안내를 띄운다. 예전에는 첫 일정의 팀원을 골라, 전기 지시까지 타일 팀원에게 갔다.
+- 개인정보 검사(`hjWoPrivacyIssues`)와 같은 화면 다시 보냄 = 같은 번호(v432)는 그대로다.
+- **대표 결정 대기**: v432 로 여러 항목을 묶어 보낸 날을 [📤 내일 일정 팀에 보내기]로 다시 보내면 새 번호가 나간다. 그래서 팀 앱에는 묶음과 하루치 지시가 따로 보인다. 묶음을 하루치로 덮어도 되는지는 팀 앱 규칙을 정해야 하는 일이라 v432 자기 규칙만 남겼다. 일정 하나만 보낸 이어지는 날은 같은 번호로 다시 보낸다.
+- 검사 결과: 기준선 a510e95 는 ① 에서 실패한다. 관련 teampacket-v432·wodaymulti-v587(변이 6종 그대로 실패 — no-day-key·date-key 고정 문자열을 유지했다)·team2-v444·ordername-v484·team3-v458·office-ops-isolation 이 통과했다.
+
+**v597 견적서 비고에서 '[금액 수정]' 내부 기록 빼기** (`tests/revmemo-v597.e2e.js` 4/4 · 변이 11종)
+- 문제: v583 `hjStmtApply` 가 고친 작업내역서를 다시 반영하면 견적 비고(q.memo)에 '[금액 수정] YYYY-MM-DD · 작업 옛→새원 · 원본 ‘수정본 파일’' 줄을 덧붙이는데(내부 기록), 그 비고가 견적서 PDF(📤 보내기·☁️ 드라이브 저장 — `quotePdfBlob`)·🖨 인쇄(`printQuote`)가 쓰는 `quoteHTML` 과 엑셀(`exportQuoteXlsx`) '비고' 칸에 그대로 찍혀 거래처·고객에게 옛 금액·수정본 파일 이름이 나갔다.
+- `hjQuoteMemoOut(memo)` 한 곳 — 밖으로 나가는 견적서(quoteHTML·exportQuoteXlsx)만 쓴다. **저장된 비고는 그대로**(견적 작성 화면 비고 칸·세무사용 증빙 '비고(내부)'·📦 현장 ZIP 은 기록을 본다). 거래명세서·청구서·고객 페이지·카톡 카드·공사 스토리는 원래 비고를 싣지 않는다(확인함). 비고를 밖으로 내보내는 새 문서를 만들면 이 함수를 지나게 하라.
+- 빼는 것은 **v583 이 쓰는 꼴뿐**: 기록 하나하나(`HJ_REVMEMO_ENTRY_RE`)를 줄 어디에 있든 먼저 빼고 남은 글은 살린다 — 비고 칸이 한 줄 입력이라 고치면 줄바꿈이 사라져 기록이 앞뒤 글에 붙는다. **줄 머리로 줄째 빼지 마라**(검토 고침: 비고가 기록으로 시작하면 뒤에 적은 '계약금 선입금' 까지 말없이 사라졌다 — 변이 start-drop). 파일 이름 끝은 내역서 확장자(.xlsx·.xls·.xlsm·.csv, 대소문자 무관) 뒤 ’ → 뒤가 빈칸·다음 기록·줄 끝인 ’ → 첫 ’ 순, 어느 것도 다음 '[금액 수정]' 을 넘지 않는다(’ 든 파일 이름 꼬리가 새던 것). 손으로 고쳐 꼴이 깨진 기록(날짜 머리 `HJ_REVMEMO_STAMP_RE` '[금액 수정] YYYY-MM-DD · ' 는 남음)은 그 머리부터 줄 끝까지 뺀다. **날짜 머리 없는 '[금액 수정] …' 은 대표가 고객에게 쓴 글일 수 있어 그대로 찍힌다.** v526 '원본:' 줄 등 다른 줄은 그대로. 기록을 뺀 자리 빈칸은 하나로·앞뒤 trim(변이 no-gap). v583 의 기록 쓰는 줄은 손대지 않았다 — 꼴을 바꾸면 두 정규식도 같이.
+- 견적 작성 화면 비고 칸 아래, 빠지는 글이 있을 때만 '‘[금액 수정]’ 기록은 앱 안 기록이라 견적서·엑셀에는 나가지 않아요'(`data-qm-memo-hint`).
+- 검사: 진짜 v583 길(hjStmtApply → hjStmtApplySafe)로 만든 기록 — ① HTML·인쇄 iframe·PDF·엑셀 ② 편집 칸·세무사용 증빙·안내 ③ 실제 키보드로 칸을 고친 붙은 기록·앞부분을 지워 기록으로 시작한 비고 뒤 글의 [📄 PDF 출력]·[⬇ 엑셀] + 단위 사례 ④ 폰 390·기록 없는 비고엔 안내 없음. 검사 주의: [📄 PDF 출력]의 인쇄 iframe 은 0.2초 뒤 초점을 가져간다 — 그 뒤 바로 칸에 글을 치는 검사는 옛 `#printFrame` 을 먼저 치워라(치던 글이 잘린다). 기준선 a510e95 는 ① 에서 실패.
+
+**합친 판 통합 검토(세 관점 — 자료·현장 사용·검사, 지적마다 반박 검증) 뒤 고친 것** (`tests/xreview-v597.e2e.js` 3/3 · 변이 dayclose-old·going-off·uid-done · morningboot2-v592 ⑥ 에 변이 fresh-after-photos)
+- **v592 '최신' 신호가 서버가 더 최신인 아침엔 사진 목록 뒤에 왔다**: 같은 revision 일 때만 사진 목록 맞추기 전에 알렸고, 다른 기기가 밤에 저장한 아침(자동 반영 — 가장 흔한 경우)에는 relayLoadApply 가 `relayLoadDriveFiles` 까지 기다린 뒤 finally 에서야 알려 12초 상한을 넘기고 🌅·🔔 를 건너뛰었다(설치 앱은 한눈 보기도 이미 건너뜀 → 그 부팅엔 아무것도). 이제 relayLoadApply 가 자료를 적용·저장하면 바로 `relayFreshComplete()`(부팅 밖에서는 아무 일 없음). **사진 목록 맞추기를 기다린 뒤에 알리게 되돌리지 마라.** 상한을 넘긴 부팅(서버 자체가 느림)은 여전히 아무것도 안 띄운다 — 대표 확인 대기 ②.
+- **🌙 오늘 마감**: `hjDayCloseData` 의 done 이 hjSchReported 라 v591 이 이어지게 한 진행 중 공정(1일째 '진행' 보고)을 '이미 보고함'으로 셌다 — 📋 내 업무는 '끝나면 완료 보고'인데 오늘 마감은 '모두 보고했어요', 마지막 날 완료 보고를 안 물었다. 이제 여러 날 공정은 `hjSchContEnded`(첫날·가운데 '내일도 계속', 마지막 날 '보고할 일정'), 하루짜리는 예전처럼 보고 글이 있으면 보고함.
+- **🔄 맞추기**: 진행 중 공정은 완료 보고처럼 날짜 옮김·기간 다름 후보에서 빠지므로(보고가 붙은 날을 바꾸지 않는다) 구글에서 하루 미루면 체크된 '새 일정'으로 한 번 더 들어가 같은 날 두 번 보였다(v591 전에는 옛 공정이 보고에서 끝나 겹치지 않았다). `hjCalSyncGoing(s)`(보고 있음·진행 중·여러 날) — 같은 열쇠·현장의 진행 중 공정이 앞뒤 21일 안에 있으면 새 일정은 체크 해제 + '진행 중인 ‘제목’(시작~끝)과 같은 작업일 수 있어 체크 해제 · 따로 하는 작업이면 체크'. 같은 uid 를 다른 날로 옮긴 줄도 '완료 보고한' 대신 이 글. 보고 없음·완료 보고·하루짜리 진행 보고는 예전 그대로.
+- 반박된 것(이 묶음이 만든 것도 더 나쁘게 한 것도 아님 — 다음 판 후보): ① 서버 Watchdog(watchReported_·watchContOn_·watchContDates_)은 아직 '보고 글 있음 = 끝' — 진행 중 공정의 둘째 날부터 구글 사본·9시 '[일정 알림]'에 안 나온다(v591 전 앱과 같음, Watchdog.gs 주석 '앱 hjSchContDates 와 같은 셈'은 이제 틀림 — 바꾸려면 office-ops-server-isolation 의 승인 SHA 와 대표 수동 배포) ② 고객 쪽 — hjPhaseProgress(고객 페이지·진행 보고 '완료'로 셈)·hjCustSchedRows(고객 일정 안내)·현장 '🗓 이 현장 일정'(v364)·hjMatSchOptions·hjMatPlanRows 는 아직 hjSchReported 라 진행 중 공정을 끝난 것으로(남은 일정 0건). 바꿀 때는 한 규칙(여러 날이면 hjSchContEnded)으로 ③ 맞추기에서 진행 중 공정을 구글이 늘리거나 줄여도(⏳ 기간 다름) 반영 안 함(v580 부터).
+- 검사: 합친 판 전체 회귀 492개 중 486(실패 6 = 컨테이너 전용 — 한글 내려받기 이름 5·jsDelivr 차단 1, main 에서도 같음), 고친 뒤 관련 20개(calmulti·calsync·calapi·calsyncdone·calextras·timedspan·asvisitsync·dayclose-v359·todaycount·morningboot 두 파일·crewclash·dcsales·matplan·matdue·adcase·relaysync·stalelock·multiday·wodaymulti·packetcont) 통과. 기준선 a510e95 는 xreview ① 에서 실패.
+- **변이 기준 글이 낡아 있었다** — 변이는 CI 에서 돌지 않아 앱 코드가 그 줄을 고치면 'mutation anchor' 로 시작도 못 한 채 아무도 몰랐다. 이 묶음이 깬 다섯(dailyfix-v586 brief-old — v591 get_overview 가 같은 글을 하나 더 씀 · calmulti-v580·calapi-v588 shorter-unchecked — v595 hfix 칸 · calapi-v588 reported-hidden·invite-checked — 위 hjCalSyncGoing)과 예전부터 깨져 있던 둘(bankstmt-v533 no-stmt — v538, stmtunit-v537 check-all — v539)을 지금 코드에 맞추고 일곱 모두 의도한 시나리오에서 실패하는 것을 다시 확인했다.
+  새 정적 검사 **`tests/mutation-anchors.check.js`**: 검사 파일의 변이 표(`const MUT = {…}`)를 읽어 기준 글(바꿀 앞 글, 여러 쌍이면 차례로)이 앱 파일 하나(index.html·sw.js·Watchdog.gs·bathroom.js·leak.js·team-*.js 등)에 **정확히 한 번** 있는지 본다(변이는 돌리지 않음, 1초). 표가 위쪽 상수를 쓰면 파일 앞부분만 실행해 표를 얻는다. 이 점검이 떨어지면 기준 글만 맞추고 끝내지 말고 그 변이를 한 번 돌려 의도한 곳에서 실패하는지 보라. 새 변이 표는 이름을 `const MUT = {` 로 — 다른 이름이면 이 점검이 못 본다. 고치기 전 코드에서는 위 일곱을 잡는다.
+
 ## 2026-11-12 v590 · 일정 알림 watch-v6 — 다 받은 내역서의 현장 줄 남은 돈 숨김 · '[파수꾼]' → 매일 9시 '[일정 알림]' 내일 일정 요약
 
 대표 답(11/12, 아래 v588~v589 의 확인 대기 ①~③): ① "다 받은 현장 줄의 남은 돈은 숨겨" ② "구글에서 하루로 줄인 여러 날 공정은 지금처럼 '날짜 옮김'"(코드 그대로)
@@ -3337,6 +3516,7 @@ node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 node tests/serialized-keys.check.js    # 직렬화 최상위 키 목록 네 곳 일치(키를 더했으면 반드시)
+node tests/mutation-anchors.check.js   # 변이 표의 기준 글이 앱 코드에 정확히 한 번(앱 줄을 고쳤으면 그 변이도 다시 돌려라)
 
 # 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-19 기준 165개)
 #    종료코드로 판정한다(출력 마지막 줄만 보고 성공으로 판정하지 마라).
