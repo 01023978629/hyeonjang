@@ -22,7 +22,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 let html = process.env.HJ_V533_BASELINE ? execFileSync('git', ['show', process.env.HJ_V533_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 const MUT = {
-  'no-stmt': ["    if(sm.src)return Object.assign({},r,{project:'',why:sm.why,hint:'',stmt:sm.src,dup:false});\n", ''],
+  'no-stmt': ["    if(sm.src||sm.combo)return Object.assign({},r,{project:'',why:sm.why,hint:'',stmt:sm.src||'',combo:sm.combo||null,useCombo:!!sm.combo,dup:false});", ''],
   'no-dup': ["  return !!(hit&&hit.has(row.amt));\n", "  return false;\n"],
   'prev-stmt': ["if(x&&x.payer&&x.project&&!x.stmt){const k=hjBankNorm(x.payer);", "if(x&&x.payer&&x.project){const k=hjBankNorm(x.payer);"]
 }[process.env.HJ_V533_MUTATION || ''];

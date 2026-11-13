@@ -35,7 +35,7 @@ const MUT = {
   'loose-last': ['else{if(!dateStart&&HJ_CALSYNC_LOOSE_RANGE_RE.test(tail)){unread++;return;}', 'else{'],
   'no-inrange': ['    if(!inr)return;\n', '    return;\n'],
   'span-reported': ['&&hjCalSyncMemoOwn(tgt.s)&&!hjSchReported(tgt.s)),shorter=', '&&hjCalSyncMemoOwn(tgt.s)),shorter='],   // v588 검토: 기간 다름 대상이 tgt(끝만 빈 덮기면 마지막 일정)
-  'shorter-unchecked': ["status:'span',check:true,span,shorter,app}", "status:'span',check:!shorter,span,shorter,app}"],
+  'shorter-unchecked': ["status:'span',check:true,span,shorter,hfix:timeDiff?0:hf,app}", "status:'span',check:!shorter,span,shorter,hfix:timeDiff?0:hf,app}"],
   'ignore-to': ['if(own){if(r.to&&r.to>r.date)s.memo=hjCalSyncSpanMemo(s.memo,r.date,r.to);\n        else if(sp.days>1)', 'if(own){if(sp.days>1)'],
   'move-own-ignored': ['own=hjCalSyncMemoOwn(s);s.date=r.date', 'own=true;s.date=r.date'],
   'last-date': ['if(rg){const r=hjCalSyncRangeOf(rg);if(!r)return;date=r.date;end=r.end;}', "if(rg){const r=hjCalSyncRangeOf(rg);if(!r)return;date=r.end||r.date;end='';}"],

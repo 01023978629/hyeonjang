@@ -15245,7 +15245,7 @@ function hjSchReported(s){return !!(s&&s.report&&(s.report.progress==='완료'||
    그 공정이 끝난 것으로 보여 둘째·셋째 날이 오늘 일정·📋 내 업무·달력·알림·🗺 동선 어디에도 안 나왔다(현장에서 가장 흔한 흐름).
    진행률이 '하는 중'(HJ_SCH_GOING_RE — 시작·진행·진행중·NN%)이면 이어지는 날은 그대로 이어진다. 그 밖의 보고('완료', 그리고 글이 있는데
    진행률이 비었거나 '보류'인 옛 보고)는 예전처럼 끝난 것 — 진행률을 안 고르고 '오늘 한 작업'만 적어 끝을 알리던 쓰임을 지킨다.
-   hjSchReported 자체는 그대로 둔다 — 지연 점검·오늘 마감·고객 일정 안내 등이 '보고가 있나'로 쓴다. */
+   hjSchReported 자체는 그대로 둔다 — 지연 점검·고객 일정 안내 등이 '보고가 있나'로 쓴다(🌙 오늘 마감·🔄 맞추기는 통합 검토 뒤 여러 날 공정에 이 규칙 — hjDayCloseData·hjCalSyncGoing). */
 const HJ_SCH_GOING_RE=/^(시작|진행|진행중|\d{1,2}%)$/;
 function hjSchContEnded(s){return hjSchReported(s)&&!HJ_SCH_GOING_RE.test(String(s.report.progress||'').trim());}
 // 그날이 그 일정의 '이어지는 날'이면 {day,days,from,to}, 아니면 null
