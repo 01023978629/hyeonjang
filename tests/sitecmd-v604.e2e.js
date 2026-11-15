@@ -123,7 +123,7 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
           body: { cal: /현장웹 일정표를 보고/.test(P), slots: P.includes('{최근일정}') && P.includes('{현장목록}'), talk: /톡방\(카카오 톡서랍\)/.test(P), gphoto: /구글 포토/.test(P), folder: P.includes('현장사진/<현장 이름>/'),
             order: /위치\(GPS\)[\s\S]*그날 일정[\s\S]*보고 글/.test(P), noloc: /위치 정보가 없는 사진은 톡방에 적힌 주소/.test(P), ask: P.includes("'확인필요' 표") && /내 답을 기다린다/.test(P) },
           rules: { move: /옮기기만 한다/.test(P), nojson: /_현장\.json 을 고치지 않는다/.test(P), login: /자동으로 로그인하지 않는다/.test(P), noname: /고객 이름·전화번호를 쓰지 않는다/.test(P),
-            noSite: /'현장 없음'으로 이미 들어와 있는 일정: 맞추기에는 그 줄이 다시 나오지 않는다/.test(P) && /일정을 열어\(✏️\) 현장 칸에서 그 현장을 고른다/.test(P),
+            noSite: /'현장 없음'으로 이미 들어와 있는 일정: 맞추기에는 그 줄이 다시 나오지 않는다/.test(P) && /\[🔗 현장 없는 일정\]에서 줄마다 현장을 고르거나 '＋ 새 현장'으로 만들어 잇는다/.test(P),   // v607 창
             keepName: /목록 이름은 바꾸지 않는다/.test(P) && /폴더 이름을 새로 지을 때는 고객 이름·전화번호를 쓰지 않는다/.test(P),
             screens: ['[🔄 구글 캘린더 맞추기]의 \'＋ 새 현장\'', '[💬 카톡 보고 대조·사진 배정]의 \'＋ 새 현장\'', '[🧭 추측 배정 보기]의 \'＋ 새 현장\''].every(x => P.includes(x)), okFirst: /내가 좋다고 한 줄만/.test(P),
             safe: /지우지 않는다/.test(P) && /_중복정리_보관_\{오늘\}/.test(P) && /_현장_백업_클로드_\{오늘\}/.test(P) && /앱 파일\(/.test(P) && /표로 보여 주고 멈춰서 묻는다/.test(P) },

@@ -4052,7 +4052,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v606-newsite';
+const APP_BUILD='hyeonjang-v607-nosite';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8791,8 +8791,8 @@ function hjPhotoNewOptionHtml(hint){
   return (hint&&hint.name?hjNewSiteOptionHtml(hint.name):'')||'<option value="__new__:">＋ 새 현장 (이름 입력)</option>';
 }
 // 고르기 칸 바로 뒤(같은 부모 안)에 두는 새 현장 이름 칸 — '＋ 새 현장'을 골랐을 때만 보인다
-function hjPhotoNewBoxHtml(name,aria){
-  return '<div class="hjPnBox" hidden><input type="text" class="hjPnName" value="'+escapeAttr(name||'')+'" maxlength="60" autocomplete="off" placeholder="새 현장 이름 — 예: 달빛아파트" aria-label="'+escapeAttr(aria)+'" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;margin-top:4px">'+
+function hjPhotoNewBoxHtml(name,aria,what){
+  return '<div class="hjPnBox" hidden'+(what==='sched'?' data-what="sched"':'')+'><input type="text" class="hjPnName" value="'+escapeAttr(name||'')+'" maxlength="60" autocomplete="off" placeholder="새 현장 이름 — 예: 달빛아파트" aria-label="'+escapeAttr(aria)+'" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;margin-top:4px">'+
     '<div class="hjPnMsg" role="status" style="font-size:11.5px;line-height:1.5;margin-top:2px"></div></div>';
 }
 // 이름 칸을 보이고/숨기고, 적은 이름으로 무엇이 되는지 바로 아래에 적는다(막히는 이름은 배정 전에 보이게) → 새 현장을 골랐으면 hjNewSiteTarget 결과, 아니면 null
@@ -8801,12 +8801,12 @@ function hjPhotoNewSync(sel){
   if(!box)return null;
   const on=hjPhotoNewIs(sel.value);box.hidden=!on;
   if(!on)return null;
-  const inp=box.querySelector('.hjPnName'),msg=box.querySelector('.hjPnMsg'),t=hjNewSiteTarget(inp?inp.value:'');
+  const inp=box.querySelector('.hjPnName'),msg=box.querySelector('.hjPnMsg'),t=hjNewSiteTarget(inp?inp.value:''),sch=box.dataset.what==='sched';   // v607 일정 창은 '이 일정을 잇습니다'
   if(msg){
     msg.dataset.state=t.why||'new';
     msg.style.color=t.to?'var(--muted)':'var(--hj-warn-fg)';
-    msg.textContent=t.fresh?'새 현장을 만들어 이 묶음 사진을 넣습니다 · 이름은 고칠 수 있어요'
-      :t.why==='exists'?'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 넣습니다'
+    msg.textContent=t.fresh?(sch?'새 현장을 만들어 이 일정을 잇습니다 · 이름은 고칠 수 있어요(단계·유형·고객은 현장 화면에서)':'새 현장을 만들어 이 묶음 사진을 넣습니다 · 이름은 고칠 수 있어요')
+      :t.why==='exists'?(sch?'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 잇습니다':'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 넣습니다')
       :t.why==='similar'?'비슷한 현장: '+hjNewSiteSimText(t.similar)+' — 위에서 그 현장을 고르거나 이름을 바꿔 주세요'
       :t.why==='archived'?'보관한 현장과 이름이 같아요: '+hjNewSiteSimText(t.similar)+' — 이름을 바꾸거나 보관을 푼 뒤 고르세요'
       :'현장 이름을 두 글자 이상 적어 주세요';
@@ -32823,7 +32823,7 @@ function cwDefaultsV529(){
    - 구글 캘린더에는 있는데 위 일정에 아직 없는 일정: 📅 일정표 → [🔄 구글 캘린더 맞추기]의 '＋ 새 현장'(그 일정이 새 현장에 이어져 들어간다)
    - 톡방 대화 내보내기(.txt)가 있는 곳: 사진 도구 → [💬 카톡 보고 대조·사진 배정]의 '＋ 새 현장'
    - 그 밖: 사진 탭 → [🧭 추측 배정 보기]의 '＋ 새 현장'
-   - 위 일정에 '현장 없음'으로 이미 들어와 있는 일정: 맞추기에는 그 줄이 다시 나오지 않는다 — 💬·🧭 창에서 현장을 만든 뒤 📅 일정표에서 그 일정을 열어(✏️) 현장 칸에서 그 현장을 고른다.
+   - 위 일정에 '현장 없음'으로 이미 들어와 있는 일정: 맞추기에는 그 줄이 다시 나오지 않는다 — 📅 일정표의 [🔗 현장 없는 일정]에서 줄마다 현장을 고르거나 '＋ 새 현장'으로 만들어 잇는다(현장 칸만 바뀐다).
 7. 끝나면 현장별로 넣은 장수·새로 만든 현장·확인필요 장수를 알려 준다.
 
 [주의]
@@ -41286,7 +41286,7 @@ function viewSchedule(){
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
   const sch=(state.schedule||[]).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   if(sch.length){
-    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button> <button class="ghost tiny" id="schCalSync" style="min-height:44px" title="구글 캘린더 일정을 읽어 앱 일정표와 견주고, 미리보기에서 고른 것만 넣습니다 — 구글 캘린더는 바꾸지 않아요">🔄 구글 캘린더 맞추기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
+    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button> <button class="ghost tiny" id="schCalSync" style="min-height:44px" title="구글 캘린더 일정을 읽어 앱 일정표와 견주고, 미리보기에서 고른 것만 넣습니다 — 구글 캘린더는 바꾸지 않아요">🔄 구글 캘린더 맞추기</button>${hjSchNoSiteBtnHtml()}${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
@@ -42453,6 +42453,126 @@ function hjCalSyncNewSync(box){
     x.nb.querySelector('.csNew').setAttribute('aria-invalid',t.to?'false':'true');
   });
 }
+/* v607 이미 들어온 '현장 없는 일정'을 한 창에서 현장에 잇기·새로 만들기 (AGENTS v601·v599~v606 '남은 것' ①)
+   🔄 맞추기는 '현장 없이'로 들어온 일정을 다시 보여 주지 않는다(같은 구글 일정 = 이미 같음). 현장 없는 일정은 📤 내일 팀 지시(hjWoDayOk)에서
+   말없이 빠지고 사진 현장 판단(hjPlaceSchedNames)에도 안 잡힌다. 지금까지는 일정마다 ✏️ 를 열어 현장 칸을 골랐고, 그 현장이 앱에 없으면
+   현장을 먼저 만든 뒤 돌아와야 했다(대표 11/12~13 '캘린더를 보고 현장을 만들어 정리'의 마지막 고리).
+   · 대상(hjSchNoSiteOk): 현장 칸이 빈 일정 — 💰 수금·세금 자동·개인 일정(sourceUid — 시험 등)·운영 루틴은 현장 일이 아니라 뺀다.
+     지난 일정은 HJ_SCH_NOSITE_BACK(60)일까지, 앞으로는 모두. 창에는 HJ_SCH_NOSITE_MAX(80)줄 — 넘치면 몇 건 남았는지 적는다.
+   · 줄마다 고르기 칸: '＋ 새 현장: 이름'(v599 hjNewSiteName — 제목 → 장소 순, v601 맞추기와 같은 제안) · '＋ 새 현장 (이름 입력)' · 추천(이름 맞추기 0.5↑ 세 곳) · 진행 현장.
+     미리 고르지 않는다 — 제안 이름이 진행 현장 이름과 똑같을 때만 그 현장을 골라 둔다(v601 통합 검토와 같은 규칙). 체크는 고를 때만.
+   · 반영(hjSchNoSiteApply): 막힌 새 이름이 하나라도 있으면 안전판 전에 통째로 멈춤(💬·🧭·🧹 와 같은 규칙) → 오래된 창 거부 → 안전판 '현장 없는 일정 잇기 전' 1회
+     → 줄마다 다시 본다(그 사이 지워졌거나 다른 곳에서 현장이 붙은 일정은 건너뜀 · 새 이름은 hjNewSiteTarget 으로 다시 — 앞 줄이 만든 같은 이름은 잇기만,
+     비슷해졌으면 그 줄만 그대로) → 새 현장은 그 일정을 이을 때만 ensureProjectExists(단계 0·유형 없음·고객 칸 빈칸 — 주소도 비워 둔다:
+     팀 글은 일정 메모의 '장소:'를 주소 줄로 쓴다, v605).
+   · 일정의 날짜·시각·제목·메모는 바꾸지 않는다 — 현장 칸만. 구글 캘린더는 손대지 않는다(현장을 단 일정은 Watchdog 이 '[현장] 제목' 사본을 올린다 — v567 부터). */
+const HJ_SCH_NOSITE_BACK=60,HJ_SCH_NOSITE_MAX=80;
+function hjSchNoSiteOk(s){return !!(s&&!String(s.project||'').trim()&&HJ_YMD_RE.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid&&!s.routine);}
+function hjSchNoSiteFrom(){return hjAddDays(localDate(),-HJ_SCH_NOSITE_BACK);}
+function hjSchNoSiteCount(){const from=hjSchNoSiteFrom();return (state.schedule||[]).filter(s=>hjSchNoSiteOk(s)&&s.date>=from).length;}
+// 📅 일정표 툴바 단추 — 셀 일정이 있을 때만(직원 모드에서는 없음)
+function hjSchNoSiteBtnHtml(){
+  if(typeof hjStaffOn==='function'&&hjStaffOn())return '';
+  const n=hjSchNoSiteCount();
+  return n?'<button class="ghost tiny" id="schNoSite" data-nosite-count="'+n+'" style="min-height:44px" title="현장 칸이 빈 일정을 한 창에서 현장에 잇거나 새 현장을 만들어 잇습니다 — 이으면 📤 내일 팀 지시·사진 현장 판단에 들어가요">🔗 현장 없는 일정 '+n+'건</button>':'';
+}
+// 그날(시작일 또는 여러 날 공정의 이어지는 날) 현장 없는 일정 — 📤 하루치 팀 지시가 빠뜨리는 것(읽기만)
+function hjSchNoSiteOn(day){return (state.schedule||[]).filter(s=>s&&s.date===day&&hjSchNoSiteOk(s)).concat(hjSchContinuing(day,hjSchNoSiteOk).map(x=>x.s));}
+// 창에 보일 줄 — 오늘부터 앞으로(가까운 날 먼저), 그 뒤에 지난 일정(최근 먼저). 읽기만.
+function hjSchNoSiteRows(){
+  const today=localDate(),from=hjSchNoSiteFrom(),key=s=>s.date+' '+String(s.time||'99:99');
+  const all=(state.schedule||[]).filter(s=>hjSchNoSiteOk(s)&&s.date>=from);
+  const live=new Set((state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name));
+  return all.filter(s=>s.date>=today).sort((a,b)=>key(a).localeCompare(key(b))).concat(all.filter(s=>s.date<today).sort((a,b)=>key(b).localeCompare(key(a)))).map(s=>{
+    const title=String(s.title||'').trim(),place=hjSchPlaceOf(s),suggest=hjNewSiteName(title)||hjNewSiteName(place,{addr:true});
+    return {id:s.id,date:s.date,time:String(s.time||''),title,place,past:s.date<today,suggest,exact:suggest&&live.has(suggest)?suggest:'',
+      cands:hjStmtMatch((title+' '+place).trim()).filter(c=>c.score>=0.5).slice(0,3).map(c=>c.name)};
+  });
+}
+function hjSchNoSiteView(opts){
+  const o=opts||{};
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 일정의 현장을 바꿀 수 없어요');return false;}
+  const rows=hjSchNoSiteRows(),shown=rows.slice(0,HJ_SCH_NOSITE_MAX),back=typeof o.back==='function'?o.back:null;
+  const foot=[{label:'닫기',cls:'ghost',fn:closeModal}];if(back)foot.unshift({label:'‹ 뒤로',cls:'ghost',fn:()=>{closeModal();back();}});
+  if(!rows.length){
+    openModal('🔗 현장 없는 일정','<div class="empty" data-nosite-empty style="padding:16px"><b>현장 없는 일정이 없어요</b>지난 '+HJ_SCH_NOSITE_BACK+'일부터 앞으로의 일정은 모두 현장에 이어져 있습니다(💰 수금·세금·개인 일정·운영 루틴은 세지 않아요).</div>',foot);
+    hjModalTapTargets();return 0;
+  }
+  const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
+  const opt=(v,t,on)=>'<option value="'+escapeAttr(v)+'"'+(on?' selected':'')+'>'+escapeHtml(t)+'</option>';
+  const rowHtml=(r,i)=>{
+    const c=r.suggest&&!r.exact?hjNewSiteCheck(r.suggest):null,head=hjMdDow(r.date)+(r.time?' '+r.time:'');
+    const sel='<select class="snsSel" data-i="'+i+'" aria-label="'+escapeAttr(head+' '+r.title+' — 이을 현장')+'" style="width:100%;min-height:44px;font-size:16px;box-sizing:border-box">'+
+      opt('','현장 고르기',!r.exact)+(c&&c.ok?hjNewSiteOptionHtml(r.suggest):'')+'<option value="__new__:">＋ 새 현장 (이름 입력)</option>'+
+      (r.cands.length?'<optgroup label="추천">'+r.cands.map(n=>opt(n,n,n===r.exact)).join('')+'</optgroup>':'')+
+      '<optgroup label="진행 현장">'+live.filter(n=>!r.cands.includes(n)).map(n=>opt(n,n,n===r.exact)).join('')+'</optgroup></select>';
+    return '<div class="snsRow" data-nosite-row="'+escapeAttr(r.id)+'" style="border:1px solid var(--line-soft);border-radius:11px;padding:10px;margin-top:8px;min-width:0">'+
+      '<label style="display:flex;gap:10px;align-items:flex-start;min-height:44px;cursor:pointer"><input type="checkbox" class="snsChk" data-i="'+i+'" style="width:22px;height:22px;flex:0 0 auto;margin-top:2px">'+
+      '<span style="flex:1 1 auto;min-width:0;overflow-wrap:anywhere;font-size:13px;line-height:1.5"><b>'+escapeHtml(head)+'</b>'+(r.past?' <span data-nosite-past style="color:var(--muted);font-size:11.5px">지난 일정</span>':'')+'<br>'+escapeHtml(r.title||'(제목 없음)')+
+      (r.place?'<br><span style="color:var(--muted);font-size:12px">📍 '+escapeHtml(r.place)+'</span>':'')+'</span></label>'+
+      '<div class="snsPick" style="margin-top:6px;min-width:0">'+sel+hjPhotoNewBoxHtml(c&&c.ok?r.suggest:'',head+' '+r.title+' — 새 현장 이름','sched')+'</div>'+
+      (c&&!c.ok&&c.why!=='short'?'<div data-nosite-sim style="font-size:11.5px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere">제안 이름 ‘'+escapeHtml(r.suggest)+'’ — 비슷한 현장: '+escapeHtml(hjNewSiteSimText(c.similar))+(c.similar.some(n=>live.includes(n))?' · 같은 곳이면 고르기 칸에서 그 현장을 고르세요':' · 보관한 현장이면 보관을 푼 뒤 고르세요')+'</div>':'')+
+      (r.exact?'<div data-nosite-exact style="font-size:11.5px;color:var(--muted);margin-top:4px">제안 이름과 같은 현장 ‘'+escapeHtml(r.exact)+'’을 골라 두었어요 — 맞으면 체크하세요</div>':'')+'</div>';
+  };
+  const ids=shown.map(r=>r.id);
+  const body='<div id="hjSchNoSite" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;line-height:1.6">현장 칸이 빈 일정 <b data-nosite-n>'+rows.length+'건</b> — 지난 '+HJ_SCH_NOSITE_BACK+'일부터 앞으로. 현장을 고르거나 ‘＋ 새 현장’으로 만들어 이으면 📤 내일 팀 지시·사진 현장 판단에 들어갑니다. 일정의 날짜·시각·제목·메모는 그대로예요(💰 수금·세금·개인 일정·운영 루틴은 세지 않아요).'+
+    (rows.length>shown.length?'<br><span data-nosite-more>앞의 '+shown.length+'건만 보여요 — 나머지 '+(rows.length-shown.length)+'건은 이것을 이은 뒤 다시 열면 나옵니다</span>':'')+'</div>'+
+    shown.map(rowHtml).join('')+'</div>';
+  openModal('🔗 현장 없는 일정 잇기',body,[{label:'🔗 체크한 일정 잇기',cls:'clay',fn:()=>hjSchNoSiteApply(ids,back)}].concat(foot),true);
+  const root=document.getElementById('hjSchNoSite');
+  if(root){
+    root.querySelectorAll('.snsSel').forEach(sel=>{sel.onchange=()=>{const chk=root.querySelector('.snsChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;hjPhotoNewPicked(sel);};});
+    hjPhotoNewWire(root);
+  }
+  hjModalTapTargets();
+  return shown.length;
+}
+// ids = 창을 열 때의 줄 차례(일정 id). 창에서 체크한 줄만 — 반환: 이은 일정 수
+async function hjSchNoSiteApply(ids,back){
+  const root=document.getElementById('hjSchNoSite');if(!root)return 0;
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 일정의 현장을 바꿀 수 없어요');return 0;}
+  const stale=()=>typeof __tabStale!=='undefined'&&__tabStale;
+  const picks=[];let blocked=null,noTarget=0;
+  root.querySelectorAll('.snsChk:checked').forEach(el=>{
+    const i=+el.dataset.i,sel=root.querySelector('.snsSel[data-i="'+i+'"]'),id=ids[i];if(!sel||!id)return;
+    let to=String(sel.value||''),isNew=false;
+    if(hjPhotoNewIs(to)){isNew=true;const t=hjPhotoNewSync(sel);if(!t||!t.to){if(!blocked)blocked=sel;return;}to=t.to;}
+    if(!to){noTarget++;return;}
+    picks.push({id,to,isNew});
+  });
+  // 막힌 새 이름이 하나라도 있으면 안전판도 만들지 않고 멈춘다 — 그 줄 아래에 까닭(비슷한 현장 이름)이 보인다
+  if(blocked){hjPhotoNewFocus(blocked);toast('새 현장 이름을 확인해 주세요 — 비슷한 현장이 있거나 이름이 짧아 아무 일정도 잇지 않았어요');return 0;}
+  if(stale()){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  if(!picks.length){toast(noTarget?'체크한 일정의 현장을 먼저 골라 주세요':'이을 일정을 체크하세요');return 0;}
+  const btns=[...document.querySelectorAll('#modalRoot .mfoot button')];btns.forEach(b=>b.disabled=true);
+  const unlock=()=>btns.forEach(b=>{if(b.isConnected)b.disabled=false;});
+  let snapped=false;try{snapped=await hjSnapshot('현장 없는 일정 잇기 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){unlock();toast('안전판을 만들지 못해 잇지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  if(stale()){unlock();toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),made=[],lateSim=[];
+  let n=0,changed=0,late=0,gone=0;
+  picks.forEach(({id,to,isNew})=>{
+    // 창을 연 뒤 지워졌거나 다른 곳(일정 ✏️·맞추기·다른 기기)에서 현장이 붙은 일정은 건너뛴다 — 지금 적힌 것이 새것
+    const s=(state.schedule||[]).find(x=>x&&x.id===id);
+    if(!s||!hjSchNoSiteOk(s)){changed++;return;}
+    if(isNew){
+      // 새 이름은 지금 다시 본다 — 앞 줄이 만든 같은 이름은 잇기만(exists), 그 이름과 비슷해졌으면('별빛 아파트') 그 줄만 그대로
+      const t=hjNewSiteTarget(to);
+      if(!t.to){late++;(t.similar||[]).forEach(x=>{if(!lateSim.includes(x))lateSim.push(x);});return;}
+      if(t.fresh&&ensureProjectExists(t.to)){made.push(t.to);names.add(t.to);}
+      to=t.to;
+    }
+    if(!names.has(to)){gone++;return;}   // 고른 현장이 그 사이 지워졌거나 보관됐다
+    s.project=to;n++;
+  });
+  const tail=(changed?' · 그 사이 바뀐 일정 '+changed+'건은 그대로':'')+(gone?' · 고른 현장이 없어진 '+gone+'건은 그대로':'')+(late?' · 새 현장을 못 만든 '+late+'건은 그대로(비슷한 현장: '+hjNewSiteSimText(lateSim)+')':'');
+  if(!n){unlock();toast('잇지 않았습니다'+tail);return 0;}
+  markDirty();closeModal();render();
+  toast('🔗 일정 '+n+'건을 현장에 이었어요'+(made.length?' · 🆕 새 현장 '+made.length+'곳('+made.join(', ')+')':'')+tail+' — 되돌리려면 🛡 안전판을 여세요');
+  if(back)back();
+  return n;
+}
 async function hjCalSyncApply(plan,picks){
   if(typeof hjStaffOn==='function'&&hjStaffOn())throw new Error('👷 직원 모드에서는 구글 캘린더 맞추기를 반영할 수 없어요');
   if((typeof __tabStale!=='undefined'&&__tabStale))throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
@@ -43404,7 +43524,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-draft],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],[data-stmtproof],[data-stmtdetail],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure,[data-unbilled-photo]');
+    const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-draft],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],[data-stmtproof],[data-stmtdetail],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schNoSite,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure,[data-unbilled-photo]');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -43486,6 +43606,7 @@ function setupDelegation(){
     if(t.id==='schGcal')return toggleGcalAuto();
     if(t.id==='schExportAll')return exportAllICS();
     if(t.id==='schIcsIn')return pickICSFile();
+    if(t.id==='schNoSite')return hjSchNoSiteView();   // v607 🔗 현장 없는 일정 잇기
     if(t.id==='schCalSync')return hjCalSyncView();   // v567 🔄 구글 캘린더 맞추기
     if(t.id==='schCalSend')return hjSchCalSendView({ym:calMonth()});   // v552 작업자 캘린더로 보내기
     if(t.id==='schShowAll'){__calSelDate=null;return render();}
@@ -50076,12 +50197,20 @@ async function hjWoRecordMany(refs,via){
     return {n};
   }});
 }
+/* v607 그날 현장 없는 일정은 하루치 지시에서 빠진다(hjWoDayOk — 지시에는 현장이 있어야 한다). 예전엔 말없이 빠져 몇 건이 빠졌는지도 몰랐다 —
+   건수를 알리고 [🔗 현장 잇기]로 v607 창을 연다(이은 뒤 이 창으로 돌아와 다시 짠다). 직원 모드에서는 없음(현장 칸을 바꾸지 않는다). */
+function hjWoNoSiteHtml(day){
+  const n=(typeof hjStaffOn==='function'&&hjStaffOn())?0:hjSchNoSiteOn(day).length;
+  return n?'<div data-wo-day-nosite="'+n+'" style="font-size:12.5px;border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin-top:8px;overflow-wrap:anywhere">🔗 '+escapeHtml(hjMdDow(day))+' 현장 없는 일정 '+n+'건은 지시에서 빠져요 — 현장에 이으면 들어갑니다 <button class="ghost tiny" data-wo-day-nosite-open style="min-height:44px">🔗 현장 잇기</button></div>':'';
+}
+function hjWoNoSiteBind(day){const b=document.querySelector('#modalRoot [data-wo-day-nosite-open]');if(b)b.onclick=()=>{closeModal();hjSchNoSiteView({back:()=>hjWoTomorrowView(day)});};}
 function hjWoTomorrowView(day){
   const d=isRealIsoDate(String(day||''))?day:hjAddDays(localDate(),1),built=hjWoBuildDay(d);
-  if(!built){openModal('📤 '+hjMdDow(d)+' 일정 팀에 보내기','<div class="empty" data-wo-day-empty style="padding:16px"><b>'+escapeHtml(hjMdDow(d))+' 현장 일정이 없습니다</b>일정에 현장을 연결해 두면 하루치 지시를 한 번에 만들 수 있습니다.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);hjModalTapTargets();return false;}
+  if(!built){openModal('📤 '+hjMdDow(d)+' 일정 팀에 보내기','<div class="empty" data-wo-day-empty style="padding:16px"><b>'+escapeHtml(hjMdDow(d))+' 현장 일정이 없습니다</b>일정에 현장을 연결해 두면 하루치 지시를 한 번에 만들 수 있습니다.</div>'+hjWoNoSiteHtml(d),[{label:'닫기',cls:'ghost',fn:closeModal}]);hjWoNoSiteBind(d);hjModalTapTargets();return false;}
   const bad=built.refs.filter(r=>r.issues.length),schema=hjWoValidate(built.packet);
   const body='<div id="hjWoDay" style="min-width:0;overflow-wrap:anywhere">'+
     '<div style="font-size:11.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px">'+escapeHtml(hjMdDow(d))+' 일정 '+built.refs.length+'건을 지시 '+built.refs.length+'개로 — 고객 이름·전화·금액은 넣지 않고, 메모의 돈 이야기 줄은 뺐습니다.</div>'+
+    hjWoNoSiteHtml(d)+
     built.refs.map(r=>{const o=r.order,g=HJ_PHOTO_GUIDE[o.guideKey];return '<div data-wo-day-order="'+escapeAttr(o.id)+'" style="border:1px solid var(--line-soft);border-radius:11px;padding:10px;margin-top:8px;font-size:12.5px">'+
       '<b>'+escapeHtml((o.startTime?o.startTime+' ':'')+o.title)+'</b> <span style="color:var(--muted)">'+escapeHtml(o.id)+'</span>'+(r.again?' <span data-wo-day-resend style="color:var(--muted)">↻ 다시 보냄(같은 번호)</span>':'')+'<br>'+escapeHtml(o.project.name)+(o.assignee?' · 👷 '+escapeHtml(o.assignee):' · 담당 없음')+(o.priority==='urgent'?' · 🚨 급함':'')+
       '<div style="color:var(--muted);margin-top:3px">✅ '+escapeHtml(o.checklist.join(' · '))+'</div><div style="color:var(--muted)">📷 '+escapeHtml(g?g.title+' 찍는 법':'')+'</div>'+
@@ -50100,7 +50229,7 @@ function hjWoTomorrowView(day){
     }catch(e){toast('보내기 실패: '+(e&&e.message||e));}finally{busy=false;}
   };
   openModal('📤 '+hjMdDow(d)+' 일정 팀에 보내기',body,[{label:'💾 JSON 저장',cls:'clay',fn:()=>send('file')},{label:'📋 복사',cls:'ghost',fn:()=>send('clipboard')},{label:'📤 공유',cls:'ghost',fn:()=>send('share')},{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  hjModalTapTargets();return built;
+  hjWoNoSiteBind(d);hjModalTapTargets();return built;
 }
 /* 📷 사진 찍는 법 — 카드(앱 안)와 A4 한 장(기존 문서 엔진). */
 function hjPhotoGuideHtml(doc){
