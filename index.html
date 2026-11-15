@@ -40427,6 +40427,8 @@ function hjStmtUnitView(only){
      글에 작업 날짜('9월 23일 …')가 있으면 그날 밤을 기준으로 센다.
    · 확인 창: 누락 의심 목록 + 현장 없는 사진 묶음마다 사진 3장·보고 글·현장 고르기 → 체크한 것만 배정, 배정 전 안전판 1회(🧭 추측 배정과 같은 규칙).
      기본 체크는 '현장을 찾았고, 보낸 장수와 앱 사진 수가 같고, 보고 12시간 안에 찍은' 묶음만 — 나머지는 참고(체크 해제). 동·호수 연결은 기존 화면에서.
+   · v602 앱에 없는 현장: 현장을 못 찾은 보고는 같은 사람이 적은 글(hint)을 남겨 보여 주고, 그 글에서 새 현장 이름이 읽히면(suggest — v599 hjNewSiteName)
+     묶음의 고르기 칸에 '＋ 새 현장'을 낸다(미리 고르지 않음). 사람이 고른 묶음만, 안전판 뒤에 현장을 만들어 그 묶음 사진을 넣는다(hjChatNewTarget·hjChatApply).
    · 대화 파일은 저장하지 않는다(읽고 버린다). */
 const HJ_CHAT_PC_DATE_RE=/^-{3,}\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/;
 const HJ_CHAT_PC_MSG_RE=/^\[([^\]]+)\]\s*\[(오전|오후)\s*(\d{1,2}):(\d{2})\]\s?([\s\S]*)$/;
@@ -40450,7 +40452,9 @@ function hjChatParse(text,fileName){
   });
   return {room,msgs};
 }
-// 사진 메시지마다 현장 보고 — [{t,n,room,who,text,project,why}] (시각순)
+// 사진 메시지마다 현장 보고 — [{t,n,room,who,text,project,why,hint,suggest}] (시각순)
+//   v602 현장을 못 찾은 보고(project '')는 hint = 같은 사람이 그 창(10분 전 ~ 30분 뒤)에 적은 가장 가까운 글, suggest = 그 글에서 읽은 새 현장 이름(hjNewSiteName, 없으면 '').
+//   예전에는 text 가 '사진 N장'뿐이라 앱에 없는 현장(협력사 일감은 늘 새 현장)의 보고는 어디 사진인지 알 길이 없었다. 대화 글은 여전히 저장하지 않는다(화면에서만).
 function hjChatReports(chats){
   const out=[];
   (chats||[]).forEach(c=>{
@@ -40458,7 +40462,7 @@ function hjChatReports(chats){
     msgs.forEach((m,i)=>{
       const pm=String(m.text||'').trim().match(HJ_CHAT_PHOTO_RE);if(!pm)return;
       const n=pm[3]?+pm[3]:1;
-      let best=null;
+      let best=null,hint=null;   // v602 hint — 현장을 못 찾은 보고에 남길 '같은 사람이 적은 글'(아래)
       // 대화는 시각순 — 앞뒤로 시간 창(10분 전 ~ 30분 뒤)까지만 본다(긴 단톡방도 사진마다 전체를 훑지 않게: 2만 줄 3.6초 → 0.04초)
       const near=[];
       for(let j=i-1;j>=0&&(msgs[j].t-m.t)/60000>=-10;j--)near.push(j);
@@ -40468,12 +40472,20 @@ function hjChatReports(chats){
         if(x.who!==m.who||HJ_CHAT_PHOTO_RE.test(String(x.text||'').trim()))return;
         const dt=(x.t-m.t)/60000;
         String(x.text||'').split('\n').map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=80).forEach(line=>{
-          const c0=hjStmtMatch(line)[0];if(!c0||c0.score<0.5)return;
           const dist=Math.abs(dt)+(dt<0?5:0);   // 뒤에 쓴 글을 조금 더 믿는다(사진 → 현장 이름이 보통 순서)
+          const c0=hjStmtMatch(line)[0];
+          if(!c0||c0.score<0.5){
+            // v602 앱에 아직 없는 현장일 수 있다 — 버리지 않고 가장 가까운 줄을 남긴다(상대가 쓴 글은 위에서 이미 걸렀다).
+            //   새 현장 이름이 읽히는 줄(hjNewSiteName)이 있으면 인사말보다 그 줄 먼저 — 현장 글을 고를 때와 같은 순서(후보가 있는 가장 가까운 줄).
+            const sg=hjNewSiteName(line);
+            if(!hint||(!!sg&&!hint.suggest)||(!!sg===!!hint.suggest&&dist<hint.dist))hint={dist,text:line,suggest:sg};
+            return;
+          }
           if(!best||dist<best.dist||(dist===best.dist&&c0.score>best.score))best={dist,score:c0.score,project:c0.name,why:c0.why,text:line};
         });
       });
-      out.push({t:m.t,n,room:c.room,who:m.who,text:best?best.text:String(m.text||'').trim(),project:best?best.project:'',why:best?best.why:''});
+      // hint·suggest 는 현장을 못 찾았을 때만(찾은 보고는 ''). text 는 그대로 둔다 — 서류 사진 판정(HJ_CHAT_DOC_RE)·날짜 기준(hjChatAnchor)이 text 를 본다.
+      out.push({t:m.t,n,room:c.room,who:m.who,text:best?best.text:String(m.text||'').trim(),project:best?best.project:'',why:best?best.why:'',hint:!best&&hint?hint.text:'',suggest:!best&&hint?hint.suggest:''});
     });
   });
   // 같은 보고를 두 톡방에 보냈거나 사진 메시지가 연달아 있으면(사진 30장 · 사진 22장 → 현장 글 하나) 시각순으로 둔다
@@ -40505,11 +40517,13 @@ function hjChatAnchor(ev){
 }
 // 연달아 보낸 사진 메시지(사진 30장 · 사진 22장 → 현장 글 하나)는 한 보고로 — 같은 사람·같은 톡방·같은 현장, 30분 안.
 //   카톡은 한 번에 30장씩 묶어 보내 52장이 '사진 30장'·'사진 22장' 두 메시지가 된다 — 현장 글을 못 찾은 것끼리도 같은 한 번의 보고로 합친다.
+//   v602 현장을 못 찾은 것끼리는 읽힌 새 현장 이름(suggest)이 같을 때만 — 30분 안에 앱에 없는 두 현장을 연달아 보고하면 한 묶음이 되어
+//   두 현장 사진이 한 '새 현장'으로 갈 뻔했다. 둘 다 이름이 없으면('') 예전처럼 합친다.
 function hjChatMerge(evs){
   const out=[];
   (evs||[]).slice().sort((a,b)=>a.t-b.t).forEach(e=>{
     const l=out[out.length-1];
-    if(l&&l.who===e.who&&l.room===e.room&&l.project===e.project&&e.t-l.t<=30*60000){l.n+=e.n;l.t=e.t;return;}
+    if(l&&l.who===e.who&&l.room===e.room&&l.project===e.project&&(l.suggest||'')===(e.suggest||'')&&e.t-l.t<=30*60000){l.n+=e.n;l.t=e.t;return;}
     out.push(Object.assign({},e));
   });
   return out;
@@ -40569,6 +40583,40 @@ function hjChatPick(){
   inp.onchange=async()=>{const fs=inp.files;if(!fs||!fs.length)return;const chats=await hjChatReadFiles(fs);hjChatReview(chats);};
   inp.click();
 }
+/* v602 💬 보고 묶음의 '＋ 새 현장' — 보고 글이 앱에 없는 현장을 가리키면(suggest) 그 자리에서 현장을 만들어 그 묶음 사진을 넣는다.
+   예전에는 창을 닫고 현장을 따로 만든 뒤 대화 파일을 다시 읽어야 했다(11/12~13 대표가 맡긴 '톡방 사진을 현장사진에 저장하고 프로젝트 정리').
+   이름 규칙은 v599 한 곳(hjNewSiteName·hjNewSiteCheck). 선택지는 내놓기만 한다 — 미리 고르지 않고, 고르기 전에는 묶음도 체크하지 않는다.
+   적은 이름으로 무엇이 되나 → {to, fresh, why, similar}: 새 이름이면 fresh(만든다) · 같은 이름의 진행 현장이 있으면 그 현장에 넣기만(why 'exists') ·
+   비슷한 현장·짧은 이름·보관한 같은 이름 현장이면 to='' — 그 묶음은 만들지도 넣지도 않는다(빈 쌍둥이 현장 방지, v526 주석). 읽기만. */
+function hjChatNewTarget(name){
+  const c=hjNewSiteCheck(name);
+  if(c.ok)return {to:c.name,fresh:true,why:'',similar:[]};
+  if(c.why==='exists'&&(state.projects||[]).some(p=>p&&p.name===c.name&&!p.archived))return {to:c.name,fresh:false,why:'exists',similar:[]};
+  return {to:'',fresh:false,why:c.why==='exists'?'archived':c.why,similar:c.similar||[]};
+}
+function hjChatSimText(names){
+  const arch=new Set((state.projects||[]).filter(p=>p&&p.archived).map(p=>p.name));
+  return (names||[]).map(n=>n+(arch.has(n)?'(보관)':'')).join(' · ');
+}
+// 묶음 i 의 새 현장 이름 칸 — '＋ 새 현장'을 골랐을 때만 보이고, 적은 이름으로 무엇이 되는지 바로 아래에 적는다(막히는 이름은 배정 전에 보이게)
+function hjChatNewSync(root,i){
+  const sel=root.querySelector('.chatSel[data-i="'+i+'"]'),box=root.querySelector('.chatNewBox[data-i="'+i+'"]');
+  if(!sel||!box)return null;
+  const on=!!hjNewSiteChoice(sel.value);box.hidden=!on;
+  if(!on)return null;
+  const inp=box.querySelector('.chatNew'),msg=box.querySelector('.chatNewMsg'),t=hjChatNewTarget(inp?inp.value:'');
+  if(msg){
+    msg.dataset.state=t.why||'new';
+    msg.style.color=t.to?'var(--muted)':'var(--hj-warn-fg)';
+    msg.textContent=t.fresh?'새 현장을 만들어 이 묶음 사진을 넣습니다 · 이름은 고칠 수 있어요'
+      :t.why==='exists'?'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 넣습니다'
+      :t.why==='similar'?'비슷한 현장: '+hjChatSimText(t.similar)+' — 위에서 그 현장을 고르거나 이름을 바꿔 주세요'
+      :t.why==='archived'?'보관한 현장과 이름이 같아요: '+hjChatSimText(t.similar)+' — 이름을 바꾸거나 보관을 푼 뒤 고르세요'
+      :'현장 이름을 두 글자 이상 적어 주세요';
+  }
+  if(inp)inp.setAttribute('aria-invalid',t.to?'false':'true');
+  return t;
+}
 function hjChatReview(chats){
   const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.project&&!f._fromQuote);
   const reports=hjChatReports(chats);
@@ -40582,22 +40630,30 @@ function hjChatReview(chats){
   }
   const hm=d=>{const h=d.getHours();return (h<12?'오전 ':'오후 ')+((h%12)||12)+':'+pad(d.getMinutes());};
   const when=e=>escapeHtml(fmtDay(e.t)+' '+hm(e.t));
-  const aRow=a=>`<div data-chat-audit="${a.status}" style="padding:6px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px;line-height:1.5"><b>${when(a.ev)}</b> · ${escapeHtml(a.ev.room)} · ${a.ev.project?'<b>'+escapeHtml(a.ev.project)+'</b>':'<span style="color:var(--muted)">현장 못 찾음</span>'} — 톡 ${a.ev.n}장 / 앱 ${a.status==='nosite'||a.status==='doc'?'-':a.m+'장'}${a.status==='missing'?' <b style="color:#b45309">⚠ 누락 의심</b>':a.status==='ok'?' ✓':a.status==='resent'?' ✓ 앞서 보낸 사진('+escapeHtml(fmtDay(a.prev.t))+')':a.status==='doc'?' · 서류 사진':''}<div style="font-size:11.5px;color:var(--muted)">“${escapeHtml(String(a.ev.text).slice(0,60))}”</div></div>`;
-  const popt=selectableProjects('').map(p=>`<option value="${escapeAttr(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+  // v602 현장을 못 찾은 보고는 '사진 N장' 대신 같은 사람이 적은 글(hint — 80자 이하 한 줄)을 보여 준다
+  const said=e=>e.hint?String(e.hint):String(e.text).slice(0,60);
+  const aRow=a=>`<div data-chat-audit="${a.status}" style="padding:6px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px;line-height:1.5"><b>${when(a.ev)}</b> · ${escapeHtml(a.ev.room)} · ${a.ev.project?'<b>'+escapeHtml(a.ev.project)+'</b>':'<span style="color:var(--muted)">현장 못 찾음</span>'} — 톡 ${a.ev.n}장 / 앱 ${a.status==='nosite'||a.status==='doc'?'-':a.m+'장'}${a.status==='missing'?' <b style="color:#b45309">⚠ 누락 의심</b>':a.status==='ok'?' ✓':a.status==='resent'?' ✓ 앞서 보낸 사진('+escapeHtml(fmtDay(a.prev.t))+')':a.status==='doc'?' · 서류 사진':''}<div style="font-size:11.5px;color:var(--muted)">“${escapeHtml(said(a.ev))}”</div></div>`;
+  const pick=selectableProjects(''),live=new Set(pick.map(p=>p.name));
+  const popt=pick.map(p=>`<option value="${escapeAttr(p.name)}">${escapeHtml(p.name)}</option>`).join('');
   const rows=plan.map((g,i)=>{
     const e=g.ev;
     const thumbs='<span class="psr-thumbs">'+g.photos.slice(0,3).map(p=>'<span class="psr-th">'+photoImg(p,160)+'</span>').join('')+(g.photos.length>3?'<span class="psr-th psr-more">+'+(g.photos.length-3)+'</span>':'')+'</span>';
     const head=`<b>${when(e)}</b> · ${escapeHtml(e.room)} · 보낸 ${e.n}장 / 현장 없는 사진 <b>${g.photos.length}장</b>${g.plausible?'':' <span style="color:#b45309">— 보낸 것보다 많아요, 확인</span>'}`;
-    const said=`<div style="font-size:12px;color:var(--muted);margin:2px 0 4px">“${escapeHtml(String(e.text).slice(0,60))}”${e.why?' · '+escapeHtml(e.why):''}${g.sure?'':' · 참고'}</div>`;
-    const sel=`<select class="chatSel" data-i="${i}" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 현장')}" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 고르기${e.project?'':' — 보고 글에서 못 찾음'}</option>${popt}</select>`;
-    return `<div class="psr-row" data-chat-row="${i}"><label class="psr-chk"><input type="checkbox" class="chatChk" data-i="${i}"${g.sure?' checked':''} aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t))} 보고 묶음 배정"></label>${thumbs}<div class="psr-txt">${head}${said}<div class="psr-target">${sel}</div></div></div>`;
+    const quote=`<div style="font-size:12px;color:var(--muted);margin:2px 0 4px">“${escapeHtml(said(e))}”${e.why?' · '+escapeHtml(e.why):''}${g.sure?'':' · 참고'}</div>`;
+    // v602 보고 글에서 새 현장 이름이 읽혔으면 '＋ 새 현장' 선택지(고르지 않은 채로 — 맨 위, 현장 60곳 아래로 밀리지 않게) + 고칠 수 있는 이름 칸.
+    //   같은·비슷한 현장이 있으면 선택지 대신 그 현장 이름을 알려 준다(그 현장을 고르게).
+    const nw=!e.project&&e.suggest?hjNewSiteCheck(e.suggest):null,newOpt=nw?hjNewSiteOptionHtml(e.suggest):'';
+    const sel=`<select class="chatSel" data-i="${i}" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 현장')}" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 고르기${e.project?'':' — 보고 글에서 못 찾음'}</option>${newOpt}${popt}</select>`;
+    const newBox=newOpt?`<div class="chatNewBox" data-i="${i}" hidden><input type="text" class="chatNew" data-i="${i}" value="${escapeAttr(nw.name)}" maxlength="60" autocomplete="off" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 새 현장 이름')}" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;margin-top:4px"><div class="chatNewMsg" data-i="${i}" role="status" style="font-size:11.5px;line-height:1.5;margin-top:2px"></div></div>`
+      :nw?`<div data-chat-sim="${i}" style="font-size:11.5px;line-height:1.5;margin-top:3px;color:var(--hj-warn-fg)">비슷한 현장: ${escapeHtml(hjChatSimText(nw.similar))} — ${nw.similar.some(x=>live.has(x))?'같은 곳이면 위에서 그 현장을 고르세요':'보관을 풀면 고를 수 있어요'}(새 현장은 만들지 않아요)</div>`:'';
+    return `<div class="psr-row" data-chat-row="${i}"><label class="psr-chk"><input type="checkbox" class="chatChk" data-i="${i}"${g.sure?' checked':''} aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t))} 보고 묶음 배정"></label>${thumbs}<div class="psr-txt">${head}${quote}<div class="psr-target">${sel}${newBox}</div></div></div>`;
   }).join('');
   const nPh=plan.reduce((a,g)=>a+g.photos.length,0);
-  const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:12px}.psr-th img{width:100%;height:100%;object-fit:cover}.psr-txt{flex:1;min-width:0;font-size:13px;line-height:1.5}.psr-target{margin-top:3px}</style>'+
+  const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:12px}.psr-th img{width:100%;height:100%;object-fit:cover}.psr-txt{flex:1 1 150px;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.psr-target{margin-top:3px}@media (max-width:480px){.psr-row{flex-wrap:wrap}}</style>'+
     `<div class="hint" id="chatSummary" style="margin:0 0 8px">대화 ${chats.length}개 · 내 사진 보고 <b>${audit.length}건</b>(현장 찾음 ${audit.length-nosite.length}건) · 앱 사진이 모자란 보고 <b>${miss.length}건</b> · 현장 없는 사진 제안 <b>${nPh}장</b>. 대화 파일은 저장하지 않습니다.</div>`+
     `<div style="max-height:60vh;overflow:auto">`+
     (miss.length?`<h4 style="margin:4px 0;font-size:13.5px">⚠ 보고했는데 앱 사진이 모자란 곳 ${miss.length}건</h4><div class="hint" style="margin:0 0 4px;font-size:11.5px">보고 전 72시간 안에 찍은 그 현장 사진이 보낸 장수보다 적어요 — 톡방(톡클라우드)에서 그날 사진을 받아 넣으세요.</div>${miss.slice(0,40).map(aRow).join('')}${miss.length>40?'<div class="hint">…외 '+(miss.length-40)+'건</div>':''}`:'<div class="hint" style="margin:4px 0 8px">✓ 현장을 찾은 보고는 모두 앱에 사진이 있어요.</div>')+
-    (plan.length?`<h4 style="margin:12px 0 4px;font-size:13.5px">🧭 현장 없는 사진 — 보고로 찾은 현장 ${nPh}장</h4><div class="hint" style="margin:0 0 4px;font-size:11.5px">촬영 뒤 첫 보고(72시간 안)로 묶었습니다. 현장을 찾았고 장수가 같고 보고 12시간 안에 찍은 묶음만 체크돼 있어요 — 나머지는 참고. 배정 전 안전판을 한 번 만듭니다.</div><div id="chatList">${rows}</div>`:'')+
+    (plan.length?`<h4 style="margin:12px 0 4px;font-size:13.5px">🧭 현장 없는 사진 — 보고로 찾은 현장 ${nPh}장</h4><div class="hint" style="margin:0 0 4px;font-size:11.5px">촬영 뒤 첫 보고(72시간 안)로 묶었습니다. 현장을 찾았고 장수가 같고 보고 12시간 안에 찍은 묶음만 체크돼 있어요 — 나머지는 참고. 보고 글이 앱에 없는 현장이면 고르기 칸의 ‘＋ 새 현장’으로 만들 수 있어요(고른 묶음만). 배정 전 안전판을 한 번 만듭니다.</div><div id="chatList">${rows}</div>`:'')+
     `<details style="margin-top:10px"><summary style="font-size:12.5px;min-height:44px">모든 보고 보기 (${audit.length}건)</summary>${audit.slice().reverse().map(aRow).join('')}</details>`+
     `</div>`;
   openModal('💬 카톡 보고 대조·사진 배정',body,[
@@ -40606,35 +40662,59 @@ function hjChatReview(chats){
   const root=document.getElementById('modalRoot');
   if(root)root.querySelectorAll('.chatSel').forEach(sel=>{
     const g=plan[+sel.dataset.i];if(g&&g.ev.project)sel.value=g.ev.project;
-    sel.onchange=()=>{const chk=root.querySelector('.chatChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;};
+    sel.onchange=()=>{const chk=root.querySelector('.chatChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;hjChatNewSync(root,sel.dataset.i);};
   });
+  if(root)root.querySelectorAll('.chatNew').forEach(inp=>{inp.oninput=()=>hjChatNewSync(root,inp.dataset.i);});
   return audit.length;
 }
 async function hjChatApply(plan){
   const root=document.getElementById('modalRoot');if(!root)return 0;
-  const picks=[];let noTarget=0;
+  // v602 오래된 창에서는 만들지도 넣지도 않는다 — 여기서 만든 현장은 저장되지 않고(v457 문지기) 새로고침하면 사라진다
+  if(typeof __tabStale!=='undefined'&&__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const picks=[];let noTarget=0,blocked=null;
   root.querySelectorAll('.chatChk:checked').forEach(el=>{
     const g=plan[+el.dataset.i];if(!g)return;
-    const to=String((root.querySelector('.chatSel[data-i="'+el.dataset.i+'"]')||{}).value||'');
+    let to=String((root.querySelector('.chatSel[data-i="'+el.dataset.i+'"]')||{}).value||''),fresh=false;
+    if(hjNewSiteChoice(to)){
+      // '＋ 새 현장' — 이름 칸에 고쳐 적은 이름으로 다시 본다. 비슷한 현장·짧은 이름이면 그 묶음 아래에 까닭을 적고 멈춘다(안전판·배정 전에)
+      const t=hjChatNewSync(root,el.dataset.i)||hjChatNewTarget(hjNewSiteChoice(to));
+      if(!t.to){if(!blocked)blocked=el.dataset.i;return;}
+      to=t.to;fresh=t.fresh;
+    }
     if(!to){noTarget++;return;}
-    picks.push({g,to});
+    picks.push({g,to,fresh});
   });
+  if(blocked!==null){
+    const inp=root.querySelector('.chatNew[data-i="'+blocked+'"]');
+    if(inp){try{inp.scrollIntoView({block:'center'});inp.focus();}catch(e){}}
+    toast('새 현장 이름을 확인해 주세요 — 비슷한 현장이 있거나 이름이 짧아 만들지 않았어요(배정도 하지 않음)');return 0;
+  }
   if(!picks.length){toast(noTarget?'체크한 묶음의 현장을 먼저 골라 주세요':'배정할 묶음을 체크하세요');return 0;}
   const btns=[...root.querySelectorAll('.mfoot button')];btns.forEach(b=>b.disabled=true);
   let snapped=false;
   try{snapped=await hjSnapshot('카톡 보고 배정 전',true,true);}catch(e){snapped=false;}
   if(!snapped){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('안전판을 만들지 못해 배정하지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  if(typeof __tabStale!=='undefined'&&__tabStale){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
   const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name));
-  let n=0,g=0;
-  picks.forEach(({g:grp,to})=>{
+  let n=0,g=0,late=0;const made=[];
+  picks.forEach(({g:grp,to,fresh})=>{
+    const todo=grp.photos.filter(p=>!p.project&&state.files.includes(p));
+    if(!todo.length)return;   // 넣을 사진이 없으면 현장도 만들지 않는다(빈 현장 방지)
+    if(fresh){
+      // 새 현장은 안전판 뒤, 넣을 사진이 있을 때만 만든다. 안전판을 기다리는 사이(또는 같은 이름을 고른 앞 묶음이) 그 이름이 생겼으면 만들지 않고 그 현장에 넣는다.
+      const t=hjChatNewTarget(to);
+      if(!t.to){late++;return;}
+      to=t.to;
+      if(t.fresh&&ensureProjectExists(to)){made.push(to);names.add(to);}
+    }
     if(!names.has(to))return;
-    let k=0;grp.photos.forEach(p=>{if(p.project||!state.files.includes(p))return;p.project=to;k++;});
-    if(k){n+=k;g++;try{portalAutoSync(to);}catch(e){}}
+    todo.forEach(p=>{p.project=to;});
+    n+=todo.length;g++;try{portalAutoSync(to);}catch(e){}
   });
-  if(!n){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('배정할 사진이 없습니다(이미 배정됨)');return 0;}
+  if(!n){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast(late?'새 현장 이름과 비슷한 현장이 생겨 만들지 않았습니다 — 창을 다시 열어 주세요':'배정할 사진이 없습니다(이미 배정됨)');return 0;}
   try{__photoCache.key=null;}catch(e){}
   markDirty();closeModal();render();
-  toast('💬 '+g+'묶음 '+n+'장을 배정했습니다'+(noTarget?' · 현장 안 고른 '+noTarget+'묶음은 그대로':'')+' — 되돌리려면 🛡 안전판("카톡 보고 배정 전")');
+  toast('💬 '+g+'묶음 '+n+'장을 배정했습니다'+(made.length?' · 새 현장 '+made.length+'곳('+made.join(', ')+')을 만들었어요':'')+(noTarget?' · 현장 안 고른 '+noTarget+'묶음은 그대로':'')+(late?' · 새 현장을 못 만든 '+late+'묶음은 그대로':'')+' — 되돌리려면 🛡 안전판("카톡 보고 배정 전")');
   return n;
 }
 function setQuoteField(field,val){const q=state.editingQuote;if(!q)return;
