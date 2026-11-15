@@ -41473,6 +41473,7 @@ async function importICS(text){
    · 읽는 것: 구글 캘린더 내보내기 .ics(…Z 는 한국 시각으로) 또는 캘린더 화면에서 복사한 글('오전 9시~오후 5시, 제목, 캘린더, 위치: …, 2026년 11월 6일' 줄).
    · 제목 맨 앞 '@'(제미나이 표시)·'[현장명]'(앱이 올린 표시)은 떼고 비교한다 — 같은 날 같은 제목은 한 줄('구글에 n번').
      v600 부터 시각이나 위치가 다른 '다른 구글 일정'은 제목이 같아도 따로 줄(hjCalSyncSlots) — 한 줄로 보는 것은 앱이 올린 사본과 진짜 겹침뿐.
+   · v601 부터 맞는 현장이 없는 새 일정 줄의 고르기 칸에 '＋ 새 현장'(이름은 v599 hjNewSiteName 제안·고칠 수 있음, 미리 고르지 않음) — 고른 줄만 반영 때 안전판 뒤에 만든다(hjCalSyncNewTarget).
    · 새 일정 / 시간 다름 / 날짜 옮김(앞뒤 21일 안 같은 제목) / 앱에만 있음(지우기는 체크해야만, 작업 보고가 있는 일정은 대상 아님).
    · [파수꾼]·💰·생일·취소된 일정과 7일보다 오래된 일정은 건너뛴다. 현장은 '[현장명]' → 이름 맞추기(hjStmtMatch 0.6↑) 제안, 사람이 바꿀 수 있다.
    · 반영 전 🛡 안전판 1회(못 만들면 무변경), 미리보기 뒤 일정표가 바뀌었으면 거부. 구글 캘린더는 건드리지 않는다(읽기만). 새 저장 키 없음. */
@@ -41736,7 +41737,12 @@ function hjCalSyncPlan(events,opts){
     if(!project&&cands[0]&&cands[0].score>=0.6)project=cands[0].name;
     if(base.invite)project='';
     const quiet=!!(base.invite||base.series||(extra&&(extra.done||extra.going)));
-    return Object.assign(base,{status:'new',check:!quiet,project,cands:cands.map(c=>c.name)},extra||{});
+    /* v601 맞는 현장이 없는 새 일정 — 미리보기에 '＋ 새 현장'을 낼 줄(siteNew)과 제안 이름(suggest, 없으면 '' — v599 hjNewSiteName: 제목 먼저, 없으면 구글 위치를 주소로).
+       받은 초대·반복 회차는 내 현장 일이 아닐 수 있어 내지 않는다. 제안은 이름뿐 — 현장(project)은 미리 고르지 않는다(읽기만). */
+    const siteNew=!project&&!base.invite&&!base.series;
+    let suggest='';
+    if(siteNew){try{suggest=hjNewSiteName(base.title)||hjNewSiteName(base.location,{addr:true});}catch(e){}}
+    return Object.assign(base,{status:'new',check:!quiet,project,cands:cands.map(c=>c.name),siteNew,suggest},extra||{});
   };
   /* v588 같은 구글 일정(uid)으로 먼저 짝 — 앱 일정의 icsUid 가 구글 일정의 uid(iCalUID)와 같으면 제목·날짜와 상관없이 같은 일정이다
      (구글에서 제미나이가 이름을 고치거나 날짜를 멀리 옮겨도). 같은 날 것을 먼저 짓고(반복 일정은 같은 uid 가 여러 날로 온다), 남은 것은 가장 가까운 날.
@@ -41864,32 +41870,109 @@ function hjCalSyncPlan(events,opts){
   return {rows:merged,stats,from,lo,hi,stamp:hjCalSyncStamp()};
 }
 // picks=[{i,project}] — 미리보기에서 체크한 줄만. {added,changed,removed,ids,list} — v581 ids·list = 새로 넣거나 바꾼 일정(지운 것 빼고), list 는 바뀌기 전·뒤
+//   v601 project 가 '__new__:이름'이면 그 이름의 새 현장(아래) — 결과에 newProjects(만든 현장 이름)·blocked(이름이 막혀 넣지 않은 줄)
 function hjCalSyncSnap(s){const sp=hjSchSpan(s);return {date:String(s.date||''),time:String(s.time||''),to:sp.days>1?sp.to:''};}
+/* v601 🔄 맞추기 미리보기의 '＋ 새 현장' — 어느 현장과도 안 맞는 구글 일정(협력사 누수 일감은 늘 새 현장)을 그 자리에서 현장으로 만든다.
+   예전에는 고르기 칸이 '현장 없이'+이미 있는 현장뿐이라 현장 없는 일정으로 들어갔고, 📤 내일 팀 지시(hjWoDayOk)·사진 현장 판단(hjPlaceSchedNames)에서 빠졌다 —
+   현장은 따로 만들고 일정마다 열어 다시 이어야 했다(대표가 11/12~13 두 번 맡긴 '캘린더를 보고 프로젝트 생성·정리'의 첫 단계).
+   · 이름 규칙은 v599 한 곳(hjNewSiteName·hjNewSiteCheck). 선택지는 내놓기만 한다 — 미리 고르지 않고, 이름은 반영 전에 고칠 수 있다.
+   · 고른 값은 '__new__:이름'(v526 내역서 반영과 같은 꼴 — 미리보기는 이름 칸에 적은 글을 붙여 넘긴다).
+   · 만드는 것은 반영(hjCalSyncApply)의 안전판 뒤에서만. 같은 이름을 고른 줄이 여럿이면 현장은 하나.
+   · 같은 이름의 진행 현장이 있으면 만들지 않고 잇기만. 비슷한 현장·짧은 이름·보관한 같은 이름 현장이면 그 줄은 넣지 않는다(빈 쌍둥이 현장 방지, v526 주석) —
+     줄 아래에 그 현장 이름을 적어 그 현장을 고르거나 이름을 바꾸게 한다. 다른 줄은 그대로 반영.
+   · 주소: 여기서 새로 만든 현장에만 구글 위치 글을 customer.addr 로(출입 번호처럼 보이거나 링크면 안 적는다 — v284). 이미 있던 현장의 주소는 건드리지 않는다.
+   · 현장 유형(누수/인테리어)·동·호수 세대는 짐작해 넣지 않는다(v420·v331). */
+function hjCalSyncNewPick(v){return String(v||'').indexOf('__new__:')===0;}
+// 적은 이름으로 무엇이 되나 → {to, fresh, why, similar}: fresh = 새로 만든다 · why 'exists' = 있는 현장에 잇기만 · to '' = 막힘(similar·short·archived). 읽기만.
+function hjCalSyncNewTarget(name){
+  const c=hjNewSiteCheck(name);
+  if(c.ok)return {to:c.name,fresh:true,why:'',similar:[]};
+  if(c.why==='exists'&&(state.projects||[]).some(p=>p&&p.name===c.name&&!p.archived))return {to:c.name,fresh:false,why:'exists',similar:[]};
+  return {to:'',fresh:false,why:c.why==='exists'?'archived':c.why,similar:c.similar||[]};
+}
+// 새로 만드는 현장에 적을 주소 — 구글 위치 글 그대로(120자). 비었거나 출입 번호처럼 보이거나 링크(화상 회의 주소 등)면 '' — 주소는 계약서·팀 지시에 실린다
+const HJ_CALSYNC_LINK_RE=/^https?:\/\//i;
+function hjCalSyncNewAddr(loc){const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}
+// 막힌 까닭 한 줄(미리보기 줄 아래·결과 창·토스트가 같이 쓴다) — 비슷한 현장은 이름을 적는다(보관한 현장은 '(보관)')
+function hjCalSyncNewWhy(t){
+  const arch=new Set((state.projects||[]).filter(p=>p&&p.archived).map(p=>p.name)),sim=((t&&t.similar)||[]).map(n=>n+(arch.has(n)?'(보관)':'')).join(' · ');
+  return t.why==='similar'?'비슷한 현장: '+sim:t.why==='archived'?'보관한 현장과 이름이 같아요: '+sim:t.why==='exists'?'같은 이름의 현장이 있어요: '+t.to:'새 현장 이름을 두 글자 이상 적어 주세요';
+}
+// 그래서 무엇을 하면 되나 — 고르기 칸에는 진행 현장만 있으므로 보관한 현장뿐이면 보관을 풀라고 한다
+function hjCalSyncNewFix(t){
+  if(t.why==='short')return '';
+  const live=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),pick=t.why==='exists'||((t&&t.similar)||[]).some(n=>live.has(n));
+  return pick?' — 같은 곳이면 고르기 칸에서 그 현장을 고르고, 다른 곳이면 이름을 바꿔 주세요':' — 같은 곳이면 보관을 푼 뒤 고르고, 다른 곳이면 이름을 바꿔 주세요';
+}
+/* 미리보기의 새 현장 칸 맞추기 — '＋ 새 현장'을 고른 줄만 이름 칸을 보이고, 적은 이름으로 무엇이 되는지 줄 아래에 바로 적는다(막히는 이름은 반영 전에 보이게).
+   체크된 줄 여럿이 같은 새 이름이면 첫 줄이 만들고 나머지는 잇는다 — 주소는 그 줄들 가운데 처음으로 적을 수 있는 구글 위치(반영 hjCalSyncApply 와 같은 차례).
+   읽기만. 앞 줄이 만들 이름과 '비슷한' 다른 새 이름은 여기서 미리 알 수 없다 — 반영 때 그 줄만 막히고 결과에 적힌다. */
+function hjCalSyncNewSync(box){
+  const plan=window.__hjCalSyncPlan;if(!box||!plan)return;
+  const first=new Map();   // 새로 만들 이름 → {i 만드는 줄, addr 적을 주소}
+  const rows=[...box.querySelectorAll('.csNewBox')].map(nb=>{
+    const i=+nb.dataset.i,s=box.querySelector('.csSel[data-i="'+i+'"]'),c=box.querySelector('.csChk[data-i="'+i+'"]'),on=!!(s&&hjCalSyncNewPick(s.value));
+    nb.hidden=!on;
+    return {nb,i,loc:(plan.rows[i]||{}).location,on,checked:!!(c&&c.checked),t:on?hjCalSyncNewTarget(nb.querySelector('.csNew').value):null};});
+  rows.forEach(x=>{if(!x.on||!x.checked||!x.t.fresh)return;
+    const ad=hjCalSyncNewAddr(x.loc),g=first.get(x.t.to);
+    if(!g)first.set(x.t.to,{i:x.i,addr:ad});else if(!g.addr&&ad)g.addr=ad;});
+  rows.forEach(x=>{if(!x.on)return;
+    const t=x.t,g=t.fresh&&x.checked?first.get(t.to):null,join=!!g&&g.i!==x.i,msg=x.nb.querySelector('.csNewMsg'),ad=x.nb.querySelector('.csNewAddr'),addr=t.fresh?(g?g.addr:hjCalSyncNewAddr(x.loc)):'';
+    msg.dataset.state=!t.to?t.why:t.fresh?(join?'join':'new'):'exists';
+    msg.style.color=t.to?'var(--muted)':'var(--hj-warn-fg)';
+    msg.textContent=!t.to?hjCalSyncNewWhy(t)+hjCalSyncNewFix(t)+' · 이대로면 이 줄은 넣지 않아요'
+      :t.fresh?(join?'같은 이름의 새 현장을 위 줄에서 만들어요 — 이 일정도 그 현장에 잇습니다':'새 현장을 만들어 이 일정을 잇습니다 · 이름은 고칠 수 있어요(단계·유형·고객은 현장 화면에서)')
+      :'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 잇습니다(주소는 그대로)';
+    if(t.to&&!x.checked)msg.textContent+=' · 이 줄을 체크해야 반영돼요';   // 체크 해제 줄(완료 보고한 일정과 같은 구글 일정 등)에서 골랐을 때
+    ad.hidden=!t.fresh;
+    ad.textContent=t.fresh?(addr?'📍 현장 주소로 저장: '+addr:hjStmtCell(x.loc)?'구글 위치가 출입 번호·링크처럼 보여 현장 주소로는 적지 않아요':'구글 위치가 없어 현장 주소는 비워 둡니다'):'';
+    x.nb.querySelector('.csNew').setAttribute('aria-invalid',t.to?'false':'true');
+  });
+}
 async function hjCalSyncApply(plan,picks){
   if(typeof hjStaffOn==='function'&&hjStaffOn())throw new Error('👷 직원 모드에서는 구글 캘린더 맞추기를 반영할 수 없어요');
   if((typeof __tabStale!=='undefined'&&__tabStale))throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(!plan||plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
   const sel=(Array.isArray(picks)?picks:[]).map(p=>({r:plan.rows[p.i],project:String(p.project||'')})).filter(x=>x.r);
   if(!sel.length)throw new Error('반영할 줄을 체크하세요');
+  // v601 '＋ 새 현장'은 새 일정 줄 중 siteNew 줄에서만 — 그 밖의 줄(맞는 현장이 있던 줄·받은 초대·반복 회차)은 예전처럼 있는 현장 이름만 본다
+  const wantsNew=x=>x.r.status==='new'&&!!x.r.siteNew&&hjCalSyncNewPick(x.project);
+  // 반영할 것이 이름이 막힌 새 현장 줄뿐이면 안전판도 만들지 않고 멈춘다 — 창이 그대로라 줄 아래 까닭(비슷한 현장 이름)이 보인다
+  if(sel.every(x=>wantsNew(x)&&!hjCalSyncNewTarget(hjNewSiteChoice(x.project)).to))throw new Error('새 현장 이름을 확인해 주세요 — '+hjCalSyncNewWhy(hjCalSyncNewTarget(hjNewSiteChoice(sel[0].project))));
   let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}
   if(!snapped)throw new Error('안전판을 만들지 못해 반영하지 않았습니다. 잠시 후 다시 시도하세요.');
   // 안전판을 기다리는 사이 다른 창이 저장했을 수 있다 — 오래된 창이면 바꾸지 않는다(바꿔도 저장은 막혀 '바뀐 일정 알리기'가 저장 안 된 날짜를 알리게 된다)
   if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('오래된 창이에요 — 새로고침한 뒤 다시 해 주세요');
   if(plan.stamp!==hjCalSyncStamp())throw new Error('미리보기 뒤 일정표가 바뀌었어요 — 다시 읽어 주세요');
-  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,asMoved:0,ids:[],list:[]};   // v594 asMoved = 날짜를 옮긴 AS 방문 일정을 따라 방문일을 맞춘 AS 기록 수
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,asMoved:0,ids:[],list:[],newProjects:[],blocked:[]};   // v594 asMoved = 날짜를 옮긴 AS 방문 일정을 따라 방문일을 맞춘 AS 기록 수 · v601 newProjects = 여기서 만든 현장 이름, blocked = 새 현장 이름이 막혀 넣지 않은 줄
+  /* v601 새 일정 줄의 현장 → {ok, name}. '＋ 새 현장'이 아니면 예전 그대로(있는 진행 현장 이름만, 모르는 이름은 '현장 없이').
+     새 현장은 줄 차례대로 다시 본다(hjCalSyncNewTarget) — 앞 줄이 만든 이름은 다음 줄에서 '있는 현장'이라 잇기만(같은 이름 여러 줄 = 현장 하나).
+     막힌 이름이면 그 줄은 넣지 않고 out.blocked 에 까닭을 남긴다. 주소는 여기서 만든 현장(made)에만, 아직 비어 있을 때만. */
+  const made=new Set();
+  const siteOf=x=>{
+    if(!wantsNew(x))return {ok:true,name:names.has(x.project)?x.project:''};
+    const nm=hjNewSiteChoice(x.project),t=hjCalSyncNewTarget(nm);
+    if(!t.to){out.blocked.push({date:x.r.date,time:x.r.time||'',title:x.r.title,name:nm,why:t.why,similar:t.similar});return {ok:false,name:''};}
+    if(t.fresh&&ensureProjectExists(t.to)){made.add(t.to);names.add(t.to);out.newProjects.push(t.to);}
+    if(made.has(t.to)){const p=state.projects.find(q=>q&&q.name===t.to),ad=hjCalSyncNewAddr(x.r.location);
+      if(p&&p.customer&&ad&&!p.customer.addr)p.customer.addr=ad;}
+    return {ok:true,name:t.to};
+  };
   const note=(s,kind,from,fix,t0)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);const t=String(s.title||'');
     out.list.push({id:s.id,kind,fix:!!fix,title:t,fromTitle:t0!=null&&String(t0)!==t?String(t0):'',project:String(s.project||''),from,to:null,_s:s});};
   /* v600 uid 없는(화면 글) 새 일정의 합성 uid — 같은 날 같은 제목이 칸마다 따로 들어오므로 기록마다 다르게: 'gcal:날짜|열쇠'(예전 꼴) → 이미 쓰였으면
      'gcal:날짜|열쇠|HH:MM' → 그래도 겹치면 '#n'. 첫 기록은 예전 꼴 그대로(v580 fix·v595 hfix 가 그 꼴로 예전 맞추기 기록을 알아본다). */
   const taken=new Set((state.schedule||[]).map(s=>String((s&&s.icsUid)||'')).filter(Boolean));
   const synUid=(o,r)=>{const b='gcal:'+o.date+'|'+r.key,t=b+'|'+(o.time||'종일');let u=taken.has(b)?t:b;for(let n=2;taken.has(u);n++)u=t+'#'+n;taken.add(u);return u;};
-  sel.forEach(({r,project})=>{
+  sel.forEach(pk=>{const r=pk.r;
     if(r.status==='new'){
+      const site=siteOf(pk);if(!site.ok)return;   // v601 새 현장 이름이 막힌 줄 — 넣지 않는다(다른 줄은 그대로)
       // v576 여러 날 일정은 메모 머리를 공정표 꼴 '시작~끝 (N일)' 로 — hjSchSpan 이 읽어 이어지는 날(v354)·달력 막대가 생긴다. '@' 는 레코드에 icsBy 로도 남긴다(🤖 칩).
       // v588 검토 — 반복 일정 한 줄(occ)은 회차마다 일정 하나. 회차는 icsRecur 표시 — 같은 uid 를 나눠 가지므로 📥 캘린더 파일 가져오기가 그중 하나를 덮어쓰지 않게.
       (Array.isArray(r.occ)&&r.occ.length?r.occ:[{date:r.date,time:r.time,to:r.to,hours:r.hours}]).forEach(o=>{
         const span=o.to&&o.to>o.date?o.date+'~'+o.to+' ('+(hjWorkDaysBetween(o.date,o.to)+1)+'일)':'';
-        const rec=Object.assign(newSchedule(),{date:o.date,time:o.time||'',title:r.title,project:names.has(project)?project:'',hours:o.hours||(o.time?1:8),
+        const rec=Object.assign(newSchedule(),{date:o.date,time:o.time||'',title:r.title,project:site.name,hours:o.hours||(o.time?1:8),
           memo:[span,r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||synUid(o,r)});
         if(r.marks.includes('@'))rec.icsBy='gemini';
         if(r.series)rec.icsRecur=true;
@@ -41961,8 +42044,12 @@ function hjCalSyncDone(res){
   const custRows=g=>g.rows.filter(x=>!x.fix&&!titleOnly(x));
   const nm=x=>hjCut(String(x.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'일정',30);
   const hasTel=p=>!!hjSmsUrl([((p&&p.customer)||{}).phone],'');
+  const newSites=(res.newProjects||[]).filter(nm=>(state.projects||[]).some(p=>p&&p.name===nm)),blocked=res.blocked||[];
   const body='<div id="hjCalSyncDone" style="min-width:0;overflow-wrap:anywhere">'+
     '<div style="font-size:13px;margin-bottom:8px">구글 캘린더에서 <b>'+list.length+'건</b>을 넣거나 바꿨어요'+(res.removed?' · 지운 일정 '+res.removed+'건은 알릴 목록에 넣지 않았어요':'')+'.</div>'+
+    // v601 여기서 만든 현장·새 현장 이름이 막혀 넣지 않은 줄(다시 읽으면 새 일정으로 다시 보인다)
+    (newSites.length?'<div data-csd-newsite style="font-size:12.5px;margin-bottom:8px">🆕 새 현장 '+newSites.length+'곳: <b>'+newSites.map(escapeHtml).join(' · ')+'</b> <span style="color:var(--muted)">— 단계·유형·고객은 현장 화면에서 채우세요</span></div>':'')+
+    (blocked.length?'<div data-csd-blocked style="font-size:12.5px;margin-bottom:8px;color:var(--hj-warn-fg)">⚠ 새 현장 이름이 막혀 넣지 않은 일정 '+blocked.length+'건 — '+blocked.map(b=>escapeHtml(hjMdDow(b.date)+' '+(b.time||'종일')+' '+hjCut(b.title,30)+' (‘'+hjCut(b.name,30)+'’ · '+hjCalSyncNewWhy(b)+')')).join(' / ')+'. 구글 캘린더를 다시 읽어 그 현장을 고르거나 이름을 바꿔 넣으세요.</div>':'')+
     groups.map((g,gi)=>{const p=proj(g.project),arch=!!(p&&p.archived),cust=custRows(g).length;
       return '<div data-csd-group="'+escapeAttr(g.project)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px">'+
         '<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+(g.project?'🏗 '+escapeHtml(g.project):'현장 없이')+' · '+g.rows.length+'건'+(arch?' <span data-csd-archived style="font-weight:400;color:var(--muted)">(보관한 현장)</span>':'')+'</div>'+
@@ -41989,15 +42076,32 @@ function hjCalSyncRender(plan){
   window.__hjCalSyncPlan=plan;
   const L={new:'🆕 새 일정',time:'⏰ 시간 다름',span:'⏳ 기간 다름',rename:'✏️ 제목 바뀜',move:'📆 날짜 옮김',apponly:'📱 앱에만 있음'},n=k=>plan.rows.filter(r=>r.status===k).length,st=plan.stats;
   const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
-  const sel=(r,i)=>'<select class="csSel" data-i="'+i+'" aria-label="'+escapeAttr(r.title)+' 현장" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 없이</option>'+
-    [...new Set((r.project?[r.project]:[]).concat(r.cands||[],live))].map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===r.project?' selected':'')+'>'+escapeHtml(nm)+((r.cands||[]).includes(nm)||nm===r.project?' (추천)':'')+'</option>').join('')+'</select>';
+  /* v601 맞는 현장이 없는 새 일정 줄(siteNew)의 고르기 칸에 '＋ 새 현장' — 제안 이름이 있고 만들 수 있으면 '＋ 새 현장: 이름'(hjNewSiteOptionHtml), 늘 '＋ 새 현장 (이름 입력)'.
+     추천 현장 바로 뒤에 둔다(현장이 수십 곳이어도 아래로 밀리지 않게). 미리 고르지 않는다 — 기본은 예전 그대로(추천 현장 또는 '현장 없이').
+     고르면 줄 아래에 이름 칸(.csNew — 제안 이름이 적혀 있고 고칠 수 있다)·무엇이 되는지(.csNewMsg)·현장 주소로 적을 구글 위치(.csNewAddr)가 보인다(hjCalSyncNewSync).
+     제안 이름과 같은·비슷한 현장이 있으면 '＋ 새 현장: 이름' 대신 그 현장 이름을 알려 준다(data-cs-sim — 그 현장을 고르게). */
+  const opt=(r,nm)=>'<option value="'+escapeAttr(nm)+'"'+(nm===r.project?' selected':'')+'>'+escapeHtml(nm)+((r.cands||[]).includes(nm)||nm===r.project?' (추천)':'')+'</option>';
+  const sel=(r,i)=>{
+    const rec=[...new Set((r.project?[r.project]:[]).concat(r.cands||[]))],rest=live.filter(nm=>!rec.includes(nm));
+    const sg=r.siteNew&&r.suggest?hjCalSyncNewTarget(r.suggest):null;
+    return '<select class="csSel" data-i="'+i+'" aria-label="'+escapeAttr(r.title)+' 현장" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 없이</option>'+rec.map(nm=>opt(r,nm)).join('')+
+      (r.siteNew?hjNewSiteOptionHtml(r.suggest)+'<option value="__new__:">＋ 새 현장 (이름 입력)</option>':'')+rest.map(nm=>opt(r,nm)).join('')+'</select>'+
+      (r.siteNew?'<div class="csNewBox" data-i="'+i+'" hidden style="flex:1 1 100%;min-width:0"><input type="text" class="csNew" data-i="'+i+'" value="'+escapeAttr(sg&&sg.fresh?sg.to:'')+'" maxlength="60" autocomplete="off" placeholder="새 현장 이름" aria-label="'+escapeAttr(r.title)+' 새 현장 이름" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;border:1px solid var(--line);border-radius:10px;padding:8px">'+
+        '<div class="csNewMsg" data-i="'+i+'" role="status" style="font-size:11.5px;line-height:1.5;margin-top:2px;overflow-wrap:anywhere"></div><div class="csNewAddr" data-i="'+i+'" style="font-size:11.5px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere"></div></div>':'')+
+      (sg&&!sg.fresh?'<div data-cs-sim="'+i+'" style="flex:1 1 100%;min-width:0;font-size:11.5px;line-height:1.5;color:var(--hj-warn-fg);overflow-wrap:anywhere">'+escapeHtml(hjCalSyncNewWhy(sg)+hjCalSyncNewFix(sg))+'(‘＋ 새 현장 (이름 입력)’)</div>':'');
+  };
   box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">'+(st.api?'<span data-cs-api>📅 구글 캘린더에서 '+st.api+'개 읽음</span> · ':'')+'읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+(n('span')?' · 기간 다름 '+n('span'):'')+(n('rename')?' · 제목 바뀜 '+n('rename'):'')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+(st.cont?' <span data-cs-cont>(여러 날 공정의 이어지는 날 '+st.cont+'건 포함)</span>':'')+' · 앱에만 '+n('apponly')+
       (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(일정 알림·파수꾼·💰·생일·'+(st.api?'근무지·메일에서 온 예약·거절한 초대·':'')+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+
       (st.unread?' · <span data-cs-unread>날짜를 못 읽은 줄 '+st.unread+'개(두 날짜 꼴이 낯설어 건너뜀 — 구글 캘린더에서 확인)</span>':'')+'</p>'+
     (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.sibs>1?' <span data-cs-sibs style="color:var(--muted)">· 같은 날 같은 제목 '+r.sibs+'건(시각·위치가 달라 따로 봄)</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
       :'<div data-cs-clean class="empty" style="margin-top:8px"><b>✓ 앱 일정표가 구글 캘린더와 같아요</b>넣거나 바꿀 일정이 없습니다.</div>')+
     (st.gdup?'<p class="hint" style="margin-top:8px">구글 캘린더에 같은 날 같은 제목이 두 번 있으면(예: ‘@제목’과 ‘[현장명] 제목’) 앱에는 한 번만 넣습니다. 구글 쪽 정리는 구글 캘린더에서 하세요 — 이 창은 구글을 바꾸지 않습니다.</p>':'')+
-    (plan.rows.some(r=>r.sibs>1)?'<p class="hint" data-cs-sibs-hint style="margin-top:8px">같은 날 같은 제목이라도 시각이나 위치가 다른 구글 일정은 다른 작업으로 보고 줄을 따로 냅니다(예: 하루에 여러 현장의 ‘우수관 1개’). 같은 작업이 두 번 올라간 것이면 한 줄의 체크를 푸세요.</p>':'');
+    (plan.rows.some(r=>r.sibs>1)?'<p class="hint" data-cs-sibs-hint style="margin-top:8px">같은 날 같은 제목이라도 시각이나 위치가 다른 구글 일정은 다른 작업으로 보고 줄을 따로 냅니다(예: 하루에 여러 현장의 ‘우수관 1개’). 같은 작업이 두 번 올라간 것이면 한 줄의 체크를 푸세요.</p>':'')+
+    (plan.rows.some(r=>r.siteNew)?'<p class="hint" data-cs-newsite-hint style="margin-top:8px">맞는 현장이 없는 새 일정은 고르기 칸의 ‘＋ 새 현장’으로 현장을 만들어 이을 수 있어요. 고른 줄만, [체크한 일정 반영]을 누를 때 만듭니다(구글 위치는 새 현장의 주소로).</p>':'');
+  // v601 새 현장 칸 — #csBody 는 #modalRoot 안이라(#view 위임 밖) 직접 묶는다. '＋ 새 현장: 이름'을 고르면 그 이름을 이름 칸에 적는다(고친 글 위에 다시 고르면 제안 이름으로)
+  box.querySelectorAll('.csSel').forEach(s=>{s.onchange=()=>{const nm=hjNewSiteChoice(s.value),inp=box.querySelector('.csNew[data-i="'+s.dataset.i+'"]');if(nm&&inp)inp.value=nm;hjCalSyncNewSync(box);};});
+  box.querySelectorAll('.csNew').forEach(n=>{n.oninput=()=>hjCalSyncNewSync(box);});
+  box.querySelectorAll('.csChk').forEach(c=>{c.onchange=()=>hjCalSyncNewSync(box);});
   const go=document.getElementById('csApply');if(go){go.disabled=!plan.rows.length;go.textContent=plan.rows.length?'체크한 일정 반영':'반영할 일정 없음';}
 }
 function hjCalSyncRead(text){
@@ -42165,13 +42269,16 @@ function hjCalSyncView(){
     '<div id="csBody"></div></div>',
     [{label:'닫기',cls:'ghost',fn:closeModal},{label:'반영할 일정 없음',cls:'clay',fn:async()=>{
       const plan=window.__hjCalSyncPlan,root=document.getElementById('hjCalSync');if(!plan||!root)return;
-      const picks=[...root.querySelectorAll('.csChk:checked')].map(el=>{const i=+el.dataset.i,s=root.querySelector('.csSel[data-i="'+i+'"]');return {i,project:s?s.value:''};});
+      // v601 '＋ 새 현장'을 고른 줄은 이름 칸에 적은(고친) 이름으로 넘긴다 — '__new__:이름'
+      const picks=[...root.querySelectorAll('.csChk:checked')].map(el=>{const i=+el.dataset.i,s=root.querySelector('.csSel[data-i="'+i+'"]'),nw=root.querySelector('.csNew[data-i="'+i+'"]');
+        return {i,project:s?(hjCalSyncNewPick(s.value)?'__new__:'+hjStmtCell(nw?nw.value:hjNewSiteChoice(s.value)):s.value):''};});
       if(!picks.length){toast('반영할 줄을 체크하세요');return;}
       const del=picks.filter(p=>plan.rows[p.i]&&plan.rows[p.i].status==='apponly').length;
       if(del&&!confirm('앱에만 있는 일정 '+del+'건을 앱 일정표에서 지웁니다. 계속할까요?\n(🛡 안전판에서 되돌릴 수 있어요)'))return;
-      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+(r.asMoved?' · AS 방문일 '+r.asMoved+'건도 맞춤':'')+' — 되돌리려면 🛡 안전판');
+      try{const r=await hjCalSyncApply(plan,picks);closeModal();toast('🔄 구글 캘린더 맞추기 — 추가 '+r.added+' · 바꿈 '+r.changed+(r.removed?' · 지움 '+r.removed:'')+(r.asMoved?' · AS 방문일 '+r.asMoved+'건도 맞춤':'')+
+          (r.newProjects.length?' · 🆕 새 현장 '+r.newProjects.length+'곳('+r.newProjects.join(' · ')+')':'')+(r.blocked.length?' · ⚠ 새 현장 이름이 막힌 '+r.blocked.length+'줄은 넣지 않음('+hjCalSyncNewWhy(r.blocked[0])+')':'')+' — 되돌리려면 🛡 안전판');
         if(r.list.length)hjCalSyncDone(r);}   // v581 바뀐 일정 팀·고객에게 알리기
-      catch(e){toast(String(e&&e.message||e));}
+      catch(e){toast(String(e&&e.message||e));hjCalSyncNewSync(document.getElementById('csBody'));}
     }}],true);
   const root=document.getElementById('hjCalSync');if(!root)return;
   const go=[...document.querySelectorAll('#modalRoot .mfoot button')].pop();if(go){go.id='csApply';go.disabled=true;}
