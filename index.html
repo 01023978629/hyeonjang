@@ -15700,7 +15700,7 @@ function notifyDrafts(ymd){
   return rows.map(({s,c})=>{
     const p=state.projects.find(x=>x.name===s.project)||{};
     const cust=p.customer||{};
-    const addr=(cust.addr||'').trim();
+    const addr=hjSchShareAddr(s);   // v605 현장 주소가 없으면 구글 '장소'(작업자 글에만 쓰인다)
     const title=c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim()+' ('+c.day+'/'+c.days+'일째)':s.title;
     const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+title+(hjSchShareMemo(s)?'\n메모: '+hjSchShareMemo(s):'')+(s.crew?'\n담당: '+hjCrewText(s.crew):'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
     const customer=c
@@ -15789,21 +15789,38 @@ function hjSchShareTitle(s,c){
 }
 /* v577 팀에게 나가는 메모는 출입 번호처럼 보이는 토막을 뺀다(v552 작업자 캘린더 보내기와 같은 규칙 hjAccessScrub) — 📤 일정 공유 글·.ics · 🔔 작업자 문안 · 🔨 다음 공정 안내.
    일정 메모 자체는 그대로 둔다(대표 화면·내 캘린더는 손대지 않음). 남은 토막은 ' · ' 로 잇고, 첫 토막의 공정표 기간 '시작~끝 (N일)' 은 뗀다(제목에 있다). */
-function hjMemoOut(t){
-  const sc=hjAccessScrub(t);
-  return {text:sc.parts.map((x,i)=>(i?x:x.replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'')).replace(/\s+/g,' ').trim()).filter(Boolean).join(' · '),cut:sc.cut};
-}
-function hjSchShareMemo(s){return hjMemoOut(s&&s.memo).text;}
-// v604 일정 메모의 '장소: …' 토막 — 🔄 구글 캘린더 맞추기·📥 캘린더 파일 가져오기가 구글 위치를 이렇게 적는다(읽기만).
-// 출입 번호처럼 보이는 토막은 hjAccessScrub 이 먼저 빼므로 '장소: 공동현관 1234' 는 장소가 아니다.
+/* v605 팀에게 나가는 글에서 앱 출처 표시를 빼고, 구글 '장소'를 주소 줄로.
+   🔄 구글 캘린더 맞추기는 새 일정 메모에 '장소: …' 와 끝줄 '구글 캘린더에서 가져옴 (@ 제미나이 입력)' 을 적는다 — 🤖 칩이 옛 기록을 이 글로 알아봐(hjSchGemini) 메모에서 지울 수 없다.
+   요즘 일정은 거의 구글 출신이라 팀이 받는 줄마다 이 꼬리표가 붙었고, 메모 60자 자르기를 꼬리표가 먹어 진짜 전달 사항이 잘렸다.
+   현장 주소가 없는(또는 현장 없는) 일정은 구글 위치가 있어도 '주소:' 줄이 없었다.
+   · hjMemoOut 이 출처 토막(HJ_CALSYNC_FROM_RE)을 뺀다 — 출입 번호가 아니라 cut(🔒 n곳)에는 세지 않는다.
+   · 주소 = 현장 주소 → 없으면 메모의 '장소:'(hjSchShareAddr). 장소를 주소 줄로 쓴 일정은 메모 글에 그 토막을 다시 싣지 않는다(hjSchMemoOut).
+   · 따라오는 곳: 📤 일정 공유 글·.ics · 작업자 캘린더 보내기 · 🔔 작업자 문안 · 🔨 다음 공정 안내의 주소 · 📤 하루치 팀 지시(hjWoBuildDay).
+   그대로: 일정 메모 자체·일정표 화면·🤖 칩·내 폰 캘린더(hjAlertIcsItems — v577 대표 결정)·고객 문안(메모를 싣지 않는다). */
+const HJ_CALSYNC_FROM_RE=/^구글 캘린더에서 가져옴(?: \(@ 제미나이 입력\))?$/;   // hjCalSyncApply 가 새 일정 메모 끝줄에 적는 글 — 그 글을 바꾸면 여기도(teamtext-v605 가 진짜 맞추기 길로 대조한다)
+// 일정 메모의 '장소: …' 토막 — 🔄 구글 캘린더 맞추기·📥 캘린더 파일 가져오기가 구글 위치를 이렇게 적는다(v604, 읽기만).
 const HJ_SCH_PLACE_RE=/^장소:\s*(.+)$/;
+// 메모 토막 — 출입 번호 토막을 빼고(cut), 첫 토막의 공정표 기간 '시작~끝 (N일)' 을 떼고, 빈칸을 고른 것. hjMemoOut 과 hjSchPlaceOf 가 같은 토막을 본다.
+function hjMemoParts(t){
+  const sc=hjAccessScrub(t);
+  return {parts:sc.parts.map((x,i)=>(i?x:x.replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'')).replace(/\s+/g,' ').trim()).filter(Boolean),cut:sc.cut};
+}
+// noPlace — 첫 '장소:' 토막을 뺀다(그 장소를 주소 줄로 쓴 글에서 두 번 나오지 않게)
+function hjMemoOut(t,noPlace){
+  const mp=hjMemoParts(t);let skip=!!noPlace;
+  return {text:mp.parts.filter(x=>{if(HJ_CALSYNC_FROM_RE.test(x))return false;if(skip&&HJ_SCH_PLACE_RE.test(x)){skip=false;return false;}return true;}).join(' · '),cut:mp.cut};
+}
+// 출입 번호처럼 보이는 토막은 hjAccessScrub 이 먼저 빼므로 '장소: 공동현관 1234' 는 장소가 아니다(주소 줄로 나가지 않는다).
 function hjSchPlaceOf(s){
-  for(const x of hjAccessScrub(s&&s.memo).parts){const m=HJ_SCH_PLACE_RE.exec(x.replace(/\s+/g,' ').trim());if(m)return m[1].trim();}
+  for(const x of hjMemoParts(s&&s.memo).parts){const m=HJ_SCH_PLACE_RE.exec(x);if(m)return m[1].trim();}
   return '';
 }
+function hjSchProjAddr(s){const p=s&&s.project?(state.projects||[]).find(x=>x&&x.name===s.project):null;return p&&p.customer?String(p.customer.addr||'').trim():'';}
+function hjSchMemoOut(s){return hjMemoOut(s&&s.memo,!hjSchProjAddr(s));}
+function hjSchShareMemo(s){return hjSchMemoOut(s).text;}
 // 그 공유 글에서 뺀 메모 토막 수(이어지는 날은 메모를 싣지 않으므로 시작일 것만 센다)
 function hjSchShareCut(days){let n=0;(days||[]).forEach(d=>(d.rows||[]).forEach(({s,c})=>{if(!c)n+=hjMemoOut(s&&s.memo).cut;}));return n;}
-function hjSchShareAddr(s){const p=s.project?(state.projects||[]).find(x=>x&&x.name===s.project):null;return p&&p.customer?String(p.customer.addr||'').trim():'';}
+function hjSchShareAddr(s){return hjSchProjAddr(s)||hjSchPlaceOf(s);}   // v605 현장 주소가 먼저, 없으면 구글 '장소'
 function hjSchShareText(days,label,span){
   const L=['['+COMPANY.name+'] 작업 일정'+(label?' — '+label:'')+(span&&span!==label?' '+span:'')];
   if(!days.length)L.push('','잡힌 일정이 없습니다.');
@@ -15984,7 +16001,7 @@ function hjAccessScrub(t){
 function hjSchCalSendItems(ids){
   let cut=0;const items=[];
   hjSchShareDays(null,null,'',ids).forEach(day=>day.rows.forEach(({s,c})=>{
-    const mo=hjMemoOut(s.memo);if(!c)cut+=mo.cut;   // 남은 토막은 ' · ' 로 잇는다(v577 hjMemoOut 으로 공유 글과 같은 규칙)
+    const mo=hjSchMemoOut(s);if(!c)cut+=mo.cut;   // 남은 토막은 ' · ' 로 잇는다(v577 hjMemoOut 으로 공유 글과 같은 규칙 · v605 주소로 쓴 장소는 한 번만)
     const memo=mo.text,addr=hjSchShareAddr(s);
     items.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
       project:s.project||'',workers:s.workers||'',crew:s.crew||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
@@ -49363,9 +49380,11 @@ const HJ_PHOTO_GUIDE=Object.freeze({
 const HJ_PHOTO_TIPS=Object.freeze(['밝게 — 조명을 켜고 창을 등지고 찍기','수평 — 문틀·타일 줄에 화면 선을 맞추기','날짜 — 카메라 날짜 표시를 켜거나 앱으로 바로 찍기(촬영 시각이 남는다)','개인정보 피하기 — 얼굴·문패·택배 라벨·차량 번호가 안 나오게']);
 function hjWoGuideKey(p,trade){if(hjProjectKind(p)==='leak')return trade==='누수 수리'?'leakRepair':'leakDetect';if(trade==='타일')return 'tile';if(trade==='도배')return 'wallpaper';return 'finish';}
 // 메모 정리 — 고객 이름·번호·메일·동호수는 지우고, 돈 이야기 줄은 통째로 뺀다(직원 화면에 돈·개인정보 금지).
-function hjWoMemoSafe(p,memo){
-  const name=String((p&&p.customer||{}).name||'').trim();
-  return String(memo||'').split('\n').filter(l=>!/\d[\d,]*\s*(?:만\s*)?원(?![가-힣])|금액|견적가|잔금|계약금|중도금|수금|입금/.test(l)).map(l=>hjRetScrub(l,name).replace(/고객(\s+고객)+/g,'고객').trim()).filter(Boolean).join('\n').slice(0,600);
+// v605 앱 출처 줄('구글 캘린더에서 가져옴 …')은 싣지 않는다. usedPlace — 그 장소를 지시의 주소(project.addr)로 쓴 경우, 같은 '장소:' 줄을 한 번 뺀다.
+function hjWoMemoSafe(p,memo,usedPlace){
+  const name=String((p&&p.customer||{}).name||'').trim();let place=String(usedPlace||'');
+  const own=l=>{const t=l.replace(/\s+/g,' ').trim();if(HJ_CALSYNC_FROM_RE.test(t))return true;const m=place?HJ_SCH_PLACE_RE.exec(t):null;if(m&&m[1].trim()===place){place='';return true;}return false;};
+  return String(memo||'').split('\n').filter(l=>!own(l)).filter(l=>!/\d[\d,]*\s*(?:만\s*)?원(?![가-힣])|금액|견적가|잔금|계약금|중도금|수금|입금/.test(l)).map(l=>hjRetScrub(l,name).replace(/고객(\s+고객)+/g,'고객').trim()).filter(Boolean).join('\n').slice(0,600);
 }
 /* v587 하루치 지시에 여러 날 공정의 이어지는 날도 — 예전에는 date===그날만 골라, 3일짜리 타일 둘째·셋째 날은 [📤 내일 일정 팀에 보내기]에서 빠졌다
    (📤 일정 공유는 v354 부터 넣음). 이어지는 날 규칙은 hjSchContinuing 그대로(시작 다음 날~끝, 일요일 제외, 완료 보고된 공정은 끝난 것). */
@@ -49394,10 +49413,13 @@ function hjWoBuildDay(day){
     const c=s.date===day?null:hjSchContOn(s,day),contTail=c?' ('+c.day+'/'+c.days+'일째)':'',nth=c?c.day:1;   // v587 이어지는 날이면 '(2/3일째)' — 공정표 꼬리 '(N일차 시작)' 는 뗀다
     const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s,nth);if(again)used.add(again);
     const tail=(trade?' ('+trade+')':'')+contTail,rawTitle=c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업':(s.title||'작업');
-    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo),
+    // v605 현장 주소가 비어 있으면 일정 메모의 구글 '장소'를 주소로 — 호수는 뗀다(인터페이스 규칙 hjWoAddrSafe). 고객 이름·전화·금액으로 읽히는 장소는 쓰지 않는다
+    // (그때는 메모 줄로 남아 hjRetScrub 이 지운다). 주소로 쓴 장소는 detail 에 다시 싣지 않는다.
+    const rawPlace=hjWoAddrSafe(p.customer&&p.customer.addr)?'':hjSchPlaceOf(s),placeAddr=hjWoAddrSafe(rawPlace),placeOk=!!placeAddr&&!hjWoPrivacyIssues({addr:placeAddr},p).length;
+    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo,placeOk?rawPlace:''),
       assignee:hjWoText(crew.join(','),20),due:day,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
       checklist:(HJ_WO_CHECKLIST_BY[trade]||HJ_WO_CHECKLIST).slice(),photosWanted:HJ_WO_PHOTOS.map(x=>x[0]),notes:''});
-    const o=one.orders[0];o.guideKey=hjWoGuideKey(p,trade);
+    const o=one.orders[0];o.guideKey=hjWoGuideKey(p,trade);if(placeOk)o.project.addr=placeAddr;
     orders.push(o);refs.push({name:p.name,order:o,again:!!again,items:[{kind:'sched',ref:String(s.id),day,n:nth,text:hjWoText((c?rawTitle:(s.title||'일정'))+contTail,120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
   });
   return {packet:{type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders},refs};
