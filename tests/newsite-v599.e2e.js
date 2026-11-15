@@ -6,6 +6,10 @@
    ② 만들어도 되는가 — 같은 이름·비슷한 이름·보관 현장과 같은 이름이면 ok=false + 그 현장 이름 · 선택지 글은 글자로(꺾쇠) · 고른 값 읽기 ·
       어디에 넣는가(hjNewSiteTarget: 새로·진행 현장에 잇기·보관/비슷함/짧음은 막음) (CHECK)
    ③ 읽기만 — 자료 한 글자도 안 바뀜 · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (READONLY)
+   ④ 통합 검토(11/15) 주소 이름 현장('달빛동 55-3'·'새벽로 12') — 같은 주소일 때만 같은 곳(같은 동·같은 길의 다른 글·번지는 후보도, 비슷한 현장도 아님) ·
+      주소가 다른 단지 현장은 다른 곳 (ADDR)
+   통합 검토 변이: prev-any(사람 이름·전화 끝자리·때 말과 잇기)·sub-alone('N단지' 홀로)·lot-any('추가·수리·단가'+숫자를 주소로)·bad-chars(꺾쇠·따옴표 토막)는 ①,
+   addr-blind(주소 이름을 글자 비슷함으로)·addr-neighbor(다른 번지를 비슷한 현장으로)는 ④ 에서 실패해야 한다.
    HJ_V599_BASELINE=<commit> 와 HJ_V599_MUTATION=whole-line(문장을 통째로)·no-josa(조사를 안 뗌)·mid-word(낱말이 토막 가운데여도 이름)·
    road-as-complex(길 이름을 단지로)·free-road(자유 글의 도로명을 그냥 주소로)는 ①, no-similar(비슷한 현장을 안 봄)·no-archived(보관 현장을 안 봄)·link-archived(보관한 같은 이름에 그대로 이음)는 ② 에서 실패해야 한다. */
 'use strict';
@@ -22,12 +26,18 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'whole-line': ['    if(t.length>=3)return t.slice(0,40);\n', "    if(t.length>=3)return toks.join(' ').slice(0,40);\n"],
   'no-josa': ['    if(cut!==t&&cut&&hjNewSiteWordEnd(cut)===cut.length)t=cut;\n', ''],
-  'mid-word': ['    if(hjNewSiteWordEnd(t)!==t.length)continue;\n', ''],
+  'mid-word': ['    if(hjNewSiteWordEnd(t)!==t.length||HJ_NEWSITE_GENERIC.includes(t.toLowerCase()))continue;\n', '    if(HJ_NEWSITE_GENERIC.includes(t.toLowerCase()))continue;\n'],
   'road-as-complex': ['    if(HJ_NEWSITE_ROAD_RE.test(t)&&toks[i+1]&&(HJ_NEWSITE_NUM_RE.test(toks[i+1])||HJ_NEWSITE_ROADN_RE.test(toks[i+1])))continue;\n', ''],
-  'free-road': ["      if(m&&(!free||areaBefore))return road+' '+m[1];", "      if(m)return road+' '+m[1];"],
-  'no-similar': ["  hjSimilarProjects(n).forEach(x=>{if(!sim.includes(x))sim.push(x);});\n  hjStmtMatch(n).forEach(c=>{if(c.score>=0.6&&!sim.includes(c.name))sim.push(c.name);});\n", ''],
+  'free-road': ["if(m&&!HJ_NEWSITE_UNITNUM_RE.test(m[1])&&(!free||areaBefore))return {text:road", "if(m&&!HJ_NEWSITE_UNITNUM_RE.test(m[1]))return {text:road"],
+  'no-similar': ["  hjSimilarProjects(n).forEach(x=>{if(!sim.includes(x)&&!otherAddr(x))sim.push(x);});\n  hjStmtMatch(n).forEach(c=>{if(c.score>=0.6&&!sim.includes(c.name))sim.push(c.name);});\n", ''],
   'link-archived': ["(state.projects||[]).some(p=>p&&p.name===c.name&&!p.archived))return {to:c.name,fresh:false,why:'exists',similar:[]};", "(state.projects||[]).some(p=>p&&p.name===c.name))return {to:c.name,fresh:false,why:'exists',similar:[]};"],
-  'no-archived': ['  all.forEach(p=>{if(p.archived&&key&&hjNormName(p.name)===key)sim.push(p.name);});\n', '']
+  'no-archived': ['  all.forEach(p=>{if(p.archived&&key&&hjNormName(p.name)===key)sim.push(p.name);});\n', ''],
+  'prev-any': ['  if(p.length<2||HJ_NEWSITE_DIGIT_RE.test(p)||HJ_NEWSITE_HONOR_RE.test(p)||HJ_NEWSITE_AREA_RE.test(p)||HJ_NEWSITE_BAD_RE.test(p))return false;\n  return !HJ_NEWSITE_PREV_STOP.includes(p);\n', '  return p.length>=2;\n'],
+  'sub-alone': ["    }else if(HJ_NEWSITE_SUB_RE.test(t)){const prev=toks[i-1]||'';if(!hjNewSitePrevOk(prev))continue;t=prev+' '+t;}\n", '    }\n'],
+  'lot-any': ['function hjNewSiteLotOk(t,prev){\n', 'function hjNewSiteLotOk(t,prev){\n  return true;\n'],
+  'bad-chars': ['    if(hjNewSiteWordEnd(t)<0||HJ_NEWSITE_BAD_RE.test(t))continue;\n', '    if(hjNewSiteWordEnd(t)<0)continue;\n'],
+  'addr-blind': ['    if((pa&&pa.led)||(la&&la.led)){\n', '    if(false){\n'],
+  'addr-neighbor': ['if(!sim.includes(x)&&!otherAddr(x))sim.push(x);', 'if(!sim.includes(x))sim.push(x);']
 };
 let html = process.env.HJ_V599_BASELINE ? execFileSync('git', ['show', process.env.HJ_V599_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V599_MUTATION) {
@@ -92,7 +102,29 @@ const NAMES = [
   ['달빛동 12 누수', null, ''],
   ['욕실로 2번 옮김', null, ''],
   ['바닥으로 3장', null, ''],
-  ['출동 3건 완료', null, '']
+  ['출동 3건 완료', null, ''],
+  // 통합 검토(11/15) — 사람 이름·전화 끝자리·때·가리킴 말은 단지 낱말과 잇지 않는다 · 붙여 쓴 흔한 말 · 'N단지' 홀로 · 브랜드가 앞 · 토막 앞뒤 기호
+  ['고객 010-1234-5678 빌라 301호 누수', null, ''],
+  ['김가상 고객님 아파트 화장실 방수', null, ''],
+  ['박가상님 상가 2층 천장 누수', null, ''],
+  ['어제 아파트 건은 내일 갑니다', null, ''],
+  ['같은 단지 다른 동입니다', null, ''],
+  ['주차타워 누수', null, ''],
+  ['전단지 배포했습니다', null, ''],
+  ['저희 2단지 누수', null, ''],
+  ['주공 4단지 401동 누수', null, '주공 4단지'],
+  ['e편한세상 둔산 2단지 203동', null, 'e편한세상 둔산 2단지'],
+  ['힐스테이트 도안 3차 205동 1001호 욕실', null, '힐스테이트 도안 3차'],
+  ['#모란아파트', null, '모란아파트'],
+  ['작업 현장은 한빛빌라입니다.', null, '한빛빌라'],
+  ['<img src=x onerror=alert(1)>타워', null, ''],
+  ['x="한빛빌라" 보수', null, ''],
+  // '가·리' 낱말 + 숫자는 진짜 동 이름 꼴(숫자 뒤 '가' · 읍·면 뒤 '리')만 주소 · 세 자리-세 자리는 동·호수
+  ['평당 단가 30-40 정도입니다', null, ''],
+  ['누수 수리 1-2 세대 완료', null, ''],
+  ['서구 추가 3 건', null, ''],
+  ['시험군 금남면 대평리 123', null, '대평리 123'],
+  ['새벽동 303-704 누수', null, '']
 ];
 (async () => {
   browser = await chromium.launch();
@@ -130,6 +162,24 @@ const NAMES = [
       assert.equal(r.simText, '가온아파트 · 옛빌라(보관)', '안내 글 ' + r.simText);
     });
 
+    await test('④ 주소 이름 현장 — 같은 주소일 때만 같은 곳 · 같은 동·같은 길의 다른 번지는 새로 만들 수 있음 (ADDR)', async () => {
+      const r = await page.evaluate(() => {
+        const keep = state.projects;
+        state.projects = keep.concat([{ name: '달빛동 55-3', stage: 0 }, { name: '새벽로 12', stage: 0 }, { name: '시험구 은하로 15 은하빌라', stage: 1 }]);
+        const m = t => hjStmtMatch(t).filter(c => c.score >= 0.34).map(c => c.name);
+        const out = { other: m('달빛동 한솔빌라 201호 욕실 누수 탐지 완료했습니다'), same: m('시험시 달빛동 55-3 2층'), road123: m('새벽로 123 상가 2층'), road12: m('새벽로 12 다세대 201호'),
+          complexOther: m('은하로 17 은하빌라'), complexSame: m('은하빌라 201호'),
+          chk: ['달빛동 12-7', '새벽로 13', '새벽로 123', '새벽로 14 주택', '달빛동 12-7 박가상 다가구', '새벽로 12', '달빛동 55-3 주택'].map(n => { const c = hjNewSiteCheck(n); return [n, c.ok, c.why]; }) };
+        state.projects = keep; return out;
+      });
+      assert.deepEqual(r.other, [], '같은 동의 다른 현장 글은 주소 이름 현장 후보가 아니다 ' + JSON.stringify(r.other));
+      assert.deepEqual(r.same, ['달빛동 55-3'], '같은 주소면 그 현장 ' + JSON.stringify(r.same));
+      assert.deepEqual(r.road123, [], '새벽로 123 은 새벽로 12 가 아니다 ' + JSON.stringify(r.road123));
+      assert.deepEqual(r.road12, ['새벽로 12'], '같은 도로명+번호 ' + JSON.stringify(r.road12));
+      assert.ok(!r.complexOther.includes('시험구 은하로 15 은하빌라') && r.complexSame.includes('시험구 은하로 15 은하빌라'), '주소가 다르면 다른 곳 · 주소 없는 글은 이름으로 ' + JSON.stringify([r.complexOther, r.complexSame]));
+      assert.deepEqual(r.chk, [['달빛동 12-7', true, ''], ['새벽로 13', true, ''], ['새벽로 123', true, ''], ['새벽로 14 주택', true, ''], ['달빛동 12-7 박가상 다가구', true, ''], ['새벽로 12', false, 'exists'], ['달빛동 55-3 주택', false, 'similar']], '주소 이웃은 새로 만들 수 있음 · 같은 주소는 막음 ' + JSON.stringify(r.chk));
+    });
+
     await test('③ 읽기만 — 자료 불변 · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (READONLY)', async () => {
       const same = await page.evaluate(rows => {
         const before = JSON.stringify(serializeData());
@@ -147,6 +197,6 @@ const NAMES = [
     });
     await context.close();
   } finally { await browser.close(); }
-  console.log('newsite-v599: ' + passed + '/3');
-  if (passed !== 3) process.exit(1);
+  console.log('newsite-v599: ' + passed + '/4');
+  if (passed !== 4) process.exit(1);
 })().catch(e => { console.error('FAIL newsite-v599', e && e.stack || e); process.exit(1); });

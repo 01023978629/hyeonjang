@@ -45,7 +45,7 @@ const MUT = {
   'rate-drop': ["join(' '))&&!hjCalApiRateLimited(e))))hjCalApiDropToken();", "join(' ')))))hjCalApiDropToken();"],
   'shorter-unchecked': ["rows.push(Object.assign({},base,{status:'span',check:true,span,shorter,hfix:timeDiff?0:hf,app}", "rows.push(Object.assign({},base,{status:'span',check:!shorter,span,shorter,hfix:timeDiff?0:hf,app}"],
   'no-cont-dedupe': ['  const contOf=g=>{\n    if(g._base.to)return false;', '  const contOf=g=>{\n    return false;'],
-  'cont-first': ["    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key).sort(", "    if(contOf(g))return;\n    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key).sort("],
+  'cont-first': ["    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key&&(g.sibs<2||locFit(g,x))).sort(", "    if(contOf(g))return;\n    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key&&(g.sibs<2||locFit(g,x))).sort("],
   'no-cover': ['if(!miss.length){covered=true;', 'if(false){covered=true;'],
   'no-uid-pair': ['const byUid=apps.filter(a=>a.uid);', 'const byUid=[];'],
   'rename-reported': ['      if(hjSchReported(a.s)){\n        if(a.s.date===g.date)', '      if(false){\n        if(a.s.date===g.date)'],

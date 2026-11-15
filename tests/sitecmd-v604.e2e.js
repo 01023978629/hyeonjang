@@ -11,7 +11,10 @@
    ③ 복사 — 🧰 창 [📋 명령 복사]·전체 보기 [복사]에 채운 글 · 고치는 창은 저장된 글 + 자리 안내 · 저장된 명령·저장본은 그대로 (COPY)
    ④ 폰 390 — 가로 넘침 없음 · 단추 44px · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
    HJ_V604_BASELINE=<commit> 와 HJ_V604_MUTATION=order-zero(o:0 을 '없음'으로)는 ①, title-raw(제목을 거르지 않음)·no-mask(장소 전화 안 가림)·include-personal(개인 일정 실음)·
-   window-wide(기간을 넓힘)·include-archived(보관 현장 실음)는 ②, fill-saved(저장된 명령을 채운 글로 덮음)는 ③ 에서 실패해야 한다. */
+   window-wide(기간을 넓힘)·include-archived(보관 현장 실음)는 ②, fill-saved(저장된 명령을 채운 글로 덮음)는 ③ 에서 실패해야 한다.
+   통합 검토(11/15) — 6번 단계에 '현장 없음'으로 이미 들어온 일정의 길(맞추기에는 그 줄이 다시 안 나온다) · 폴더 이름은 목록 이름 그대로(새로 지을 때만 고객 이름 금지) ·
+   {현장목록} 80곳 넘으면 최근 일정의 현장·나중에 만든 현장을 남김 · ⏰ 지시서 파일에도 자리를 채움. 변이 sites-oldest(앞 80곳을 남김)·no-recent-site(최근 일정 현장을
+   안 챙김)는 ②, order-raw(지시서에 자리 글자 그대로)는 ③ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -30,7 +33,10 @@ const MUT = {
   'include-personal': ['    if(s.sourceUid)return;', '    if(false)return;'],
   'window-wide': ['const CW_SCHED_BACK=14,CW_SCHED_AHEAD=3,', 'const CW_SCHED_BACK=30,CW_SCHED_AHEAD=30,'],
   'include-archived': ["const names=(state.projects||[]).filter(p=>p&&!p.archived&&String(p.name||'').trim())", "const names=(state.projects||[]).filter(p=>p&&String(p.name||'').trim())"],
-  'fill-saved': ["  return cwSkillLine(t)+'\\n\\n'+cwFill(t.prompt);\n", "  t.prompt=cwFill(t.prompt);return cwSkillLine(t)+'\\n\\n'+t.prompt;\n"]
+  'fill-saved': ["  return cwSkillLine(t)+'\\n\\n'+cwFill(t.prompt);\n", "  t.prompt=cwFill(t.prompt);return cwSkillLine(t)+'\\n\\n'+t.prompt;\n"],
+  'sites-oldest': ['  for(let i=names.length-1;i>=0&&keep.size<CW_SITES_MAX;i--)keep.add(names[i]);', '  for(let i=0;i<names.length&&keep.size<CW_SITES_MAX;i++)keep.add(names[i]);'],
+  'no-recent-site': ["  (state.schedule||[]).forEach(s=>{const n=s&&String(s.project||'').trim();if(n&&keep.size<CW_SITES_MAX&&s.date>=lo&&s.date<=hi&&names.includes(n))keep.add(n);});\n", ''],
+  'order-raw': ["    md+=cwFill(x.task.prompt)+'\\n\\n';", "    md+=x.task.prompt+'\\n\\n';"]
 };
 let html = process.env.HJ_V604_BASELINE ? execFileSync('git', ['show', process.env.HJ_V604_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V604_MUTATION) {
@@ -117,6 +123,8 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
           body: { cal: /현장웹 일정표를 보고/.test(P), slots: P.includes('{최근일정}') && P.includes('{현장목록}'), talk: /톡방\(카카오 톡서랍\)/.test(P), gphoto: /구글 포토/.test(P), folder: P.includes('현장사진/<현장 이름>/'),
             order: /위치\(GPS\)[\s\S]*그날 일정[\s\S]*보고 글/.test(P), noloc: /위치 정보가 없는 사진은 톡방에 적힌 주소/.test(P), ask: P.includes("'확인필요' 표") && /내 답을 기다린다/.test(P) },
           rules: { move: /옮기기만 한다/.test(P), nojson: /_현장\.json 을 고치지 않는다/.test(P), login: /자동으로 로그인하지 않는다/.test(P), noname: /고객 이름·전화번호를 쓰지 않는다/.test(P),
+            noSite: /'현장 없음'으로 이미 들어와 있는 일정: 맞추기에는 그 줄이 다시 나오지 않는다/.test(P) && /일정을 열어\(✏️\) 현장 칸에서 그 현장을 고른다/.test(P),
+            keepName: /목록 이름은 바꾸지 않는다/.test(P) && /폴더 이름을 새로 지을 때는 고객 이름·전화번호를 쓰지 않는다/.test(P),
             screens: ['[🔄 구글 캘린더 맞추기]의 \'＋ 새 현장\'', '[💬 카톡 보고 대조·사진 배정]의 \'＋ 새 현장\'', '[🧭 추측 배정 보기]의 \'＋ 새 현장\''].every(x => P.includes(x)), okFirst: /내가 좋다고 한 줄만/.test(P),
             safe: /지우지 않는다/.test(P) && /_중복정리_보관_\{오늘\}/.test(P) && /_현장_백업_클로드_\{오늘\}/.test(P) && /앱 파일\(/.test(P) && /표로 보여 주고 멈춰서 묻는다/.test(P) },
           cat: /톡방·구글 포토 사진 현장별 정리/.test(coworkSkillCatalogText())
@@ -127,7 +135,7 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
       assert.deepEqual(r.meta, ['photo', 0, true], '분류·준비물 ' + JSON.stringify(r.meta));
       assert.ok(/^🧰 사용할 스킬: manmul-hyeonjang — /.test(r.skill) && /새 현장은 현장웹 화면에서/.test(r.skill), '스킬 줄 ' + r.skill);
       assert.deepEqual(r.body, { cal: true, slots: true, talk: true, gphoto: true, folder: true, order: true, noloc: true, ask: true }, '할 일 ' + JSON.stringify(r.body));
-      assert.deepEqual(r.rules, { move: true, nojson: true, login: true, noname: true, screens: true, okFirst: true, safe: true }, '지킬 것 ' + JSON.stringify(r.rules));
+      assert.deepEqual(r.rules, { move: true, nojson: true, login: true, noname: true, noSite: true, keepName: true, screens: true, okFirst: true, safe: true }, '지킬 것 ' + JSON.stringify(r.rules));
       assert.equal(r.cat, true, '스킬 명령문 카탈로그');
       // 이미 쓰던 목록(옛 기본 5개 — 하나는 대표가 고침 — + 내 명령) → 빠진 기본 명령만 뒤에
       const m = await page.evaluate(() => {
@@ -173,17 +181,19 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
         const empty = [cwFill('{최근일정}'), cwFill('{현장목록}')];
         state.schedule = Array.from({ length: 70 }, (_, i) => S(i, i < 35 ? '2026-11-05' : '2026-11-06'));
         state.projects = Array.from({ length: 85 }, (_, i) => ({ name: '합성현장' + String(i + 1).padStart(2, '0'), stage: 1 })).concat([{ name: '보관한 곳', archived: true }]);
-        const many = cwFill('{최근일정}').split('\n'), sites = cwFill('{현장목록}').split('\n');
+        const many = cwFill('{최근일정}').split('\n');
+        state.schedule = state.schedule.concat([Object.assign(S(99, '2026-11-10'), { project: '합성현장02' })]);   // 오래된 현장이라도 최근 일정에 나오면 남는다
+        const sites = cwFill('{현장목록}').split('\n');
         state.schedule = keepS; state.projects = keepP;
         // 일정표를 못 읽어도 복사는 된다 — 빈칸 대신 '직접 읽어 달라'는 글(현장 목록은 그대로 채움)
         const keepFn = hjSchShareDays; hjSchShareDays = () => { throw new Error('합성 오류'); };
         let broken = ''; try { broken = cwFill('가 {최근일정} 나 {현장목록}'); } finally { hjSchShareDays = keepFn; }
-        return { empty, n: many.length, head: many[0], first: many[1], last: many[many.length - 1], sn: sites.length, s0: sites[0], s79: sites[79], tail: sites[80], broken };
+        return { empty, n: many.length, head: many[0], first: many[1], last: many[many.length - 1], sn: sites.length, s0: sites[0], s1: sites[1], s79: sites[79], tail: sites[80], broken };
       });
       assert.equal(e.broken, '가 (일정표를 읽지 못했습니다 — 현장웹에서 직접 읽어 주세요) 나 - 가온아파트\n- 보람마을 2단지', '못 읽을 때 ' + e.broken);
       assert.deepEqual(e.empty, ['(일정 없음)', '(현장 없음)'], '빈 자료 ' + JSON.stringify(e.empty));
       assert.deepEqual([e.n, e.head, e.first, e.last], [61, '(앞선 10건은 줄였습니다)', '11/5(목) 09:00 작업10 — 현장 없음', '11/6(금) 09:00 작업69 — 현장 없음'], '60줄 넘침 ' + JSON.stringify(e));
-      assert.deepEqual([e.sn, e.s0, e.s79, e.tail], [81, '- 합성현장01', '- 합성현장80', '외 5곳'], '80곳 넘침 ' + JSON.stringify(e));
+      assert.deepEqual([e.sn, e.s0, e.s1, e.s79, e.tail], [81, '- 합성현장02', '- 합성현장07', '- 합성현장85', '외 5곳'], '80곳 넘침 — 최근 일정의 현장 + 나중에 만든 현장을 남김(차례는 그대로) ' + JSON.stringify(e));
     });
 
     await test('③ 복사 — 🧰 창·전체 보기에 채운 글 · 저장된 명령·저장본은 그대로 (COPY)', async () => {
@@ -213,6 +223,9 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
       const ed = await page.evaluate(() => { const root = document.getElementById('modalRoot'); return { raw: root.querySelector('#cwPrompt').value, hint: (root.querySelector('#cwSlotHint') || {}).textContent || '' }; });
       assert.ok(ed.raw.includes('{최근일정}') && ed.raw.includes('{현장목록}') && !ed.raw.includes('경계 첫날'), '고치는 창은 저장된 글');
       assert.ok(/\{오늘\} · \{최근일정\} · \{현장목록\}/.test(ed.hint) && /복사할 때/.test(ed.hint), '자리 안내 ' + ed.hint);
+      // ⏰ Cowork 예약의 지시서 파일(_코워크_오늘업무.md)도 채운 글 — 예전엔 자리 글자가 그대로 들어갔다
+      const md = await page.evaluate(() => coworkOrderText([{ task: state.coworkTasks.find(t => t.id === 'cw_sitesort'), sched: { freq: 'daily' } }]));
+      assert.ok(!md.includes('{최근일정}') && !md.includes('\n{현장목록}\n') && md.includes('_중복정리_보관_20261116') && md.includes(LINES[0]) && md.includes(SITES), '지시서 파일도 채움:\n' + md.slice(0, 600));
       assert.equal(await page.evaluate(stable), before, '저장본 불변');
       assert.ok((await page.evaluate(() => state.coworkTasks.find(t => t.id === 'cw_sitesort').prompt)).includes('{최근일정}'), '두 번 복사한 뒤에도 저장된 명령 그대로');
       await page.evaluate(() => closeModal(true));

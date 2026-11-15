@@ -13,7 +13,10 @@
    HJ_V601_BASELINE=<commit> 와 HJ_V601_MUTATION=new-preselected(새 현장을 미리 고름)·invite-newsite(받은 초대·반복 회차에도 냄)·
    archived-link(보관한 같은 이름 현장을 '있는 현장'으로 봄 — 안내가 사라지고 반영하면 보관 현장에 이어진다)는 ①, create-before-snapshot(안전판 전에 만듦)은 ②,
    similar-create(비슷한 이름도 만듦)·addr-existing(있던 현장의 빈 주소를 채움)·access-addr(출입 번호 위치도 주소로)·link-addr(링크 위치도 주소로)는 ③,
-   no-dead-stop(막힌 줄뿐이어도 안전판을 만들고 지나감)은 ④ 에서 실패해야 한다. */
+   no-dead-stop(막힌 줄뿐이어도 안전판을 만들고 지나감)은 ④ 에서 실패해야 한다.
+   통합 검토(11/15) — 새 현장 주소는 동·호수를 떼고 적는다(현장 = 단지, 세대는 일정마다 장소로 — 같은 단지 다른 세대 일정의 팀 글 '주소:'·팀 지시 unit 이 첫 세대로 나가던 것) ·
+   만든 현장의 다음 일정은 제안 이름이 그 현장과 똑같으면 그 현장으로 미리 골라짐 · 띄어쓰기만 다른 새 이름은 미리보기에서 '위 줄의 새 현장과 비슷해요'.
+   변이 addr-unit(동·호수째 적음)·no-exact-site(다음 일정을 안 고름)는 ②, no-ghost(앞 줄 새 이름을 안 봄)는 ⑤ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -31,9 +34,12 @@ const MUT = {
   'similar-create': ["  return {to:'',fresh:false,why:c.why==='exists'?'archived':c.why,similar:c.similar||[]};\n", "  if(c.why==='similar')return {to:c.name,fresh:true,why:'',similar:[]};\n  return {to:'',fresh:false,why:c.why==='exists'?'archived':c.why,similar:c.similar||[]};\n"],
   'archived-link': ["  if(c.why==='exists'&&(state.projects||[]).some(p=>p&&p.name===c.name&&!p.archived))return {to:c.name,fresh:false,why:'exists',similar:[]};\n  return {to:'',fresh:false,", "  if(c.why==='exists')return {to:c.name,fresh:false,why:'exists',similar:[]};\n  return {to:'',fresh:false,"],
   'addr-existing': ['    if(made.has(t.to)){const p=state.projects.find(q=>q&&q.name===t.to),ad=', '    if(true){const p=state.projects.find(q=>q&&q.name===t.to),ad='],
-  'access-addr': ["const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}", "const t=hjStmtCell(loc).slice(0,120);return t&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}"],
-  'link-addr': ["const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}", "const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)?t:'';}"],
+  'access-addr': ["const t=hjAddrNoUnit(hjStmtCell(loc)).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}", "const t=hjAddrNoUnit(hjStmtCell(loc)).slice(0,120);return t&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}"],
+  'link-addr': ["const t=hjAddrNoUnit(hjStmtCell(loc)).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}", "const t=hjAddrNoUnit(hjStmtCell(loc)).slice(0,120);return t&&!hjLooksLikeAccessCode(t)?t:'';}"],
   'no-dead-stop': ["  if(sel.every(x=>wantsNew(x)&&!hjNewSiteTarget(hjNewSiteChoice(x.project)).to))throw new Error(", "  if(false)throw new Error("],
+  'addr-unit': ['const t=hjAddrNoUnit(hjStmtCell(loc)).slice(0,120);', 'const t=hjStmtCell(loc).slice(0,120);'],
+  'no-exact-site': ["    if(!project){let s0='';try{s0=hjNewSiteName(base.title)||hjNewSiteName(base.location,{addr:true});}catch(e){}if(s0&&live.includes(s0))project=s0;}\n", ''],
+  'no-ghost': ['if(t2&&!t2.to){x.t=Object.assign({},t2,{ghost:true});return;}', ''],
   'create-before-snapshot': ["  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}\n", "  sel.forEach(x=>{if(wantsNew(x)){const t=hjNewSiteTarget(hjNewSiteChoice(x.project));if(t.fresh)ensureProjectExists(t.to);}});\n  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}\n"]
 };
 let html = process.env.HJ_V601_BASELINE ? execFileSync('git', ['show', process.env.HJ_V601_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
@@ -170,14 +176,14 @@ const SEED = () => {
       const v = await page.evaluate(() => { const box = document.getElementById('csBody');
         return [0, 1, 2, 3].map(i => { const nb = box.querySelector('.csNewBox[data-i="' + i + '"]'); return [nb.getClientRects().length > 0, nb.querySelector('.csNew').value, nb.querySelector('.csNewMsg').dataset.state, nb.querySelector('.csNewAddr').textContent]; }); });
       assert.deepEqual(v, [
-        [true, '모란아파트', 'new', '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 303동 704호'],
-        [true, '모란아파트', 'join', '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 303동 704호'],
+        [true, '모란아파트', 'new', '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 (동·호수는 떼고 — 세대는 일정마다 장소로 남아요)'],
+        [true, '모란아파트', 'join', '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 (동·호수는 떼고 — 세대는 일정마다 장소로 남아요)'],
         [true, '달빛동 주택', 'new', '📍 현장 주소로 저장: 시험시 달빛동 55-3'],
         [true, '한빛상가 2층', 'new', '구글 위치가 없어 현장 주소는 비워 둡니다']], '고르면 이름 칸·무엇이 되는지·적을 주소 — ' + JSON.stringify(v));
       // 첫 줄의 체크를 풀면 둘째 줄이 만드는 줄이 된다(주소도 둘째 줄 위치) — 체크 안 한 줄은 '체크해야 반영'
       await page.uncheck('#csBody .csChk[data-i="0"]');
       const u = await page.evaluate(() => [0, 1].map(i => { const nb = document.querySelector('#csBody .csNewBox[data-i="' + i + '"]'), msg = nb.querySelector('.csNewMsg'); return [msg.dataset.state, msg.textContent.includes('체크해야 반영'), nb.querySelector('.csNewAddr').textContent]; }));
-      assert.deepEqual(u, [['new', true, '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 303동 704호'], ['new', false, '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 101동 202호']], '체크를 풀면 다음 줄이 만드는 줄 — ' + JSON.stringify(u));
+      assert.deepEqual(u, [['new', true, '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 (동·호수는 떼고 — 세대는 일정마다 장소로 남아요)'], ['new', false, '📍 현장 주소로 저장: 시험시 새벽로 12 모란아파트 (동·호수는 떼고 — 세대는 일정마다 장소로 남아요)']], '체크를 풀면 다음 줄이 만드는 줄 — ' + JSON.stringify(u));
       await page.check('#csBody .csChk[data-i="0"]');
       await page.click('#csApply');
       await page.waitForSelector('#modalRoot #hjCalSyncDone');
@@ -187,12 +193,21 @@ const SEED = () => {
           sch: state.schedule.map(s => [s.date, s.time, s.title, s.project]).sort((a, b) => (a[0] + a[1] + a[3]).localeCompare(b[0] + b[1] + b[3])) };
         closeModal(true);
         out.wo = hjWoDaySchedules('2026-11-13').map(s => [s.time, s.project]); out.place = hjPlaceSchedNames('2026-11-13');
+        // 같은 단지의 두 세대 — 팀 글 '주소:'·팀 지시 세대는 일정마다 제 장소의 동·호수(현장 주소에는 세대가 없다)
+        const at = t => state.schedule.find(s => s.time === t && s.project === '모란아파트'), bd = hjWoBuildDay('2026-11-13'), unitOf = t => ((bd.packet.orders.find(o => o.startTime === t) || {}).project || {}).unit || '';
+        out.unit = [[hjSchShareAddr(at('09:00')), unitOf('09:00')], [hjSchShareAddr(at('13:00')), unitOf('13:00')]];
+        // 그 현장의 다음 일감(같은 단지 다른 세대) — 제안 이름이 만든 현장과 같아 그 현장으로 미리 골라짐(새 현장 줄 아님)
+        const N = hjCalSyncPlan(hjCalApiEvents([{ kind: 'calendar#event', id: 'n1', iCalUID: 'n1@google.com', status: 'confirmed', summary: '@누수 점검', location: '시험시 새벽로 12 모란아파트 808동 1502호',
+          start: { dateTime: '2026-11-20T10:00:00+09:00' }, end: { dateTime: '2026-11-20T11:00:00+09:00' }, eventType: 'default' }]));
+        out.next = N.rows.map(x => [x.status, x.project, x.siteNew, x.check]);
         const P2 = hjCalSyncPlan(hjCalApiEvents(items)); out.again = [P2.rows.length, P2.stats.same];
         return out;
       }, APPLY);
       assert.deepEqual(r.snaps, [['구글 캘린더 맞추기 전', 3]], '안전판 1회 — 그때는 아직 현장 3곳(만들기는 안전판 뒤) — ' + JSON.stringify(r.snaps));
       assert.deepEqual(r.proj, [['가온아파트', 2, '시험시 가온로 1', false, '-', '-'], ['나래마을아파트', 2, '', false, '-', '-'], ['옛빌라', 3, '시험시 옛길 3', true, '-', '-'],
-        ['모란아파트', 0, LOC_M1, false, '-', '-'], ['달빛동 주택', 0, LOC_D, false, '-', '-'], ['한빛상가 2층', 0, '', false, '-', '-']], '현장 셋만 새로(같은 이름 두 줄 = 하나) · 단계 0 · 주소 = 구글 위치 · 유형·세대 없음 · 있던 현장 그대로 — ' + JSON.stringify(r.proj));
+        ['모란아파트', 0, '시험시 새벽로 12 모란아파트', false, '-', '-'], ['달빛동 주택', 0, LOC_D, false, '-', '-'], ['한빛상가 2층', 0, '', false, '-', '-']], '현장 셋만 새로(같은 이름 두 줄 = 하나) · 단계 0 · 주소 = 구글 위치(동·호수는 뗌 — 번지는 남김) · 유형·세대 없음 · 있던 현장 그대로 — ' + JSON.stringify(r.proj));
+      assert.deepEqual(r.unit, [[LOC_M1, '303동 704호'], [LOC_M2, '101동 202호']], '두 세대 — 팀 글 주소·팀 지시 세대는 일정마다 제 장소 — ' + JSON.stringify(r.unit));
+      assert.deepEqual(r.next, [['new', '모란아파트', false, true]], '만든 현장의 다음 일감은 그 현장으로 미리 골라짐 — ' + JSON.stringify(r.next));
       assert.deepEqual(r.sch, [['2026-11-13', '09:00', '우수관 1개', '모란아파트'], ['2026-11-13', '13:00', '우수관 1개', '모란아파트'], ['2026-11-13', '15:00', '누수 탐지', '달빛동 주택'], ['2026-11-14', '15:00', '자재 사러 가기', '한빛상가 2층'], ['2026-11-16', '09:00', '도배', '가온아파트']], '일정마다 제 현장 — ' + JSON.stringify(r.sch));
       assert.ok(r.newsite.includes('새 현장 3곳') && r.newsite.includes('모란아파트') && r.newsite.includes('달빛동 주택') && r.newsite.includes('한빛상가 2층') && !r.blocked, '결과 창에 새 현장 — ' + r.newsite);
       assert.ok(r.toast.includes('추가 5') && r.toast.includes('새 현장 3곳'), '토스트 — ' + r.toast);
@@ -273,6 +288,10 @@ const SEED = () => {
       await m.page.click('#csBody .csNew[data-i="1"]'); await m.page.keyboard.press('Control+A'); await m.page.keyboard.type('나래마을 아파트');
       const mid = await m.page.evaluate(() => { const nb = document.querySelector('#csBody .csNewBox[data-i="1"]'), msg = nb.querySelector('.csNewMsg'); return [msg.dataset.state, msg.textContent, nb.querySelector('.csNew').getAttribute('aria-invalid'), nb.querySelector('.csNewAddr').getClientRects().length]; });
       assert.ok(mid[0] === 'similar' && mid[1].includes('비슷한 현장: 나래마을아파트') && mid[1].includes('이 줄은 넣지 않아요') && mid[2] === 'true' && mid[3] === 0, '비슷한 이름 — 줄 아래 안내 — ' + JSON.stringify(mid));
+      // 위 줄이 만들 새 이름과 띄어쓰기만 다른 이름 — 반영 때 막힐 줄을 미리보기에서 바로 알린다(예전엔 '새 현장을 만들어 잇습니다'로 보였다)
+      await m.page.keyboard.press('Control+A'); await m.page.keyboard.type('모란 아파트');
+      const gh = await m.page.evaluate(() => { const msg = document.querySelector('#csBody .csNewBox[data-i="1"] .csNewMsg'); return [msg.dataset.state, msg.textContent]; });
+      assert.ok(gh[0] === 'similar' && gh[1].includes('위 줄의 새 현장 ‘모란아파트’와 비슷해요') && gh[1].includes('이 줄은 넣지 않아요'), '위 줄 새 이름과 비슷 — ' + JSON.stringify(gh));
       await m.page.keyboard.press('Control+A'); await m.page.keyboard.type('달빛동 단독주택');
       const v = await m.page.evaluate(() => { const root = document.querySelector('#modalRoot .modal');
         const small = [...root.querySelectorAll('#hjCalSync button,#hjCalSync select,#hjCalSync label,#hjCalSync input.csNew,.mfoot button')].filter(b => b.getClientRects().length).map(b => [b.tagName, Math.round(b.getBoundingClientRect().height * 10) / 10]).filter(x => x[1] < 43.9);
@@ -280,7 +299,7 @@ const SEED = () => {
         return { st: [...root.querySelectorAll('.csNewMsg')].map(x => x.dataset.state), addr: [...root.querySelectorAll('.csNewAddr')].map(x => x.textContent), vis: [...root.querySelectorAll('.csNewBox')].map(x => x.getClientRects().length > 0),
           fonts: [...root.querySelectorAll('#csBody select,#csBody input.csNew')].map(s => parseFloat(getComputedStyle(s).fontSize)), small, wide, over: document.documentElement.scrollWidth - innerWidth, chk: [...root.querySelectorAll('.csChk')].map(c => c.checked) }; });
       assert.deepEqual([v.st, v.vis, v.chk], [['new', 'new'], [true, true], [true, true]], '두 줄 다 새 현장(체크는 예전 그대로) — ' + JSON.stringify(v));
-      assert.deepEqual(v.addr, ['📍 현장 주소로 저장: 새벽로 12 모란아파트 303동 704호', '📍 현장 주소로 저장: 시험시 달빛동 55-3'], '적을 주소가 줄에 보임 — ' + JSON.stringify(v.addr));
+      assert.deepEqual(v.addr, ['📍 현장 주소로 저장: 새벽로 12 모란아파트 (동·호수는 떼고 — 세대는 일정마다 장소로 남아요)', '📍 현장 주소로 저장: 시험시 달빛동 55-3'], '적을 주소가 줄에 보임(동·호수는 뗌) — ' + JSON.stringify(v.addr));
       assert.ok(v.wide === 0 && v.over <= 1 && v.fonts.length === 4 && v.fonts.every(f => f >= 16), '넘침 없음 · 고르기·이름 칸 16px — ' + JSON.stringify([v.wide, v.over, v.fonts]));
       assert.deepEqual(v.small, [], '44px 미만 — ' + JSON.stringify(v.small));
       await m.page.click('#csApply');
@@ -289,7 +308,7 @@ const SEED = () => {
         const o = { newsite: el.querySelector('[data-csd-newsite]').textContent, wide, over: document.documentElement.scrollWidth - innerWidth, snaps: window.__snaps,
           proj: state.projects.slice(3).map(p => [p.name, p.customer.addr, p.stage]), sch: state.schedule.map(s => [s.time, s.project]).sort() }; closeModal(true); return o; });
       assert.ok(done.newsite.includes('새 현장 2곳') && done.newsite.includes('모란아파트') && done.newsite.includes('달빛동 단독주택') && done.wide === 0 && done.over <= 1, '결과 창 — ' + JSON.stringify(done));
-      assert.deepEqual([done.proj, done.sch, done.snaps], [[['모란아파트', '새벽로 12 모란아파트 303동 704호', 0], ['달빛동 단독주택', '시험시 달빛동 55-3', 0]], [['09:00', '모란아파트'], ['14:00', '달빛동 단독주택']], [['구글 캘린더 맞추기 전', 3]]], '고친 이름으로 만들고 이음 · 안전판 1회 — ' + JSON.stringify(done));
+      assert.deepEqual([done.proj, done.sch, done.snaps], [[['모란아파트', '새벽로 12 모란아파트', 0], ['달빛동 단독주택', '시험시 달빛동 55-3', 0]], [['09:00', '모란아파트'], ['14:00', '달빛동 단독주택']], [['구글 캘린더 맞추기 전', 3]]], '고친 이름으로 만들고 이음 · 안전판 1회 — ' + JSON.stringify(done));
       await m.context.close();
       if (!html) {
         const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), vs = fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8');

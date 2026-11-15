@@ -14,7 +14,7 @@
    ⑤ 🧹 창 — 하루에 처음 간 두 곳은 두 줄(자리별) · 그 줄에만 '＋ 새 현장'(고르지 않은 채) · 적용: 안전판 1회·그 줄 사진만·다른 자리는 그대로 ·
       자동 실행·AI 도구는 현장을 만들지 않고 일치 묶음만 · 도구 결과에 주소 없음 (ORG)
    ⑥ 폰 390 — 두 창 모두 이름 칸이 열려도 가로 넘침 없음 · 이름 칸 44px·16px · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
-   HJ_V603_BASELINE=<commit> 과 HJ_V603_MUTATION=preselect-new(새 현장을 미리 고름)·generic-folder(흔한 폴더 이름도 제안)는 ①, no-block(막힌 줄이 있어도 나머지를 배정)은 ③,
+   HJ_V603_BASELINE=<commit> 과 HJ_V603_MUTATION=preselect-new(새 현장을 미리 고름)·generic-folder(흔한 폴더 이름도 제안)·hold-folder('확인필요' 폴더를 현장 이름으로)·folder-token(단지 토막만 같은 폴더를 참고로)은 ①, no-block(막힌 줄이 있어도 나머지를 배정)은 ③,
    no-recheck(안전판 뒤에 이름을 다시 안 봄)는 ④, day-merge(자리별로 안 나눔)는 ⑤ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -33,7 +33,9 @@ const MUT = {
   'generic-folder': ['||HJ_PHOTO_DIR_GENERIC.has(n.toLowerCase())', ''],
   'no-block': ["  if(blocked){hjPhotoNewFocus(blocked);toast('새 현장 이름을 확인해 주세요 — 비슷한 현장이 있거나 이름이 짧아 만들지 않았어요(배정도 하지 않음)');return 0;}\n", ''],
   'no-recheck': ["      if(!t.to){late++;t.similar.forEach(x=>{if(!lateSim.includes(x))lateSim.push(x);});return;}\n      to=t.to;\n      if(t.fresh&&ensureProjectExists(to)){made.push(to);names.add(to);}\n", "      if(ensureProjectExists(to)){made.push(to);names.add(to);}\n"],
-  'day-merge': [",(j.k==='none'&&j.ll)?spotOf(day,f):''].join('|');", "].join('|');"]
+  'day-merge': [",(j.k==='none'&&j.ll)?spotOf(day,f):''].join('|');", "].join('|');"],
+  'hold-folder': ["'확인필요','확인 필요',", ''],
+  'folder-token': ["(p.name===folder||p.name===bare||(key&&hjNormName(p.name)===key))", "(p.name===folder||p.name===site||(key&&hjNormName(p.name)===key))"]
 };
 let html = process.env.HJ_V603_BASELINE ? execFileSync('git', ['show', process.env.HJ_V603_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V603_MUTATION) {
@@ -183,6 +185,20 @@ const orgRows = page => page.evaluate(() => {
       assert.deepEqual([data['g1,g2'].why, data['g1,g2'].sure, data['g1,g2'].nw], ['gps', true, null], '확실한 줄은 새 현장 단서를 보지 않는다 ' + JSON.stringify(data['g1,g2']));
       assert.deepEqual([data.s1.why, data.s1.to, nw('s1')], ['schedule', '나래빌라', ['', '', '', '']], '그날 일정 참고는 그대로 ' + JSON.stringify(data.s1));
       assert.deepEqual(await page.evaluate(() => PHOTO_SUGGEST_SURE.slice()), ['gps', 'revisit', 'partial'], '폴더 참고는 일괄 배정(확실)에 안 들어간다');
+      // 통합 검토(11/15) — 🧰 '톡방·구글 포토 → 현장사진' 명령(v604)이 못 정한 사진을 두는 폴더·작업 자리 폴더는 단서가 아니다 ·
+      //   폴더에서 뽑은 단지 토막만 같은 폴더('한빛아파트 상가')는 그 현장 참고가 아니다(동·호수·주소만 뗀 이름이 같을 때만 — '가온아파트 101동')
+      const fold = await page.evaluate(() => {
+        const keep = state.projects; state.projects = keep.concat([{ name: '한빛아파트', stage: 1 }]);
+        const h = d => { const x = hjPhotoNewHint([{ id: 'zz', prefix: '현장사진/' + d + '/', name: 'z.jpg' }]); return [x.folder, x.exist, x.name, x.src]; };
+        const cmd = (cwDefaultsV529().find(c => c.id === 'cw_sitesort') || {}).prompt || '';
+        const dirs = [...new Set([...cmd.matchAll(/현장사진\/([^/\s<>]+)\//g)].map(m => m[1]))];
+        const out = { hold: h('확인필요'), bath: h('욕실'), store: h('한빛아파트 상가'), unit: h('가온아파트 101동'), dirs, dirOut: dirs.map(d => hjPhotoSiteDir({ prefix: '현장사진/' + d + '/' })) };
+        state.projects = keep; return out;
+      });
+      assert.deepEqual([fold.hold, fold.bath], [['', '', '', ''], ['', '', '', '']], '확인필요·욕실 폴더는 새 현장 제안이 아니다 ' + JSON.stringify(fold));
+      assert.deepEqual([fold.store[1], fold.store[2]], ['', ''], '단지 상가 폴더는 그 단지 현장 참고가 아니다(이름 입력만) ' + JSON.stringify(fold.store));
+      assert.deepEqual(fold.unit.slice(0, 2), ['가온아파트 101동', '가온아파트'], '동·호수만 붙은 폴더는 그 현장 참고 ' + JSON.stringify(fold.unit));
+      assert.ok(fold.dirs.includes('확인필요') && fold.dirOut.every(x => x === ''), '명령에 적힌 폴더 이름은 현장 이름 단서가 아니다 ' + JSON.stringify([fold.dirs, fold.dirOut]));
       await openPsr(page);
       const v = await view(page);
       assert.equal(Object.keys(v).length, 11, '묶음 11 ' + JSON.stringify(Object.keys(v)));

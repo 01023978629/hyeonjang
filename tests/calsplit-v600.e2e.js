@@ -8,11 +8,17 @@
       한 줄만 남아도·앱에서 시각을 고쳐도 시각이 같은 기록과 짝 (TEXT)
    ⑤ 이어지는 날·날짜 옮김 — 여러 날 공정의 이어지는 날에 같은 제목이 둘이면 한 칸만 이어지는 날 · uid 로 옮겨 온 일정 옆의 새 일정도 따로 · 계획은 읽기만 (CONT-MOVE)
    ⑥ 폰 390 — 붙여 넣기 → 미리보기 3줄(각자 위치·'같은 날 같은 제목 3건')·안내 → 반영(안전판 1회) · 넘침 없음·44px · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
+   ⑦ 통합 검토(11/15) 위치로 가리기 — 화면 글로 넣은 기록(합성 uid)은 다시 읽을 때 위치가 유일한 단서: 시각만 바뀐 줄·지워진 줄이 다른 현장 기록을 잡지 않음(기록 차례가
+      뒤집혀도) · 먼저 넣은 현장 뒤에 늘어난 같은 시각 줄은 새 일정 · 위치가 같은 기록 먼저(시각만 같은 위치 없는 기록보다) · 사본은 제 일정의 칸 · 이어지는 날은 그 공정에
+      맞는 칸 · 사본만 있는 앱 일정은 '앱에만'이 아님 · 줄에 어느 현장 일정인지 · 위치가 없는 기록은 예전처럼 시각이 단서 (LOC)
    HJ_V600_BASELINE=<commit> 와 HJ_V600_MUTATION=no-split(칸을 안 나눔)은 ①, copy-own-slot(사본도 제 칸)·split-same-time(같은 시각·같은 위치도 나눔)·
    no-shared-tag(태그 shared 를 안 봄)는 ②, no-appid-attach(사본을 가리키는 일정의 칸에 안 붙임)·no-day-key(태그의 이어지는 날 꼬리 '-dN' 을 안 뗌)는 ③,
-   no-time-pref(칸마다 시각이 같은 앱 일정을 먼저 짝 짓지 않음)·no-time-tie(한 칸일 때 시각이 같은 앱 일정을 먼저 고르지 않음)·synth-uid-same(합성 uid 가 칸마다 같음)·
-   loc-dedupe(위치만 다른 줄을 똑같은 줄로 버림)는 ④,
-   cont-all(이어지는 날이 칸을 다 삼킴)은 ⑤ 에서 실패해야 한다. */
+   synth-uid-same(합성 uid 가 칸마다 같음)·loc-dedupe(위치만 다른 줄을 똑같은 줄로 버림)는 ④,
+   no-time-pref(칸마다 시각이 같은 앱 일정을 먼저 짝 짓지 않음)·no-time-tie(한 칸일 때 시각이 같은 앱 일정을 먼저 고르지 않음)는 ⑦ 의 위치 없는 기록에서(위치가 있는 기록은
+   통합 검토 뒤 위치가 먼저 가린다 — ④ 에서는 더 안 걸린다),
+   cont-all(이어지는 날이 칸을 다 삼킴)은 ⑤, no-who(줄에 현장을 안 적음)는 ④,
+   loc-blind(기록 위치를 안 봄)·no-loc-pass(위치가 같은 기록 먼저를 뺌)·no-loc-tie(한 칸일 때 위치가 같은 기록 먼저를 뺌)·copy-loc-attach(사본을 제 일정 위치의 칸에 안 붙임)·
+   cont-first-come(이어지는 날을 읽은 차례로)·copied-apponly(사본만 있는 일정을 앱에만으로)는 ⑦ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -29,13 +35,20 @@ const MUT = {
   'copy-own-slot': ["const copy=x=>!!x.copy||x.mark==='app'||String(x.memo||'').includes(HJ_CALSYNC_COPY_NOTE),tm=", 'const copy=x=>false,tm='],
   'split-same-time': ['||slots.find(y=>y.time===tm(x)&&(!l||!y.loc||y.loc===l));', '||slots.find(y=>false);'],
   'no-shared-tag': ['||!!(xp&&xp.shared&&xp.shared.hjKey)||', '||'],
-  'no-appid-attach': ['at.set(x,(au&&slots.find(y=>y.uids.has(au)))||slots.find(', 'at.set(x,slots.find('],
+  'no-appid-attach': ['at.set(x,(au&&slots.find(y=>y.uids.has(au)))||(al&&slots.find(y=>y.loc===al))||(lc(x)&&slots.find(y=>y.time===tm(x)&&y.loc===lc(x)))||slots.find(', 'at.set(x,slots.find('],
   'no-day-key': ["||apps.find(a=>String(a.s.id)===k.replace(HJ_CALSYNC_COPY_DAY_RE,''))||null", '||null'],
   'no-time-pref': ['    if(g.sibs>1)timePair(g);\n', ''],
   'no-time-tie': ["||(String(y.s.time||'')===String(rep.time||'')?1:0)-(String(x.s.time||'')===String(rep.time||'')?1:0))[0];", ')[0];'],
   'synth-uid-same': ["let u=taken.has(b)?t:b;for(let n=2;taken.has(u);n++)u=t+'#'+n;taken.add(u);return u;", 'return b;'],
   'loc-dedupe': ["+'|'+to+'|'+(lm?lm[1].trim():'');if(seen.has(k))return;", "+'|'+to;if(seen.has(k))return;"],
-  'cont-all': ['    if(hit&&contFull(g))hit=false;\n', '']
+  'cont-all': ['    if(hit&&contFull(g))hit=false;\n', ''],
+  'no-who': ["if(!twins)return '';", "return '';"],
+  'loc-blind': ['const locA=a=>a._loc!==undefined?a._loc:(a._loc=hjCalSyncKey(hjSchPlaceOf(a.s)));', "const locA=a=>'';"],
+  'no-loc-pass': ['if(y._pair||!y._base||!y._loc)return;', 'return;'],
+  'no-loc-tie': ['||(g._loc&&locA(y)===g._loc?1:0)-(g._loc&&locA(x)===g._loc?1:0)', ''],
+  'copy-loc-attach': ['||(al&&slots.find(y=>y.loc===al))||', '||'],
+  'cont-first-come': ['    if(hit&&g.sibs>1&&contBetter(g))return false;', ''],
+  'copied-apponly': ['if(!a.used&&copied.has(a)&&a.s.date>=a0&&a.s.date<=hi){a.used=true;stats.same++;return;}', '']
 };
 let html = process.env.HJ_V600_BASELINE ? execFileSync('git', ['show', process.env.HJ_V600_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V600_MUTATION) {
@@ -218,7 +231,7 @@ const SEED = sched => {
       assert.deepEqual(r.again, [[], 5], '다시 읽으면 바꿀 것 없음 — ' + JSON.stringify(r.again));
       assert.deepEqual(r.reversed, [[], 5], '기록 차례가 뒤집혀도 시각이 같은 기록과 짝(시간 다름 줄 없음) — ' + JSON.stringify(r.reversed));
       assert.deepEqual(r.one, [['apponly', '09:00', false]], '한 줄만 남아도 시각이 같은 기록과 짝 — ' + JSON.stringify(r.one));
-      assert.deepEqual(r.edited, [['time', '11/13(금) 09:00 우수관 1개 — 시간 10:00 → 09:00']], '시각을 고친 기록이 다른 칸의 기록을 가로채지 않음 — ' + JSON.stringify(r.edited));
+      assert.deepEqual(r.edited, [['time', '11/13(금) 09:00 우수관 1개 [현장 없음 · 새벽로 12 모란아파트 303동 704호] — 시간 10:00 → 09:00']], '시각을 고친 기록이 다른 칸의 기록을 가로채지 않음 · 같은 날 같은 제목이 여럿이라 어느 기록인지 줄에 적음 — ' + JSON.stringify(r.edited));
       assert.deepEqual(r.more, [['new', '17:00', '우수관 1개', 3]], '나중에 늘어난 한 줄만 새 일정 — ' + JSON.stringify(r.more));
       assert.deepEqual([r.uids3, r.again3], [['gcal:2026-11-13|우수관1개', 'gcal:2026-11-13|우수관1개|14:00', 'gcal:2026-11-13|우수관1개|17:00'], 0], '세 기록의 합성 uid 가 다 다름 · 다시 읽으면 0줄 — ' + JSON.stringify([r.uids3, r.again3]));
     });
@@ -233,6 +246,69 @@ const SEED = sched => {
         ['new', '2026-11-20', '15:00', '배관 점검', true, '', LOC_B],
         ['move', '2026-11-20', '10:00', '배관 점검', true, 'U', LOC_A]], '이어지는 날은 한 칸만 · 옮겨 온 일정과 새 일정은 따로 — ' + JSON.stringify(r.rows));
       assert.deepEqual([r.st.same, r.st.cont, r.st.gdup, r.readonly], [3, 2, 0, true], '이미 같음 3(시작·이어지는 날 2) · 계획은 읽기만 — ' + JSON.stringify(r.st));
+    });
+
+    await test('⑦ 위치로 가리기 — 시각만 바뀐 줄·지워진 줄·나중에 늘어난 같은 시각 줄이 다른 현장 기록을 잡지 않음(기록 차례가 뒤집혀도) · 위치가 같은 기록 먼저 · 사본은 제 일정의 칸 · 이어지는 날은 맞는 칸 · 사본만 있는 일정은 앱에만이 아님 (LOC)', async () => {
+      const LA = '새벽로 12 모란아파트 303동 704호', LB = '은하로 7 은하빌라 201호';
+      const line = (t, loc, ttl) => t + ', ' + (ttl || '@우수관 1개') + ', 홍길동, ' + (loc ? '위치: ' + loc : '위치 없음') + ', 2026년 11월 13일';
+      const ALL = '종일', T9 = '오전 9시~오전 11시', T14 = '오후 2시~오후 3시', T14b = '오후 2시~오후 4시';
+      const rowsOf = 'x => [x.status, x.app ? x.app.id : \'\', x.location || \'\', x.check]';
+      // (가) 종일 두 줄을 두 현장으로 넣은 뒤 — 구글에서 모란 일정만 14시로 / 모란 일정이 지워짐. 기록 차례를 뒤집어도 같은 답
+      await page.evaluate(SEED, []);
+      const a = await page.evaluate(async ({ two, moved, onlyB, rowsOf }) => {
+        const map = eval(rowsOf), plan = t => hjCalSyncPlan(hjCalSyncParse(t)), P = plan(two);
+        await hjCalSyncApply(P, P.rows.map((x, i) => ({ i, project: x.location.includes('모란') ? '모란아파트' : '나래마을아파트' })));
+        const ids = {}; state.schedule.forEach(s => { ids[s.project] = s.id; });
+        const out = { ids, moved: [], onlyB: [] };
+        for (const rev of [false, true]) { if (rev) state.schedule.reverse(); out.moved.push(plan(moved).rows.map(map)); out.onlyB.push(plan(onlyB).rows.map(map)); }
+        state.schedule.reverse(); out.text = plan(moved).rows.map(hjCalSyncRowText);
+        return out;
+      }, { two: [line(ALL, LA), line(ALL, LB)].join('\n'), moved: [line(T14, LA), line(ALL, LB)].join('\n'), onlyB: line(ALL, LB), rowsOf });
+      const RA = a.ids['모란아파트'];
+      assert.ok(RA && a.ids['나래마을아파트'] && RA !== a.ids['나래마을아파트'], '두 현장 기록 — ' + JSON.stringify(a.ids));
+      assert.deepEqual(a.moved, [[['time', RA, LA, true]], [['time', RA, LA, true]]], '시각만 바뀐 모란 줄은 모란 기록의 시간 다름(차례가 뒤집혀도) — ' + JSON.stringify(a.moved));
+      assert.deepEqual(a.onlyB, [[['apponly', RA, '', false]], [['apponly', RA, '', false]]], '구글에서 지워진 것은 모란 기록(은하 줄이 남의 기록을 잡지 않음) — ' + JSON.stringify(a.onlyB));
+      assert.deepEqual(a.text, ['11/13(금) 14:00 우수관 1개 [모란아파트 · 새벽로 12 모란아파트 303동 704호] — 시간 종일 → 14:00'], '줄에 어느 현장 일정인지 — ' + JSON.stringify(a.text));
+      // (나) 은하를 먼저 넣고 나중에 같은 시각의 모란 줄이 앞에 늘어남 — 모란 줄이 새 일정(은하 기록을 '이미 같음'으로 잡지 않음)
+      await page.evaluate(SEED, []);
+      const c = await page.evaluate(async ({ onlyB, two }) => {
+        const P = hjCalSyncPlan(hjCalSyncParse(onlyB)); await hjCalSyncApply(P, P.rows.map((x, i) => ({ i, project: '나래마을아파트' })));
+        const Q = hjCalSyncPlan(hjCalSyncParse(two)); return { rows: Q.rows.map(x => [x.status, x.location, x.check]), proj: Q.rows.map(x => x.project), same: Q.stats.same };
+      }, { onlyB: line(ALL, LB), two: [line(ALL, LA), line(ALL, LB)].join('\n') });
+      assert.deepEqual([c.rows, c.same], [[['new', LA, true]], 1], '늘어난 모란 줄만 새 일정 · 은하는 이미 같음 — ' + JSON.stringify(c));
+      assert.ok(!c.proj.includes('나래마을아파트'), '새 일정 줄이 은하 기록의 현장으로 미리 골라지지 않음 — ' + JSON.stringify(c.proj));
+      // (다) 위치가 같은 기록 먼저 — 모란 기록(장소 있음·09:00)과 위치 없는 앱 일정(14:00). 구글: 모란 14시·은하 14시 — 모란 줄이 위치 없는 14시 기록을 시각만 보고 잡지 않음
+      await page.evaluate(SEED, [{ id: 'RA', date: '2026-11-13', time: '09:00', title: '우수관 1개', project: '모란아파트', hours: 1, memo: '장소: ' + LA, icsUid: 'gcal:2026-11-13|우수관1개' },
+        { id: 'RB', date: '2026-11-13', time: '14:00', title: '우수관 1개', project: '나래마을아파트', hours: 2 }]);
+      const p = await page.evaluate(({ t, rowsOf }) => { const Q = hjCalSyncPlan(hjCalSyncParse(t)); return { rows: Q.rows.map(eval(rowsOf)), same: Q.stats.same }; },
+        { t: [line(T14, LA), line(T14b, LB)].join('\n'), rowsOf });
+      assert.deepEqual([p.rows, p.same], [[['time', 'RA', LA, true]], 1], '모란 줄은 모란 기록의 시간 다름 · 은하 줄은 위치 없는 14시 기록과 같음 — ' + JSON.stringify(p));
+      // (라) 사본(화면 글 — 태그 없음, 위치는 현장 주소)은 '[현장]' 기록의 장소와 같은 칸에 — 은하 줄이 앞이어도 은하 칸이 사본의 현장으로 미리 골라지지 않음
+      await page.evaluate(SEED, []);
+      const e = await page.evaluate(async ({ one, three }) => {
+        const P = hjCalSyncPlan(hjCalSyncParse(one)); await hjCalSyncApply(P, P.rows.map((x, i) => ({ i, project: '모란아파트' })));
+        const Q = hjCalSyncPlan(hjCalSyncParse(three)); return { rows: Q.rows.map(x => [x.status, x.location, x.project, x.check]), same: Q.stats.same };
+      }, { one: line(T9, LA), three: [line(T9, LB), line(T9, LA), line(T9, '시험시 새벽로 12', '[모란아파트] 우수관 1개')].join('\n') });
+      assert.deepEqual([e.rows, e.same], [[['new', LB, '', true]], 1], '모란 사본은 모란 칸에 · 은하 줄은 현장 없이 새 일정 — ' + JSON.stringify(e));
+      // (마) 이어지는 날 — 3일 공정(09:00)의 둘째 날에 다른 현장의 같은 이름 일정이 더 이른 시각(08:00)으로 먼저 읽혀도 공정 자신의 09:00 칸이 이어지는 날
+      await page.evaluate(SEED, [{ id: 'M', date: '2026-11-16', time: '09:00', title: '타일', project: '가온아파트', hours: 8, memo: '2026-11-16~2026-11-18 (3일)', icsUid: 'm@google.com' }]);
+      const f = await page.evaluate(items => { const P = hjCalSyncPlan(hjCalApiEvents(items)); return { rows: P.rows.map(x => [x.status, x.date, x.time, x.location || '', x.check]), same: P.stats.same, cont: P.stats.cont }; },
+        [CONT[0], T('e0', '@타일', '2026-11-17', '08:00', '10:00', { location: LOC_B }), CONT[1], CONT[3]]);
+      assert.deepEqual(f, { rows: [['new', '2026-11-17', '08:00', LOC_B, true]], same: 3, cont: 2 }, '08시 다른 현장 일정은 새 일정 · 공정 자신의 09시가 이어지는 날 — ' + JSON.stringify(f));
+      // (바) 앱에서 만든 같은 제목 일정 둘(다른 현장)의 사본만 구글에 — 태그가 가리키는 두 일정 모두 이미 같음('앱에만' 줄 없음)
+      await page.evaluate(SEED, [{ id: 'a1', date: '2026-11-21', time: '09:00', title: '실리콘', project: '가온아파트', hours: 1 }, { id: 'a2', date: '2026-11-21', time: '14:00', title: '실리콘', project: '나래마을아파트', hours: 1 }]);
+      const g = await page.evaluate(items => { const P = hjCalSyncPlan(hjCalApiEvents(items)); return { rows: P.rows.map(x => [x.status, x.app ? x.app.id : '']), same: P.stats.same }; },
+        [T('c1', '[가온아파트] 실리콘', '2026-11-21', '09:00', '10:00', { description: NOTE, extendedProperties: { private: { hjKey: 'a1' } } }),
+          T('c2', '[나래마을아파트] 실리콘', '2026-11-21', '14:00', '15:00', { description: NOTE, extendedProperties: { private: { hjKey: 'a2' } } })]);
+      assert.deepEqual(g, { rows: [], same: 2 }, '사본만 있는 두 일정 모두 이미 같음 — ' + JSON.stringify(g));
+      // (사)(아) 위치가 없는 기록(구글 일정에 위치가 없었음)은 예전처럼 시각이 단서 — 앱에서 09:00 기록을 10:00 으로 고쳤고 기록 차례도 뒤집힘 / 구글에서 09:00 이 지워짐
+      const R09 = { id: 'R09', date: '2026-11-13', time: '10:00', title: '우수관 1개', hours: 2, icsUid: 'gcal:2026-11-13|우수관1개' }, R14 = { id: 'R14', date: '2026-11-13', time: '14:00', title: '우수관 1개', hours: 2, icsUid: 'gcal:2026-11-13|우수관1개|14:00' };
+      await page.evaluate(SEED, [R14, R09]);
+      const t1 = await page.evaluate(({ t, rowsOf }) => hjCalSyncPlan(hjCalSyncParse(t)).rows.map(eval(rowsOf)), { t: [line(T9, ''), line(T14b, '')].join('\n'), rowsOf });
+      assert.deepEqual(t1, [['time', 'R09', '', true]], '위치가 없으면 시각이 같은 기록 먼저 — 14시 칸은 14시 기록, 9시 칸은 고친 기록과(차례가 뒤집혀도) — ' + JSON.stringify(t1));
+      await page.evaluate(SEED, [Object.assign({}, R09, { time: '09:00' }), R14]);
+      const t2 = await page.evaluate(({ t, rowsOf }) => hjCalSyncPlan(hjCalSyncParse(t)).rows.map(eval(rowsOf)), { t: line(T14b, ''), rowsOf });
+      assert.deepEqual(t2, [['apponly', 'R09', '', false]], '한 줄만 남으면 시각이 같은 기록과 짝 · 9시 기록은 앱에만 — ' + JSON.stringify(t2));
     });
     await context.close();
 
@@ -269,7 +345,7 @@ const SEED = sched => {
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '바깥 쓰기 0');
     });
-    console.log(`calsplit-v600: ${passed}/6 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
+    console.log(`calsplit-v600: ${passed}/7 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
   } catch (error) {
     console.error('FAIL calsplit-v600 ' + (error && error.stack || error));
     process.exitCode = 1;

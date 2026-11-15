@@ -9,8 +9,13 @@
    ③ '장소: 공동현관 1234' 처럼 출입 번호면 주소로 안 씀 · 🔒 뺀 수(v577)는 그대로(꼬리표는 세지 않음) (ACCESS)
    ④ 그대로인 것 — 일정 메모·일정표 화면·🤖 칩·내 폰 캘린더(.ics)·저장본 (KEEP)
    ⑤ 꼬리표 없는 손 메모는 글자 그대로 · v577 규칙 그대로 · 여러 날 공정의 이어지는 날·🔨 다음 공정 안내의 주소 · 폰 390 넘침 없음·44px · 핀 3곳 · 페이지 오류 0 · 바깥 쓰기 0 (REGRESS)
+   통합 검토(11/15) 변이 share-unit(현장 주소의 다른 세대를 그대로 '주소:')·packet-unit-proj(팀 지시 세대를 일정 장소가 아니라 현장에서)는 ② 에서 실패해야 한다.
    HJ_V605_BASELINE=<commit> 과 HJ_V605_MUTATION=keep-tag(꼬리표를 안 뺌)·place-twice(주소로 쓴 장소를 메모에도)·place-first(현장 주소보다 장소 먼저)는 ①,
-   packet-keep-tag(팀 지시 detail 에 꼬리표)·packet-raw-addr(지시 주소에 동·호수)는 ②, access-as-addr(출입 번호 장소를 주소로)는 ③, scrub-own-ics(내 폰 캘린더까지 거름)는 ④ 에서 실패해야 한다. */
+   packet-keep-tag(팀 지시 detail 에 꼬리표)·packet-raw-addr(지시 주소에 동·호수)는 ②, access-as-addr(출입 번호 장소를 주소로)는 ③, scrub-own-ics(내 폰 캘린더까지 거름)는 ④ 에서 실패해야 한다.
+   ⑥ 통합 검토(11/15) — 현장 주소와 같은 곳인 장소(맞추기가 만든 현장: 주소 = 장소에서 동·호수를 뗀 글)는 '주소:' 줄 하나(세대까지) · 메모가 안 먹힘 · 패킷 detail 에 다시 없음 ·
+      전화가 든 장소(관리실 042·070)는 지시 주소로 안 씀 · 제목의 출입 번호는 📤 공유·.ics·작업자 캘린더·🔔 작업자 문안·🔨 다음 공정 안내·패킷 제목에서 빠지고 🔒 수에 셈 ·
+      패킷에 남으면 개인정보 검사가 막음 · '둔산1호점' 은 호수가 아님 · 메모의 그 현장 고객 번호는 팀 글에서 뺌(관리실 번호는 그대로) (REVIEW)
+   변이 share-same-place·packet-same-place·place-same-substr(낱말이 아니라 글자로 품음)·place-phone-addr·addr-ho-store·title-raw-team·packet-title-raw·title-count·no-code-check·cust-phone 는 ⑥ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -24,12 +29,24 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'keep-tag': ['if(HJ_CALSYNC_FROM_RE.test(x))return false;if(skip&&', 'if(skip&&'],
-  'place-twice': ['function hjSchMemoOut(s){return hjMemoOut(s&&s.memo,!hjSchProjAddr(s));}', 'function hjSchMemoOut(s){return hjMemoOut(s&&s.memo);}'],
-  'place-first': ['function hjSchShareAddr(s){return hjSchProjAddr(s)||hjSchPlaceOf(s);}', 'function hjSchShareAddr(s){return hjSchPlaceOf(s)||hjSchProjAddr(s);}'],
+  'place-twice': ['o=hjMemoOut(s&&s.memo,!pa||hjSchShareAddr(s)!==pa||hjSchPlaceSame(pa,hjSchPlaceOf(s)));', 'o=hjMemoOut(s&&s.memo);'],
+  'place-first': ['  return pa||pl;\n}', '  return pl||pa;\n}'],
   'packet-keep-tag': ['if(HJ_CALSYNC_FROM_RE.test(t))return true;const m=place?', 'const m=place?'],
   'packet-raw-addr': ['if(placeOk)o.project.addr=placeAddr;', 'if(placeOk)o.project.addr=rawPlace;'],
   'access-as-addr': ['  for(const x of hjMemoParts(s&&s.memo).parts){const m=HJ_SCH_PLACE_RE.exec(x);if(m)return m[1].trim();}', "  for(const x of String(s&&s.memo||'').split('\\n').map(v=>v.trim())){const m=HJ_SCH_PLACE_RE.exec(x);if(m)return m[1].trim();}"],
-  'scrub-own-ics': ["scrub(s.memo)].filter(Boolean).join(' / ')};", "hjMemoOut(scrub(s.memo)).text].filter(Boolean).join(' / ')};"]
+  'scrub-own-ics': ["scrub(s.memo)].filter(Boolean).join(' / ')};", "hjMemoOut(scrub(s.memo)).text].filter(Boolean).join(' / ')};"],
+  'share-unit': ['if(a&&b&&a!==b)return pl;', ''],
+  'packet-unit-proj': ['const pu=hjWoUnitText(hjSchPlaceOf(s));if(pu&&o.project)o.project.unit=pu;', ''],
+  'share-same-place': ['if(hjSchPlaceSame(pa,pl)&&((b&&!a)||hjSchAddrToks(pl).length>hjSchAddrToks(pa).length))return pl;', ''],
+  'packet-same-place': ["usedPlace=placeOk?rawPlace:(same&&!placeWins?place0:'');", "usedPlace=placeOk?rawPlace:'';"],
+  'place-same-substr': ["return sh.join(' ').length>=4&&lo.slice(lo.length-sh.length).join(' ')===sh.join(' ');", "return sh.join(' ').length>=4&&lo.join(' ').includes(sh.join(' '));"],
+  'place-phone-addr': ['hjRetScrub(placeAddr,(p.customer||{}).name)===placeAddr&&', ''],
+  'addr-ho-store': ['.replace(/\\d+\\s*호(?![가-힣])/g,\'\')', ".replace(/\\d+\\s*호/g,'')"],
+  'title-raw-team': ["function hjSchTeamTitle(s,c){return hjTitleOut(hjSchShareTitle(s,c)).text||'작업';}", 'function hjSchTeamTitle(s,c){return hjSchShareTitle(s,c);}'],
+  'packet-title-raw': [",rawTitle=tOut.text||'작업';", ",rawTitle=c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업':(s.title||'작업');"],
+  'title-count': ['if(s&&!seen.has(s)){seen.add(s);n+=hjTitleOut(s.title).cut;}', ''],
+  'no-code-check': ["  if(HJ_ACCESS_CODE.test(json))issues.push('출입 번호');\n", ''],
+  'cust-phone': ['  if(d.length<9)return t;return String(t', '  return t;return String(t']
 };
 let html = process.env.HJ_V605_BASELINE ? execFileSync('git', ['show', process.env.HJ_V605_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V605_MUTATION) {
@@ -136,7 +153,7 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
         const b17 = hjWoBuildDay('2026-11-17'), b18 = hjWoBuildDay('2026-11-18'), o = (b, t) => b.packet.orders.find(x => x.title.startsWith(t)) || {};
         return { ics: hjSchShareIcsItems(days).map(x => x.memo), send: send.items.map(x => x.memo), sendCut: send.cut,
           worker: nd.map(x => x.worker), customer: nd.map(x => x.customer),
-          n17: b17.packet.orders.length, p2: { addr: o(b17, '방수 점검').project.addr, detail: o(b17, '방수 점검').detail }, p3: { addr: o(b17, '타일 보수').project.addr, detail: o(b17, '타일 보수').detail },
+          n17: b17.packet.orders.length, p2: { addr: o(b17, '방수 점검').project.addr, detail: o(b17, '방수 점검').detail }, p3unit: o(b17, '타일 보수').project.unit || '', p3: { addr: o(b17, '타일 보수').project.addr, detail: o(b17, '타일 보수').detail },
           pa2: { addr: o(b18, '배관 점검').project.addr || '', detail: o(b18, '배관 점검').detail }, ph1: { addr: o(b18, '도배').project.addr, detail: o(b18, '도배').detail },
           valid: hjWoValidate(b17.packet).concat(hjWoValidate(b18.packet)), issues: b17.refs.concat(b18.refs).map(x => x.issues.join()).filter(Boolean), json: JSON.stringify([b17.packet, b18.packet]) };
       }, seed.ids);
@@ -155,7 +172,17 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
       assert.deepEqual(r.p3, { addr: '시험시 보람로 7 보람마을 2단지', detail: NOTE }, '주소 없는 현장의 지시 — 장소가 주소(동·호수 뗌), detail 에 다시 없음 ' + JSON.stringify(r.p3));
       assert.deepEqual(r.pa2, { addr: '', detail: '장소: 다솜빌라 관리실 (번호 삭제)' }, '전화번호가 든 장소는 주소로 안 씀 ' + JSON.stringify(r.pa2));
       assert.deepEqual(r.ph1, { addr: '시험시 가온로 1', detail: '벽지 확인 / 주차 B2' }, '손 메모 지시는 그대로 ' + JSON.stringify(r.ph1));
-      assert.ok(!TAG.test(r.json) && !/205동|1101호|704호|010-2222/.test(r.json), '패킷에 꼬리표·동호수·번호: ' + r.json);
+      // 통합 검토(11/15): 세대는 인터페이스의 unit 칸에만(v432) — 그 일정 장소의 동·호수. 주소(addr)·지시 내용(detail)에는 동·호수가 없다
+      assert.equal(r.p3unit, '205동 1101호', '세대는 그 일정 장소의 동·호수 ' + r.p3unit);
+      assert.ok(!TAG.test(r.json) && !/704호|010-2222/.test(r.json) && (r.json.match(/205동|1101호/g) || []).length === 2 && !/"addr":"[^"]*(205동|1101호)|"detail":"[^"]*(205동|1101호)/.test(r.json), '패킷에 꼬리표·번호, unit 칸 밖의 동호수: ' + r.json);
+      // 현장 주소의 동·호수와 이 일정 장소의 동·호수가 다르면(같은 단지의 다른 세대 일감) '주소:' 는 이 일정 장소, 그 '장소:' 는 메모에서 한 번 뺀다
+      const unitMix = await page.evaluate(() => {
+        const keep = JSON.stringify(state.projects), s = { id: 'tmpu', date: '2026-11-17', time: '10:00', title: '배관 누수', project: '가온아파트', memo: '장소: 시험시 가온로 1 가온아파트 101동 202호\n벽지 확인' };
+        state.projects.find(p => p.name === '가온아파트').customer.addr = '시험시 가온로 1 가온아파트 303동 704호';
+        const out = { addr: hjSchShareAddr(s), memo: hjSchMemoOut(s).text, same: hjSchShareAddr(Object.assign({}, s, { memo: '장소: 시험시 가온로 1 가온아파트 303동 704호' })) };
+        state.projects = JSON.parse(keep); return out;
+      });
+      assert.deepEqual(unitMix, { addr: '시험시 가온로 1 가온아파트 101동 202호', memo: '벽지 확인', same: '시험시 가온로 1 가온아파트 303동 704호' }, '세대가 다르면 이 일정 장소 ' + JSON.stringify(unitMix));
       assert.deepEqual([r.valid, r.issues], [[], []], '스키마·개인정보 검사 ' + JSON.stringify([r.valid, r.issues]));
     });
 
@@ -186,6 +213,63 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
       assert.deepEqual(r.gem, [true, true, false, true, false], '🤖 판정 ' + JSON.stringify(r.gem));
       assert.ok(r.chips >= 3 && r.viewText.includes('구글 캘린더에서 가져옴 (@ 제미나이 입력)') && r.viewText.includes('장소: 시험시 새벽로 12 모란아파트 303동 704호'), '일정표 화면은 메모 그대로 · 🤖 칩 ' + r.chips);
       assert.equal(await page.evaluate(() => JSON.stringify(state.schedule)), before, '일정 메모는 그대로');
+      assert.equal(await page.evaluate(stable), beforeAll, '저장본 불변');
+    });
+
+    await test('⑥ 통합 검토 — 같은 곳인 장소는 주소 줄 하나 · 전화 든 장소는 지시 주소로 안 씀 · 제목의 출입 번호는 팀 글·패킷에서 빠지고 🔒 에 셈 · 패킷에 남으면 막음 · 1호점 · 고객 번호 (REVIEW)', async () => {
+      const r = await page.evaluate(() => {
+        const keepS = JSON.stringify(state.schedule), keepP = JSON.stringify(state.projects);
+        const S = (id, date, time, title, project, memo) => ({ id, date, time, title, project, workers: '', memo, hours: 2, report: null });
+        const P = (name, customer) => ({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: Object.assign({ name: '', phone: '', addr: '' }, customer || {}), archived: false });
+        state.projects.push(P('모란아파트', { addr: '시험시 새벽로 12 모란아파트' }), P('나래빌라'), P('은하상가'), P('둔산카페'), P('둔산 욕실', { name: '김가상', phone: '010-1234-5678', addr: '둔산' }));
+        state.schedule = [
+          S('s1', '2026-11-25', '09:00', '우수관 1개', '모란아파트', '장소: 시험시 새벽로 12 모란아파트 303동 704호\n우수관 교체용 부속은 1층 경비실에 맡겨 둠 — 작업 전 찾아갈 것\n구글 캘린더에서 가져옴 (@ 제미나이 입력)'),
+          S('s2', '2026-11-25', '11:00', '배관 점검', '나래빌라', '장소: 시험시 나래길 2 나래빌라 관리실 042-523-0987\n구글 캘린더에서 가져옴'),
+          S('s3', '2026-11-25', '13:00', '누수 탐지 (공동현관 1234#)', '은하상가', '장소: 시험시 은하로 7 은하상가\n현관 5678#'),
+          S('s4', '2026-11-25', '15:00', '타일 보수', '둔산카페', '장소: 스타벅스 둔산1호점 2층'),
+          S('s5', '2026-11-25', '16:00', '상담·실측: 둔산', '둔산 욕실', '[카카오 문의] 욕실 누수 / 010-1234-5678 · 관리실 042-111-2222'),
+          S('s6', '2026-11-26', '09:00', '방수 (현관 4321)', '은하상가', '')];
+        const days = hjSchShareDays('2026-11-25', '2026-11-25', ''), nd = notifyDrafts('2026-11-25'), b = hjWoBuildDay('2026-11-25');
+        const o = t => b.packet.orders.find(x => x.title.startsWith(t)) || {}, ref = t => b.refs.find(x => x.order.title.startsWith(t)) || {};
+        const out = { text: hjSchShareText(days, '그날', '').split('\n'), cut: hjSchShareCut(days), ics: hjSchShareIcsItems(days).map(x => [x.title, x.memo]), send: hjSchCalSendItems(['s1', 's3']),
+          nd: nd.map(x => [x.worker, x.cut]), hand: hjHandoffText(Object.assign({}, state.schedule[5], { report: { progress: '완료', issue: '' } }), state.schedule[2]),
+          p1: o('우수관 1개').project, d1: o('우수관 1개').detail, p2: o('배관 점검').project, d2: o('배관 점검').detail, t3: o('누수 탐지').title, c3: ref('누수 탐지').cut, p4: o('타일 보수').project,
+          issues: b.refs.map(x => x.issues.join()).filter(Boolean), valid: hjWoValidate(b.packet), json: JSON.stringify(b.packet),
+          guard: hjWoPrivacyIssues({ orders: [{ title: '배관 (공동현관 9876#)' }] }, {}), guardOk: hjWoPrivacyIssues({ orders: [{ title: '현관 2개 교체 · 공동현관 폭 1100mm' }] }, {}) };
+        // 같은 곳 판정은 낱말 단위 — '가온로 1' 과 '가온로 12' 는 다른 곳 · 단지 이름뿐인 현장 주소보다 도로명이 붙은 장소가 더 자세함 · 뒤에 글이 더 붙은 장소는 다른 곳(그 글을 잃지 않게)
+        const pr = state.projects.find(x => x.name === '모란아파트'), one = (addr, place) => { pr.customer.addr = addr; const s = S('t', '2026-11-25', '09:00', '점검', '모란아파트', '장소: ' + place + '\n메모'); return [hjSchShareAddr(s), hjSchMemoOut(s).text]; };
+        out.tok = [one('시험시 가온로 1', '시험시 가온로 12 다른빌딩'), one('모란아파트', '시험시 새벽로 12 모란아파트'), one('시험시 새벽로 12 모란아파트', '시험시 새벽로 12 모란아파트 상가동 2층'), one('시험시 새벽로 12 모란아파트', '새벽로 12 모란아파트 101동 202호')];
+        state.schedule = JSON.parse(keepS); state.projects = JSON.parse(keepP);
+        return out;
+      });
+      const L = r.text;
+      // 같은 곳인 장소 — 주소 줄에 세대까지 한 번 · 장소 줄 다시 없음 · 메모가 60자 안에 다 들어감
+      assert.ok(L.includes('  주소: 시험시 새벽로 12 모란아파트 303동 704호 · 우수관 교체용 부속은 1층 경비실에 맡겨 둠 — 작업 전 찾아갈 것'), '같은 곳 — 주소 줄 하나\n' + L.join('\n'));
+      assert.ok(!L.join('\n').includes('장소:'), '공유 글에 장소 줄이 다시 없음\n' + L.join('\n'));
+      assert.deepEqual([r.p1.addr, r.p1.unit, r.d1], ['시험시 새벽로 12 모란아파트', '303동 704호', '우수관 교체용 부속은 1층 경비실에 맡겨 둠 — 작업 전 찾아갈 것'], '패킷 — 주소·세대·detail 에 장소 다시 없음 ' + JSON.stringify([r.p1, r.d1]));
+      // 전화가 든 장소 — 공유 글은 v605 대로 주소 줄, 패킷 주소로는 안 씀(detail 에서 번호를 지움)
+      assert.ok(L.includes('  주소: 시험시 나래길 2 나래빌라 관리실 042-523-0987'), '공유 글은 그대로\n' + L.join('\n'));
+      assert.deepEqual([r.p2.addr || '', r.d2], ['', '장소: 시험시 나래길 2 나래빌라 관리실 (번호 삭제)'], '관리실 번호 든 장소는 지시 주소로 안 씀 ' + JSON.stringify([r.p2, r.d2]));
+      // 제목의 출입 번호 — 팀 글·파일·문안·안내·패킷 어디에도 없음 · 🔒 수에 셈(메모 1 + 제목 1)
+      assert.ok(L.includes('· 13:00 누수 탐지 — 은하상가') && L.includes('  주소: 시험시 은하로 7 은하상가'), '공유 글 제목\n' + L.join('\n'));
+      assert.equal(r.cut, 2, '🔒 뺀 수 — 메모 1 + 제목 1');
+      assert.ok(r.ics.every(x => !/1234|5678/.test(x.join())) && r.ics.some(x => x[0] === '누수 탐지'), '.ics ' + JSON.stringify(r.ics));
+      assert.deepEqual([r.send.items.map(x => x.title), r.send.cut], [['우수관 1개', '누수 탐지'], 2], '작업자 캘린더 ' + JSON.stringify(r.send));
+      const w3 = r.nd.find(x => x[0].includes('은하상가'));
+      assert.ok(w3 && w3[0].includes('작업: 누수 탐지\n') && !/1234|5678|공동현관/.test(w3[0]) && w3[1] === 2, '작업자 문안 ' + JSON.stringify(w3));
+      assert.ok(!/4321|1234/.test(r.hand) && r.hand.includes('은하상가 방수 작업이 끝났습니다.') && r.hand.includes('13:00 누수 탐지 — 예정대로'), '다음 공정 안내\n' + r.hand);
+      assert.ok(r.t3.startsWith('누수 탐지') && !/1234|공동현관/.test(r.t3) && r.c3 === 2, '패킷 제목 ' + JSON.stringify([r.t3, r.c3]));
+      assert.ok(!/1234|5678|042-523|010-1234|공동현관/.test(r.json), '패킷 어디에도 출입 번호·전화 없음 ' + r.json);
+      assert.deepEqual([r.issues, r.valid], [[], []], '검사 통과 ' + JSON.stringify([r.issues, r.valid]));
+      assert.deepEqual([r.guard, r.guardOk], [['출입 번호'], []], '패킷에 출입 번호가 남으면 막음 · 현관 2개·폭 1100mm 는 아님 ' + JSON.stringify([r.guard, r.guardOk]));
+      assert.deepEqual(r.tok, [['시험시 가온로 1', '장소: 시험시 가온로 12 다른빌딩 · 메모'], ['시험시 새벽로 12 모란아파트', '메모'], ['시험시 새벽로 12 모란아파트', '장소: 시험시 새벽로 12 모란아파트 상가동 2층 · 메모'],
+        ['새벽로 12 모란아파트 101동 202호', '메모']], '같은 곳 판정(낱말 단위·더 자세한 장소·뒤에 붙은 글·도시 이름만 다름) ' + JSON.stringify(r.tok));
+      // '둔산1호점' 은 호수가 아니다
+      assert.equal(r.p4.addr, '스타벅스 둔산1호점 2층', '호점 ' + JSON.stringify(r.p4));
+      // 그 현장 고객 번호(카카오 문의 메모)는 팀 글에서 빼고, 관리실 번호는 그대로
+      assert.ok(L.includes('  주소: 둔산 · [카카오 문의] 욕실 누수 · (고객 번호 뺌) · 관리실 042-111-2222'), '고객 번호\n' + L.join('\n'));
+      const w5 = r.nd.find(x => x[0].includes('둔산 욕실'));
+      assert.ok(w5 && !w5[0].includes('010-1234-5678') && w5[0].includes('(고객 번호 뺌)') && !r.ics.some(x => x[1].includes('010-1234-5678')), '작업자 문안·.ics 의 고객 번호 ' + JSON.stringify([w5, r.ics]));
       assert.equal(await page.evaluate(stable), beforeAll, '저장본 불변');
     });
 
@@ -223,7 +307,7 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
       assert.deepEqual(errors, [], '페이지 오류 0');
       assert.equal(network.writes, 0, '바깥 쓰기 0');
     });
-    console.log(`teamtext-v605: ${passed}/5 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
+    console.log(`teamtext-v605: ${passed}/6 PASS; synthetic data · fixed clock; external writes=${network.writes}`);
   } catch (error) {
     console.error('FAIL teamtext-v605 ' + (error && error.stack || error));
     process.exitCode = 1;

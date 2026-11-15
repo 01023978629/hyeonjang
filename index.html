@@ -8737,7 +8737,10 @@ function hjThumbStrip(files,attr,wrapCls,cls,moreCls){
      적지 않는다 — 고객 문서에 찍히는 칸이다) · 같은 이름의 진행 현장 → 만들지 않고 그 현장에 넣는다 · 비슷한 현장·보관한 같은 이름 현장·한 글자 →
      만들지도 넣지도 않고 까닭(그 현장 이름)을 줄 아래에 적는다(빈 쌍둥이 현장 방지 — v526 주석). 현장 유형(누수/인테리어)은 짐작하지 않는다. */
 const HJ_PHOTO_DIR_GENERIC=new Set(['만물인테리어','현장사진','견적서','명함','데이터','백업','정리완료','_정리완료','사진','photos','img','이미지','문서','기타','완료','원본','새 폴더','새폴더',
-  '미분류','미배정','카톡','카카오톡','kakaotalk','톡클라우드','구글포토','구글 포토','google photos','camera','dcim','screenshots','스크린샷','download','downloads','다운로드','시공 전','시공 중','시공 후','시공전','시공중','시공후']);
+  '미분류','미배정','카톡','카카오톡','kakaotalk','톡클라우드','구글포토','구글 포토','google photos','camera','dcim','screenshots','스크린샷','download','downloads','다운로드','시공 전','시공 중','시공 후','시공전','시공중','시공후',
+  // 통합 검토(11/15): 🧰 '톡방·구글 포토 → 현장사진' 명령(v604)이 못 정한 사진을 두는 '확인필요' 와 작업 자리·종류 폴더는 현장 이름이 아니다
+  '확인필요','확인 필요','미확인','보류','임시','작업사진','작업 사진','영상','동영상','욕실','화장실','주방','거실','베란다','발코니','옥상','안방','작은방','현관','다용도실',
+  '전','중','후','before','after']);
 const HJ_PHOTO_DIR_SKIP_RE=/^[_.\d]/;   // 숨김·앱 폴더, 숫자로 시작(날짜 꼴 '2026-11-12'·'1109 작업')
 // 사진이 놓인 '현장사진/<폴더>/' 의 폴더 이름 — 흔한 이름·날짜 꼴·공정 이름·긴 글(24자 넘음)이면 ''
 function hjPhotoSiteDir(f){
@@ -8752,6 +8755,11 @@ function hjPhotoNamedSite(text){
   const n=hjNewSiteName(text,{addr:true});
   return n||hjStmtCell(String(text||'').replace(HJ_STMT_UNIT_STRIP_RE,' ')).slice(0,40);
 }
+// 폴더 이름에서 동·호수·주소(도로명+번호·동+번지)·행정구역 토막을 뺀 이름 부분('시험시 달빛로 77 달빛아파트' → '달빛아파트')
+function hjPhotoDirBare(folder){
+  const toks=hjNewSiteToks(String(folder||'').replace(HJ_STMT_UNIT_STRIP_RE,' ')),a=hjNewSiteAddrAt(toks,false);
+  return toks.filter((t,k)=>!(a&&k>=a.from&&k<=a.to)&&!HJ_NEWSITE_AREA_RE.test(t)).join(' ');
+}
 function hjPhotoAddrSite(addr){
   const parts=String(addr||'').split(' · ');
   if(parts.length>1){const n=hjPhotoNamedSite(parts.slice(1).join(' '));if(n.length>=2)return n;}
@@ -8764,9 +8772,11 @@ function hjPhotoNewHint(files){
   const dirs=new Set(files.map(hjPhotoSiteDir)),folder=dirs.size===1?[...dirs][0]:'';
   if(folder){
     out.folder=folder;
-    const site=hjPhotoNamedSite(folder),keys=[hjNormName(folder),hjNormName(site)].filter(Boolean);
-    const same=(state.projects||[]).filter(p=>p&&p.name&&!p.archived&&(p.name===folder||p.name===site||keys.includes(hjNormName(p.name))));
-    const exact=same.filter(p=>p.name===folder||p.name===site);
+    // 그 현장을 '참고'로 미리 고르는 것은 폴더 이름에서 동·호수·주소·행정구역을 뗀 이름이 현장 이름과 같을 때만('가온아파트 101동' = 가온아파트) —
+    // 폴더에서 뽑은 단지 토막만 같은 것('한빛아파트 상가' → 한빛아파트)은 아니다(통합 검토 11/15: 단지 상가·옆 건물은 다른 거래처일 때가 많다)
+    const site=hjPhotoNamedSite(folder),bare=hjPhotoDirBare(folder),key=hjNormName(bare);
+    const same=(state.projects||[]).filter(p=>p&&p.name&&!p.archived&&(p.name===folder||p.name===bare||(key&&hjNormName(p.name)===key)));
+    const exact=same.filter(p=>p.name===folder||p.name===bare);
     if(same.length===1||exact.length===1){out.exist=(exact.length===1?exact[0]:same[0]).name;return out;}
     const c=same.length?null:hjNewSiteCheck(site);
     if(c&&c.ok){out.name=c.name;out.src='folder';return out;}
@@ -15880,12 +15890,12 @@ function notifyDrafts(ymd){
     const p=state.projects.find(x=>x.name===s.project)||{};
     const cust=p.customer||{};
     const addr=hjSchShareAddr(s);   // v605 현장 주소가 없으면 구글 '장소'(작업자 글에만 쓰인다)
-    const title=c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim()+' ('+c.day+'/'+c.days+'일째)':s.title;
-    const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+title+(hjSchShareMemo(s)?'\n메모: '+hjSchShareMemo(s):'')+(s.crew?'\n담당: '+hjCrewText(s.crew):'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
+    const title=c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim()+' ('+c.day+'/'+c.days+'일째)':s.title,tOut=hjTitleOut(title);   // 통합 검토(11/15) 작업자 글의 제목은 출입 번호를 뺀 것
+    const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+(tOut.text||'작업')+(hjSchShareMemo(s)?'\n메모: '+hjSchShareMemo(s):'')+(s.crew?'\n담당: '+hjCrewText(s.crew):'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
     const customer=c
       ?['안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',hjKD(ymd)+'에도 '+(s.project?s.project+' ':'')+title+' 작업이 이어집니다.','참고 부탁드리며, 문의는 '+COMPANY.tel+'로 연락 주세요. 감사합니다.'].join('\n')
       :['안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',hjKD(ymd)+' '+(s.time||'')+'에 '+(s.project?s.project+' ':'')+s.title+' 작업으로 방문 예정입니다.','참고 부탁드리며, 문의는 '+COMPANY.tel+'로 연락 주세요. 감사합니다.'].join('\n');
-    return {id:s.id,time:s.time||'',title,project:s.project||'',custName:cust.name||'',custPhone:cust.phone||'',worker,customer,cont:c?c.day+'/'+c.days:'',cut:c?0:hjMemoOut(s.memo).cut};
+    return {id:s.id,time:s.time||'',title,project:s.project||'',custName:cust.name||'',custPhone:cust.phone||'',worker,customer,cont:c?c.day+'/'+c.days:'',cut:(c?0:hjMemoOut(s.memo).cut)+tOut.cut};
   });
 }
 function scheduleNotify(ymd){
@@ -15995,17 +16005,39 @@ function hjSchPlaceOf(s){
   return '';
 }
 function hjSchProjAddr(s){const p=s&&s.project?(state.projects||[]).find(x=>x&&x.name===s.project):null;return p&&p.customer?String(p.customer.addr||'').trim():'';}
-function hjSchMemoOut(s){return hjMemoOut(s&&s.memo,!hjSchProjAddr(s));}
+/* 통합 검토(11/15) 장소가 현장 주소와 같은 곳인가 — 동·호수를 뗀 낱말이 같거나, 짧은 쪽이 긴 쪽의 끝과 같으면(앞에 붙은 도시·구 이름만 다름 — 맞추기가 만든 현장의
+   주소 = 그 장소에서 동·호수를 뗀 글). 낱말 단위라 '가온로 1' 과 '가온로 12' 는 다른 곳, 뒤에 글이 더 붙은 장소('… 상가동 2층')도 다른 곳으로 본다(그 글을 잃지 않게).
+   같은 곳이면 팀 글의 '주소:' 줄 하나로 — 예전엔 '주소: X · 장소: X · …' 로 두 번 나가고 메모 60자 자르기가 진짜 전달 사항을 먹었다. */
+function hjSchAddrToks(t){return hjAddrNoUnit(String(t||'')).split(/\s+/).filter(Boolean);}
+function hjSchPlaceSame(pa,pl){
+  const a=hjSchAddrToks(pa),b=hjSchAddrToks(pl);if(!a.length||!b.length)return false;
+  const sh=a.length<=b.length?a:b,lo=a.length<=b.length?b:a;
+  return sh.join(' ').length>=4&&lo.slice(lo.length-sh.length).join(' ')===sh.join(' ');
+}
+/* 통합 검토(11/15) 그 현장 고객 번호가 메모에 있으면 팀 글에서 뺀다 — 카카오 문의로 만든 일정 메모가 '[카카오 문의] … / 010-…' 라 고객 번호가 📤 일정 공유·.ics·
+   🔔 작업자 문안으로 나갔다(v356 약속: 고객 이름·전화는 팀 글에 없음 · 팀 지시 패킷은 hjRetScrub 이 이미 지운다). 관리실 번호 같은 다른 번호는 그대로. */
+function hjSchCustPhoneOut(s,t){
+  const p=s&&s.project?(state.projects||[]).find(x=>x&&x.name===s.project):null,d=hjCustDigits(p&&p.customer&&p.customer.phone);
+  if(d.length<9)return t;return String(t||'').replace(HJ_RET_PHONE_RE,m=>hjCustDigits(m)===d?'(고객 번호 뺌)':m);
+}
+function hjSchMemoOut(s){const pa=hjSchProjAddr(s),o=hjMemoOut(s&&s.memo,!pa||hjSchShareAddr(s)!==pa||hjSchPlaceSame(pa,hjSchPlaceOf(s)));o.text=hjSchCustPhoneOut(s,o.text);return o;}   // 장소를 주소 줄로 쓴(또는 주소와 같은 곳인) 일정은 그 '장소:' 를 메모에서 한 번 뺀다
 function hjSchShareMemo(s){return hjSchMemoOut(s).text;}
 // 그 공유 글에서 뺀 메모 토막 수(이어지는 날은 메모를 싣지 않으므로 시작일 것만 센다)
-function hjSchShareCut(days){let n=0;(days||[]).forEach(d=>(d.rows||[]).forEach(({s,c})=>{if(!c)n+=hjMemoOut(s&&s.memo).cut;}));return n;}
-function hjSchShareAddr(s){return hjSchProjAddr(s)||hjSchPlaceOf(s);}   // v605 현장 주소가 먼저, 없으면 구글 '장소'
+function hjSchShareCut(days){let n=0;const seen=new Set();(days||[]).forEach(d=>(d.rows||[]).forEach(({s,c})=>{if(!c)n+=hjMemoOut(s&&s.memo).cut;if(s&&!seen.has(s)){seen.add(s);n+=hjTitleOut(s.title).cut;}}));return n;}   // 통합 검토(11/15) 제목에서 뺀 것도
+// v605 현장 주소가 먼저, 없으면 구글 '장소'. 통합 검토(11/15): 현장 주소의 동·호수와 이 일정 장소의 동·호수가 다르면(같은 단지의 다른 세대 일감) 이 일정 장소
+//   · 같은 곳(hjSchPlaceSame)인데 장소에 이 일감의 동·호수가 있거나(맞추기가 만든 단지 현장) 장소가 더 자세하면(도로명 앞부분) 장소 — 세대·주소를 한 줄에
+function hjSchShareAddr(s){
+  const pa=hjSchProjAddr(s),pl=hjSchPlaceOf(s);
+  if(pa&&pl){const a=hjWoUnitText(pa),b=hjWoUnitText(pl);if(a&&b&&a!==b)return pl;
+    if(hjSchPlaceSame(pa,pl)&&((b&&!a)||hjSchAddrToks(pl).length>hjSchAddrToks(pa).length))return pl;}
+  return pa||pl;
+}
 function hjSchShareText(days,label,span){
   const L=['['+COMPANY.name+'] 작업 일정'+(label?' — '+label:'')+(span&&span!==label?' '+span:'')];
   if(!days.length)L.push('','잡힌 일정이 없습니다.');
   days.forEach(day=>{L.push('','■ '+hjMdDow(day.date));
     day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=c?'':hjSchShareMemo(s);
-      L.push('· '+(s.time?s.time+' ':'')+hjSchShareTitle(s,c)+(s.project?' — '+s.project:''));
+      L.push('· '+(s.time?s.time+' ':'')+hjSchTeamTitle(s,c)+(s.project?' — '+s.project:''));
       const sub=[addr?'주소: '+addr:'',s.crew?'👤 '+hjCrewText(s.crew):'',s.workers?'👷 '+s.workers+'명':'',memo?hjCut(memo,60):''].filter(Boolean);
       if(sub.length)L.push('  '+sub.join(' · '));});
     try{hjMatShareLines(day,localDate()).forEach(t=>L.push(t));}catch(e){}});   // v370 그날 현장에 들어올 자재
@@ -16016,7 +16048,7 @@ function hjSchShareText(days,label,span){
 function hjSchShareIcsItems(days){
   const out=[];
   days.forEach(day=>day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=hjSchShareMemo(s);
-    out.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
+    out.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchTeamTitle(s,c),
       project:s.project||'',workers:s.workers||'',crew:s.crew||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
   return out;
 }
@@ -16177,12 +16209,22 @@ function hjAccessScrub(t){
   const parts=String(t||'').split(/\n|\s+\/\s+|\s+·\s+/).map(x=>x.trim()).filter(Boolean),keep=parts.filter(p=>!hjLooksLikeAccessCode(p));
   return {parts:keep,cut:parts.length-keep.length};
 }
+/* 통합 검토(11/15) 팀에게 나가는 일정 '제목'에서 출입 번호처럼 보이는 부분만 뺀다 — 메모는 v577 부터 거르는데 제목은 그대로 나가, '누수 탐지 (공동현관 1234#)' 가
+   📤 일정 공유·.ics·작업자 캘린더·🔔 작업자 문안·🔨 다음 공정 안내·📤 팀 지시 제목에 실렸다(v606 🔒 안내는 메모만 셌다). 제목은 토막째 버리면 작업 이름까지
+   사라지므로 그 부분만 뺀다(남는 게 없으면 '작업'). 뺀 수는 🔒 안내에 같이 센다. 대표 화면(일정표·🌙 오늘 마감)·고객 문안은 그대로. */
+const HJ_ACCESS_CODE_G=new RegExp(HJ_ACCESS_CODE.source+'[#*]?','g'),HJ_EMPTY_PAREN_RE=/\(\s*\)|\[\s*\]/g;
+function hjTitleOut(t){
+  let cut=0,text=String(t==null?'':t).replace(HJ_ACCESS_CODE_G,()=>{cut++;return '';}).replace(HJ_EMPTY_PAREN_RE,'').replace(/\s{2,}/g,' ').trim();
+  if(text&&hjLooksLikeAccessCode(text)){cut++;text='';}
+  return {text,cut};
+}
+function hjSchTeamTitle(s,c){return hjTitleOut(hjSchShareTitle(s,c)).text||'작업';}
 function hjSchCalSendItems(ids){
-  let cut=0;const items=[];
+  let cut=0;const items=[],seen=new Set();
   hjSchShareDays(null,null,'',ids).forEach(day=>day.rows.forEach(({s,c})=>{
-    const mo=hjSchMemoOut(s);if(!c)cut+=mo.cut;   // 남은 토막은 ' · ' 로 잇는다(v577 hjMemoOut 으로 공유 글과 같은 규칙 · v605 주소로 쓴 장소는 한 번만)
+    const mo=hjSchMemoOut(s);if(!c)cut+=mo.cut;if(!seen.has(s)){seen.add(s);cut+=hjTitleOut(s.title).cut;}   // 남은 토막은 ' · ' 로 잇는다(v577 hjMemoOut 으로 공유 글과 같은 규칙 · v605 주소로 쓴 장소는 한 번만)
     const memo=mo.text,addr=hjSchShareAddr(s);
-    items.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
+    items.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchTeamTitle(s,c),
       project:s.project||'',workers:s.workers||'',crew:s.crew||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
   return {items,cut};
 }
@@ -17114,7 +17156,7 @@ function hjHandoffNext(s){
     .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||'')))[0]||null;
 }
 function hjHandoffText(s,n){
-  const nm=x=>String(x.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim(),addr=hjSchShareAddr(n),r=s.report||{};
+  const nm=x=>hjTitleOut(String(x.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()).text||'작업',addr=hjSchShareAddr(n),r=s.report||{};   // 통합 검토(11/15) 제목의 출입 번호도 뺀다
   return ['['+COMPANY.name+'] 다음 공정 안내',s.project+' '+nm(s)+' 작업이 끝났습니다.',
     '다음: '+hjMdDow(n.date)+(n.time?' '+n.time:'')+' '+nm(n)+' — 예정대로 진행 부탁드립니다.',
     addr?'주소: '+addr:'',hjMemoOut(r.issue).text?'전달 사항: '+hjMemoOut(r.issue).text:'',
@@ -32772,22 +32814,23 @@ function cwDefaultsV529(){
 
 [할 일]
 1. 위 일정으로 '날짜 | 현장 | 작업' 표를 먼저 만든다. 일정 칸이 비어 있으면 현장웹 📅 일정표를 직접 읽는다.
-2. 그 날짜들의 톡방(카카오 톡서랍)·구글 포토 사진·동영상을 만물 폴더 현장사진/<현장 이름>/ 에 넣는다. 폴더 이름은 위 현장 목록의 이름 그대로 쓰고, 이미 있는 사진(내용이 같은 것)은 다시 받지 않는다.
+2. 그 날짜들의 톡방(카카오 톡서랍)·구글 포토 사진·동영상을 만물 폴더 현장사진/<현장 이름>/ 에 넣는다. 폴더 이름은 위 현장 목록의 이름 그대로 쓰고(현장웹이 그 이름으로 알아본다 — 목록 이름은 바꾸지 않는다), 이미 있는 사진(내용이 같은 것)은 다시 받지 않는다.
 3. 어느 현장 사진인지는 ① 사진의 위치(GPS)가 가리키는 곳 ② 그날 일정 ③ 톡방에 사진과 함께 적힌 보고 글(아파트·동·호수) 순서로 정한다. 셋이 서로 다르면 정하지 않는다.
 4. 위치 정보가 없는 사진은 톡방에 적힌 주소(아파트 이름·도로명)로 폴더 이름을 정한다. 현장 목록에 같은 곳이 있으면 그 이름을 쓴다.
 5. 현장을 못 정한 사진은 현장사진/확인필요/ 에 두고 '확인필요' 표(날짜 | 장수 | 위치·주소 | 후보 현장 | 근거)를 보여 준 뒤 내 답을 기다린다.
 6. 현장 목록에 없는 곳을 새 현장으로 만드는 일과 사진 배정은 현장웹 화면에서 한다 — [다시 열기](스캔)로 새 사진을 읽힌 뒤 아래 셋 가운데 맞는 화면을 쓴다.
    화면이 내놓은 현장·새 현장 이름을 먼저 나에게 보여 주고, 내가 좋다고 한 줄만 체크해 반영한다.
-   - 일정이 있는 곳: 📅 일정표 → [🔄 구글 캘린더 맞추기]의 '＋ 새 현장'
+   - 구글 캘린더에는 있는데 위 일정에 아직 없는 일정: 📅 일정표 → [🔄 구글 캘린더 맞추기]의 '＋ 새 현장'(그 일정이 새 현장에 이어져 들어간다)
    - 톡방 대화 내보내기(.txt)가 있는 곳: 사진 도구 → [💬 카톡 보고 대조·사진 배정]의 '＋ 새 현장'
    - 그 밖: 사진 탭 → [🧭 추측 배정 보기]의 '＋ 새 현장'
+   - 위 일정에 '현장 없음'으로 이미 들어와 있는 일정: 맞추기에는 그 줄이 다시 나오지 않는다 — 💬·🧭 창에서 현장을 만든 뒤 📅 일정표에서 그 일정을 열어(✏️) 현장 칸에서 그 현장을 고른다.
 7. 끝나면 현장별로 넣은 장수·새로 만든 현장·확인필요 장수를 알려 준다.
 
 [주의]
 - 사진·동영상은 옮기기만 한다 — 지우거나 이름·내용을 바꾸지 않는다.
 - 현장을 만들거나 사진을 배정하려고 _현장.json 을 고치지 않는다(위 6번의 화면만 쓴다).
 - 카카오·구글에 자동으로 로그인하지 않는다 — 로그인이 필요하면 멈추고 알려 주면 내가 한다.
-- 톡방 대화 글은 현장웹에 저장하지 않는다. 폴더 이름에 고객 이름·전화번호를 쓰지 않는다.
+- 톡방 대화 글은 현장웹에 저장하지 않는다. 목록에 없는 곳의 폴더 이름을 새로 지을 때는 고객 이름·전화번호를 쓰지 않는다.
 ${CW_SAFE}`},
     {id:'cw_photoin',icon:'📥',title:'받은 사진 현장사진으로 정리·배정',builtin:true,prompt:
 `너는 ${N}의 현장 사진 정리 비서다(만물 현장앱 운영 규칙을 따른다).
@@ -32979,7 +33022,14 @@ function cwRecentScheduleText(){
 function cwSiteListText(){
   const names=(state.projects||[]).filter(p=>p&&!p.archived&&String(p.name||'').trim()).map(p=>String(p.name).trim());
   if(!names.length)return '(현장 없음)';
-  return names.slice(0,CW_SITES_MAX).map(n=>'- '+n).concat(names.length>CW_SITES_MAX?['외 '+(names.length-CW_SITES_MAX)+'곳']:[]).join('\n');
+  if(names.length<=CW_SITES_MAX)return names.map(n=>'- '+n).join('\n');
+  /* 통합 검토(11/15) 80곳을 넘으면 최근 일정({최근일정} 기간)에 나온 현장과 나중에 만든 현장을 남기고 오래된 쪽을 줄인다(차례는 그대로) — 예전엔 앞 80곳(가장
+     오래된)을 남겨, 지금 사진이 들어갈 새 현장이 '외 n곳'으로 빠졌다. */
+  const keep=new Set(),today=localDate(),lo=hjAddDays(today,-CW_SCHED_BACK),hi=hjAddDays(today,CW_SCHED_AHEAD);
+  (state.schedule||[]).forEach(s=>{const n=s&&String(s.project||'').trim();if(n&&keep.size<CW_SITES_MAX&&s.date>=lo&&s.date<=hi&&names.includes(n))keep.add(n);});
+  for(let i=names.length-1;i>=0&&keep.size<CW_SITES_MAX;i--)keep.add(names[i]);
+  const out=names.filter(n=>keep.has(n));
+  return out.map(n=>'- '+n).concat(['외 '+(names.length-out.length)+'곳']).join('\n');
 }
 // 명령 안의 {오늘} → 복사하는 날(YYYYMMDD). 저장된 명령은 그대로 두고 복사할 때만 바꾼다.
 // 한 번에 훑어 바꾼다 — 채워 넣은 일정 제목에 '{오늘}' 같은 글자가 있어도 다시 바꾸지 않고, 제목의 '$&' 도 글자 그대로 들어간다.
@@ -34565,7 +34615,7 @@ function coworkOrderText(due){
   due.forEach(function(x,i){
     md+='---\n\n## '+(i+1)+'. '+(x.task.icon||'📋')+' '+x.task.title+'  · 주기: '+coworkSchedLabel(x.sched)+'\n\n';
     md+=cwSkillLine(x.task)+'\n\n';
-    md+=x.task.prompt+'\n\n';
+    md+=cwFill(x.task.prompt)+'\n\n';   // 통합 검토(11/15) 지시서 파일에도 {오늘}·{최근일정}·{현장목록}을 채운다(예전엔 글자 그대로 들어갔다)
   });
   md+='---\n\n### 완료 후\n- 산출물을 이 폴더에 저장하세요(파일명 규약 준수).\n- 사장님께 "앱 → 더보기 → ⏰ Cowork 예약에서 해당 작업 [✅ 완료]를 눌러 주세요"라고 안내하세요.\n';
   md+='\n'+coworkSkillCatalogText()+'\n';
@@ -39583,6 +39633,39 @@ const HJ_NEWSITE_LOT_RE=/^[가-힣]{1,5}\d?(?:동|리|가)$/;
 const HJ_NEWSITE_SUB_RE=/^\d{1,2}(?:단지|차)$/;
 const HJ_NEWSITE_EXTRA_WORDS=['빌라','빌딩','상가','프라자','플라자','타워','하이츠','센트럴','파크','스카이','리버','시티','편한세상','apt'];
 function hjNewSiteWords(){return APT_WORDS.concat(HJ_NEWSITE_EXTRA_WORDS);}
+/* 통합 검토(11/15) 고침 — 작업 글·사람 이름·전화 끝자리를 현장 이름으로 내놓지 않는다(위 ③):
+   · 토막 앞뒤 기호를 뗀다('#모란아파트'·'한빛빌라입니다.' — 끝 마침표 때문에 조사도 못 떼고 이름을 놓쳤다).
+   · 낱말만 있는 토막('아파트'·'상가')을 앞 토막과 이을 때 앞 토막이 숫자(전화 끝자리·층)·'님'·동네 이름·때·가리킴 말이면 잇지 않는다
+     ('고객님 아파트'·'-5678 빌라'·'어제 아파트'·'같은 단지'). 낱말을 붙여 쓴 흔한 말('주차타워'·'지하상가'·'전단지')은 이름이 아니다.
+   · 'N단지·N차' 홀로는 이름이 아니다 — 앞 낱말과 잇는다('주공 4단지'·'힐스테이트 도안 3차').
+   · 번지 꼴의 '○○가·○○리'는 진짜 동 이름 꼴일 때만('종로2가' — 숫자 뒤 '가' · '○○면 ○○리' — 읍·면 뒤 '리'). '추가 3'·'수리 1-2'·'단가 30-40' 은 주소가 아니다.
+     두 쪽이 다 세 자리 넘는 'N-M'(303-704)은 번지가 아니라 동·호수다. */
+const HJ_NEWSITE_EDGE_RE=/^[^가-힣A-Za-z0-9]+|[^가-힣A-Za-z0-9]+$/g;
+const HJ_NEWSITE_BAD_RE=/[<>={}"'`\\]/;   // 꺾쇠·등호·따옴표가 든 토막은 이름이 아니다(붙여 넣은 코드·링크 조각)
+const HJ_NEWSITE_DIGIT_RE=/\d/;
+const HJ_NEWSITE_HONOR_RE=/님$/;
+const HJ_NEWSITE_GA_RE=/가$/,HJ_NEWSITE_GA_OK_RE=/\d가$/,HJ_NEWSITE_RI_RE=/리$/,HJ_NEWSITE_RI_PREV_RE=/(?:읍|면|군)$/;
+const HJ_NEWSITE_UNITNUM_RE=/^\d{3,4}-\d{3,4}$/;
+const HJ_NEWSITE_PREV_STOP=['고객','사모','사장','대표','소장','기사','실장','팀장','오늘','어제','내일','모레','그제','저희','우리','같은','다른','해당',
+  '이번','지난','다음','저번','위층','아래층','윗층','윗집','아랫집','옆집','신축','구축','기존','현장','작업','공사','근처','주변','인근','동네','관리','관리소','관리사무소','임대','공공',
+  '사진','견적','문의','상담','방문','누수','방수','욕실','화장실','주방','베란다','옥상'];
+const HJ_NEWSITE_GENERIC=['냉각타워','주차타워','급수타워','지하상가','상가건물','전단지','신축아파트','구축아파트','임대아파트','아파트단지','공동주택'];
+function hjNewSiteTrim(t){return String(t||'').replace(HJ_NEWSITE_EDGE_RE,'');}
+function hjNewSitePrevOk(prev){
+  const p=String(prev||'');
+  if(p.length<2||HJ_NEWSITE_DIGIT_RE.test(p)||HJ_NEWSITE_HONOR_RE.test(p)||HJ_NEWSITE_AREA_RE.test(p)||HJ_NEWSITE_BAD_RE.test(p))return false;
+  return !HJ_NEWSITE_PREV_STOP.includes(p);
+}
+function hjNewSiteLotOk(t,prev){
+  if(HJ_NEWSITE_GA_RE.test(t))return HJ_NEWSITE_GA_OK_RE.test(t);
+  if(HJ_NEWSITE_RI_RE.test(t))return HJ_NEWSITE_RI_PREV_RE.test(String(prev||''));
+  return true;
+}
+// 글 → 토막(이름 읽기·주소 맞추기가 같이 쓴다): 괄호·표시·도시 이름을 지우고 토막 앞뒤 기호를 뗀다
+function hjNewSiteToks(text){
+  return hjStmtCell(text).replace(HJ_NEWSITE_WRAP_RE,' ').replace(HJ_NEWSITE_MARK_RE,' ').replace(HJ_STMT_CITY_RE,' ')
+    .split(HJ_NEWSITE_TOK_RE).map(hjNewSiteTrim).filter(Boolean);
+}
 // 토막 안 마지막 단지·건물 낱말의 끝 위치(없으면 -1)
 function hjNewSiteWordEnd(tok){
   const low=String(tok||'').toLowerCase();let end=-1;
@@ -39590,39 +39673,68 @@ function hjNewSiteWordEnd(tok){
   return end;
 }
 function hjNewSiteBare(tok){const low=String(tok||'').toLowerCase();return hjNewSiteWords().some(w=>low===w);}
-function hjNewSiteAddr(toks,free){
+// 토막들에서 첫 주소 → {text:'새벽로 12', from, to}(토막 위치) 또는 null. free(자유 글)면 행정구역이 앞에 있거나 번지에 '-'·'번지'가 있을 때만.
+function hjNewSiteAddrAt(toks,free){
   for(let i=0;i<toks.length;i++){
     const t=toks[i],areaBefore=i>0&&HJ_NEWSITE_AREA_RE.test(toks[i-1]);
     if(HJ_NEWSITE_ROAD_RE.test(t)&&!HJ_NEWSITE_EURO_RE.test(t)){
       let j=i+1,road=t;
       if(toks[j]&&HJ_NEWSITE_ROADN_RE.test(toks[j])){road+=' '+toks[j];j++;}
       const m=toks[j]?toks[j].match(HJ_NEWSITE_NUM_RE):null;
-      if(m&&(!free||areaBefore))return road+' '+m[1];
+      if(m&&!HJ_NEWSITE_UNITNUM_RE.test(m[1])&&(!free||areaBefore))return {text:road+' '+m[1],from:i,to:j};
     }
-    if(HJ_NEWSITE_LOT_RE.test(t)&&!HJ_DONG_STOP.includes(t)){
+    if(HJ_NEWSITE_LOT_RE.test(t)&&!HJ_DONG_STOP.includes(t)&&hjNewSiteLotOk(t,toks[i-1])){
       const m=toks[i+1]?toks[i+1].match(HJ_NEWSITE_NUM_RE):null;
-      if(m&&(!free||m[1].indexOf('-')>0||m[2]||areaBefore))return t+' '+m[1];
+      if(m&&!HJ_NEWSITE_UNITNUM_RE.test(m[1])&&(!free||m[1].indexOf('-')>0||m[2]||areaBefore))return {text:t+' '+m[1],from:i,to:i+1};
     }
   }
-  return '';
+  return null;
 }
+function hjNewSiteAddr(toks,free){const a=hjNewSiteAddrAt(toks,free);return a?a.text:'';}
 function hjNewSiteName(text,opts){
   const o=opts||{},raw=hjStmtCell(text).replace(HJ_NEWSITE_WRAP_RE,' ').replace(HJ_NEWSITE_MARK_RE,' ').replace(HJ_STMT_CITY_RE,' ');
   if(!raw.trim())return '';
-  const toks=raw.replace(HJ_STMT_UNIT_STRIP_RE,' ').split(HJ_NEWSITE_TOK_RE).filter(Boolean);
+  const toks=raw.replace(HJ_STMT_UNIT_STRIP_RE,' ').split(HJ_NEWSITE_TOK_RE).map(hjNewSiteTrim).filter(Boolean);
   for(let i=0;i<toks.length;i++){
     let t=toks[i];
-    if(hjNewSiteWordEnd(t)<0)continue;
+    if(hjNewSiteWordEnd(t)<0||HJ_NEWSITE_BAD_RE.test(t))continue;
     // '선비마을로 12'·'센트럴파크로 5' 는 길 이름 — 단지 이름으로 읽지 않는다(아래 주소 꼴이 맡는다)
     if(HJ_NEWSITE_ROAD_RE.test(t)&&toks[i+1]&&(HJ_NEWSITE_NUM_RE.test(toks[i+1])||HJ_NEWSITE_ROADN_RE.test(toks[i+1])))continue;
     const cut=t.replace(HJ_NEWSITE_JOSA_RE,'');
     if(cut!==t&&cut&&hjNewSiteWordEnd(cut)===cut.length)t=cut;
-    if(hjNewSiteWordEnd(t)!==t.length)continue;
-    if(hjNewSiteBare(t)){const prev=toks[i-1]||'';if(prev.length<2||HJ_NEWSITE_NUM_RE.test(prev))continue;t=prev+' '+t;}
+    if(hjNewSiteWordEnd(t)!==t.length||HJ_NEWSITE_GENERIC.includes(t.toLowerCase()))continue;
+    if(hjNewSiteBare(t)){
+      const prev=toks[i-1]||'',n1=toks[i+1]||'',n2=toks[i+2]||'';
+      if(hjNewSitePrevOk(prev))t=prev+' '+t;                                   // '둔산 더샵'
+      else if(HJ_NEWSITE_SUB_RE.test(n1)){}                                    // '주공 4단지' — 아래에서 붙인다
+      else if(hjNewSitePrevOk(n1)&&HJ_NEWSITE_SUB_RE.test(n2)){t+=' '+n1;i++;} // '힐스테이트 도안 3차'
+      else continue;
+    }else if(HJ_NEWSITE_SUB_RE.test(t)){const prev=toks[i-1]||'';if(!hjNewSitePrevOk(prev))continue;t=prev+' '+t;}
     if(toks[i+1]&&HJ_NEWSITE_SUB_RE.test(toks[i+1]))t+=' '+toks[i+1];
     if(t.length>=3)return t.slice(0,40);
   }
-  return hjNewSiteAddr(raw.split(HJ_NEWSITE_TOK_RE).filter(Boolean),!o.addr).slice(0,40);
+  return hjNewSiteAddr(raw.split(HJ_NEWSITE_TOK_RE).map(hjNewSiteTrim).filter(Boolean),!o.addr).slice(0,40);
+}
+/* 주소 이름 — '새벽로 12'·'달빛동 55-3' 처럼 주소가 곧 이름인 현장(대표 11/13 '위치 정보가 없는 것은 주소로')은 그 주소로만 같은 곳을 본다.
+   이름 맞추기(hjStmtNormName)는 'N-M'을 동·호수로 지워 '달빛동'만 남기므로, 그대로 두면 같은 동의 모든 보고·일정이 그 현장 후보 0.75↑ 가 되고
+   ('달빛동 한솔빌라 201호' → '달빛동 55-3'), 같은 길의 다른 번지('새벽로 13')는 비슷한 현장으로 막혔다(통합 검토 11/15).
+   → {text, key(빈칸 없는 주소), led: 주소 말고 단지·건물 낱말이 없음(주소가 곧 이름)} 또는 null. 읽기만. */
+const __hjAddrOfMemo=new Map();   // 글 → 결과(글만 보고 정해지는 값이라 그대로 기억 — 카톡 대조가 줄마다 현장 수만큼 부른다)
+function hjNewSiteAddrOf(text){
+  const s=String(text==null?'':text);
+  if(__hjAddrOfMemo.has(s))return __hjAddrOfMemo.get(s);
+  const toks=hjNewSiteToks(s),a=hjNewSiteAddrAt(toks,false);
+  let out=null;
+  if(a){const rest=toks.filter((t,k)=>k<a.from||k>a.to).join(' ');out=Object.freeze({text:a.text,key:hjStmtKey(a.text),led:hjNewSiteWordEnd(rest)<0});}
+  if(__hjAddrOfMemo.size>2000)__hjAddrOfMemo.clear();
+  __hjAddrOfMemo.set(s,out);
+  return out;
+}
+// 글 안에 그 주소가 있는가(토막 단위 — '새벽로 123' 은 '새벽로 12' 가 아니다)
+function hjNewSiteAddrHit(text,a){
+  if(!a)return false;const toks=hjNewSiteToks(text);
+  for(let i=0;i<toks.length;){const x=hjNewSiteAddrAt(toks.slice(i),false);if(!x)return false;if(hjStmtKey(x.text)===a.key)return true;i+=x.to+1;}
+  return false;
 }
 /* 그 이름으로 새 현장을 만들어도 되는가 → {name, ok, why:''|'short'|'exists'|'similar', similar:[이름]}. 읽기만.
    같은 이름(보관 현장 포함)·비슷한 이름(hjSimilarProjects)·이름 맞추기 0.6↑(hjStmtMatch — 맞추기·내역서와 같은 기준)이 있으면 ok=false — 그 현장을 고르게 한다. */
@@ -39631,9 +39743,11 @@ function hjNewSiteCheck(name){
   if(n.length<2)return {name:n,ok:false,why:'short',similar:[]};
   const all=(state.projects||[]).filter(p=>p&&p.name);
   if(all.some(p=>p.name===n))return {name:n,ok:false,why:'exists',similar:[n]};
-  const key=hjNormName(n),sim=[];
+  const key=hjNormName(n),sim=[],na=hjNewSiteAddrOf(n);
+  // 둘 다 주소가 있는데 다른 주소면 다른 곳이다('새벽로 12' 옆의 '새벽로 13'·'새벽로 123', '달빛동 55-3' 옆의 '달빛동 12-7') — 한 글자 차이·포함으로 막지 않는다
+  const otherAddr=x=>{const xa=na?hjNewSiteAddrOf(x):null;return !!(xa&&xa.key!==na.key);};
   all.forEach(p=>{if(p.archived&&key&&hjNormName(p.name)===key)sim.push(p.name);});
-  hjSimilarProjects(n).forEach(x=>{if(!sim.includes(x))sim.push(x);});
+  hjSimilarProjects(n).forEach(x=>{if(!sim.includes(x)&&!otherAddr(x))sim.push(x);});
   hjStmtMatch(n).forEach(c=>{if(c.score>=0.6&&!sim.includes(c.name))sim.push(c.name);});
   return sim.length?{name:n,ok:false,why:'similar',similar:sim}:{name:n,ok:true,why:'',similar:[]};
 }
@@ -39662,16 +39776,25 @@ function hjNewSiteSimText(names){
 //   사진·견적이 하나도 없는 현장은 −0.2 — 10/31 실자료에 동네 이름이나 호수가 붙은 빈 중복 현장('솔동보람아파트'·'보람아파트 101호' 꼴)이 있고
 //   실제 사진·견적은 원래 현장('보람아파트')에 있다(이름이 더 똑같아도 빈 현장으로 보내지 않는다 — 고르는 건 사람).
 function hjStmtMatch(loc){
-  const locN=hjStmtNormName(loc),core=hjStmtCore(loc),unit=hjStmtUnit(loc);
+  const locN=hjStmtNormName(loc),core=hjStmtCore(loc),unit=hjStmtUnit(loc),la=hjNewSiteAddrOf(loc);
   const cnt={};(state.files||[]).forEach(f=>{if(f&&f.project)cnt[f.project]=(cnt[f.project]||0)+1;});
   (state.quotes||[]).forEach(q=>{if(q&&q.project)cnt[q.project]=(cnt[q.project]||0)+1;});
   const out=[];
   (state.projects||[]).forEach(p=>{
     if(!p||!p.name||p.archived)return;
-    const pN=hjStmtNormName(p.name);if(pN.length<2)return;
-    let score=hjStmtSim(locN,pN);const why=[];
-    if(core.length>=2&&pN.indexOf(core)===0&&score<0.6)score=0.6;
-    if(score<0.34)return;
+    const pa=hjNewSiteAddrOf(p.name),why=[];let score;
+    if((pa&&pa.led)||(la&&la.led)){
+      // 주소가 곧 이름인 쪽이 있으면 같은 주소일 때만 같은 곳(hjNewSiteAddrOf 주석) — 동 이름·길 이름만 같은 것은 후보가 아니다
+      const hit=pa&&pa.led?hjNewSiteAddrHit(loc,pa):hjNewSiteAddrHit(p.name,la);
+      if(!hit)return;
+      score=0.95;why.push('같은 주소');
+    }else{
+      if(pa&&la&&pa.key!==la.key)return;   // 둘 다 주소가 있는데 다르면 다른 곳
+      const pN=hjStmtNormName(p.name);if(pN.length<2)return;
+      score=hjStmtSim(locN,pN);
+      if(core.length>=2&&pN.indexOf(core)===0&&score<0.6)score=0.6;
+      if(score<0.34)return;
+    }
     if(unit&&unit.ho){
       let hit=false;try{hit=aptUnitList(p).some(u=>u&&u.type==='unit'&&String(+u.dong)===unit.dong&&String(+u.ho)===unit.ho);}catch(e){}
       if(!hit){const ap=aptNameParse(p.name);hit=!!(ap&&ap.dong===unit.dong&&ap.ho===unit.ho);}
@@ -40739,6 +40862,7 @@ function hjChatParse(text,fileName){
 // 사진 메시지마다 현장 보고 — [{t,n,room,who,text,project,why,hint,suggest}] (시각순)
 //   v602 현장을 못 찾은 보고(project '')는 hint = 같은 사람이 그 창(10분 전 ~ 30분 뒤)에 적은 가장 가까운 글, suggest = 그 글에서 읽은 새 현장 이름(hjNewSiteName, 없으면 '').
 //   예전에는 text 가 '사진 N장'뿐이라 앱에 없는 현장(협력사 일감은 늘 새 현장)의 보고는 어디 사진인지 알 길이 없었다. 대화 글은 여전히 저장하지 않는다(화면에서만).
+const HJ_CHAT_LINE_MAX=120;   // 이보다 긴 줄은 현장 글로 보지 않는다(긴 잡담) — 80자였을 때 한 줄로 길게 적은 보고가 통째로 빠졌다(통합 검토 11/15)
 function hjChatReports(chats){
   const out=[];
   (chats||[]).forEach(c=>{
@@ -40755,7 +40879,7 @@ function hjChatReports(chats){
         const x=msgs[j];
         if(x.who!==m.who||HJ_CHAT_PHOTO_RE.test(String(x.text||'').trim()))return;
         const dt=(x.t-m.t)/60000;
-        String(x.text||'').split('\n').map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=80).forEach(line=>{
+        String(x.text||'').split('\n').map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=HJ_CHAT_LINE_MAX).forEach(line=>{
           const dist=Math.abs(dt)+(dt<0?5:0);   // 뒤에 쓴 글을 조금 더 믿는다(사진 → 현장 이름이 보통 순서)
           const c0=hjStmtMatch(line)[0];
           if(!c0||c0.score<0.5){
@@ -40768,6 +40892,10 @@ function hjChatReports(chats){
           if(!best||dist<best.dist||(dist===best.dist&&c0.score>best.score))best={dist,score:c0.score,project:c0.name,why:c0.why,text:line};
         });
       });
+      // 통합 검토(11/15): 아는 현장 글보다 사진에 더 가까운 줄이 새 현장 이름이면 그 보고는 새 현장 것이다 —
+      //   예전에는 창(10분 전~30분 뒤) 안에 아는 현장 글이 한 줄이라도 있으면 바로 옆에 적은 새 현장 보고가 통째로 그 현장으로 가서
+      //   앞 보고와 합쳐지고(같은 현장·30분 안) 장수가 맞아 체크된 채 배정됐다(현장 두 곳을 연달아 보고하는 흔한 꼴).
+      if(best&&hint&&hint.suggest&&hint.dist<best.dist)best=null;
       // hint·suggest 는 현장을 못 찾았을 때만(찾은 보고는 ''). text 는 그대로 둔다 — 서류 사진 판정(HJ_CHAT_DOC_RE)·날짜 기준(hjChatAnchor)이 text 를 본다.
       out.push({t:m.t,n,room:c.room,who:m.who,text:best?best.text:String(m.text||'').trim(),project:best?best.project:'',why:best?best.why:'',hint:!best&&hint?hint.text:'',suggest:!best&&hint?hint.suggest:''});
     });
@@ -40876,7 +41004,7 @@ function hjChatPick(){
 function hjChatNewSync(root,i){
   const sel=root.querySelector('.chatSel[data-i="'+i+'"]'),box=root.querySelector('.chatNewBox[data-i="'+i+'"]');
   if(!sel||!box)return null;
-  const on=!!hjNewSiteChoice(sel.value);box.hidden=!on;
+  const on=hjPhotoNewIs(sel.value);box.hidden=!on;   // '＋ 새 현장: 이름' 과 '＋ 새 현장 (이름 입력)'(값 '__new__:') 둘 다
   if(!on)return null;
   const inp=box.querySelector('.chatNew'),msg=box.querySelector('.chatNewMsg'),t=hjNewSiteTarget(inp?inp.value:'');
   if(msg){
@@ -40904,7 +41032,7 @@ function hjChatReview(chats){
   }
   const hm=d=>{const h=d.getHours();return (h<12?'오전 ':'오후 ')+((h%12)||12)+':'+pad(d.getMinutes());};
   const when=e=>escapeHtml(fmtDay(e.t)+' '+hm(e.t));
-  // v602 현장을 못 찾은 보고는 '사진 N장' 대신 같은 사람이 적은 글(hint — 80자 이하 한 줄)을 보여 준다
+  // v602 현장을 못 찾은 보고는 '사진 N장' 대신 같은 사람이 적은 글(hint — HJ_CHAT_LINE_MAX 자 이하 한 줄)을 보여 준다
   const said=e=>e.hint?String(e.hint):String(e.text).slice(0,60);
   const aRow=a=>`<div data-chat-audit="${a.status}" style="padding:6px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px;line-height:1.5"><b>${when(a.ev)}</b> · ${escapeHtml(a.ev.room)} · ${a.ev.project?'<b>'+escapeHtml(a.ev.project)+'</b>':'<span style="color:var(--muted)">현장 못 찾음</span>'} — 톡 ${a.ev.n}장 / 앱 ${a.status==='nosite'||a.status==='doc'?'-':a.m+'장'}${a.status==='missing'?' <b style="color:#b45309">⚠ 누락 의심</b>':a.status==='ok'?' ✓':a.status==='resent'?' ✓ 앞서 보낸 사진('+escapeHtml(fmtDay(a.prev.t))+')':a.status==='doc'?' · 서류 사진':''}<div style="font-size:11.5px;color:var(--muted)">“${escapeHtml(said(a.ev))}”</div></div>`;
   const pick=selectableProjects(''),live=new Set(pick.map(p=>p.name));
@@ -40914,12 +41042,14 @@ function hjChatReview(chats){
     const thumbs='<span class="psr-thumbs">'+g.photos.slice(0,3).map(p=>'<span class="psr-th">'+photoImg(p,160)+'</span>').join('')+(g.photos.length>3?'<span class="psr-th psr-more">+'+(g.photos.length-3)+'</span>':'')+'</span>';
     const head=`<b>${when(e)}</b> · ${escapeHtml(e.room)} · 보낸 ${e.n}장 / 현장 없는 사진 <b>${g.photos.length}장</b>${g.plausible?'':' <span style="color:#b45309">— 보낸 것보다 많아요, 확인</span>'}`;
     const quote=`<div style="font-size:12px;color:var(--muted);margin:2px 0 4px">“${escapeHtml(said(e))}”${e.why?' · '+escapeHtml(e.why):''}${g.sure?'':' · 참고'}</div>`;
-    // v602 보고 글에서 새 현장 이름이 읽혔으면 '＋ 새 현장' 선택지(고르지 않은 채로 — 맨 위, 현장 60곳 아래로 밀리지 않게) + 고칠 수 있는 이름 칸.
-    //   같은·비슷한 현장이 있으면 선택지 대신 그 현장 이름을 알려 준다(그 현장을 고르게).
-    const nw=!e.project&&e.suggest?hjNewSiteCheck(e.suggest):null,newOpt=nw?hjNewSiteOptionHtml(e.suggest):'';
+    // v602 현장을 못 찾은 보고에는 '＋ 새 현장' 선택지(고르지 않은 채로 — 맨 위, 현장 60곳 아래로 밀리지 않게) + 고칠 수 있는 이름 칸.
+    //   보고 글에서 만들 수 있는 이름이 읽혔으면 '＋ 새 현장: 이름', 아니면 '＋ 새 현장 (이름 입력)'(빈 칸 — 🔄·🧭·🧹 와 같다. 통합 검토 11/15:
+    //   이름이 안 읽히거나 막힌 보고는 만들 길이 없어 창을 닫고 현장을 손으로 만들어야 했다). 제안 이름이 같은·비슷한 현장에 막히면 그 현장 이름도 알려 준다.
+    const nw=!e.project&&e.suggest?hjNewSiteCheck(e.suggest):null,okName=nw&&nw.ok?nw.name:'';
+    const newOpt=e.project?'':(okName?hjNewSiteOptionHtml(okName):'')||'<option value="__new__:">＋ 새 현장 (이름 입력)</option>';
     const sel=`<select class="chatSel" data-i="${i}" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 현장')}" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 고르기${e.project?'':' — 보고 글에서 못 찾음'}</option>${newOpt}${popt}</select>`;
-    const newBox=newOpt?`<div class="chatNewBox" data-i="${i}" hidden><input type="text" class="chatNew" data-i="${i}" value="${escapeAttr(nw.name)}" maxlength="60" autocomplete="off" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 새 현장 이름')}" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;margin-top:4px"><div class="chatNewMsg" data-i="${i}" role="status" style="font-size:11.5px;line-height:1.5;margin-top:2px"></div></div>`
-      :nw?`<div data-chat-sim="${i}" style="font-size:11.5px;line-height:1.5;margin-top:3px;color:var(--hj-warn-fg)">비슷한 현장: ${escapeHtml(hjNewSiteSimText(nw.similar))} — ${nw.similar.some(x=>live.has(x))?'같은 곳이면 위에서 그 현장을 고르세요':'보관을 풀면 고를 수 있어요'}(새 현장은 만들지 않아요)</div>`:'';
+    const newBox=(nw&&!nw.ok?`<div data-chat-sim="${i}" style="font-size:11.5px;line-height:1.5;margin-top:3px;color:var(--hj-warn-fg)">비슷한 현장: ${escapeHtml(hjNewSiteSimText(nw.similar))} — ${nw.similar.some(x=>live.has(x))?'같은 곳이면 위에서 그 현장을 고르세요':'보관을 풀면 고를 수 있어요'} · 다른 곳이면 ‘＋ 새 현장 (이름 입력)’에 다른 이름을 적어 주세요</div>`:'')+
+      (newOpt?`<div class="chatNewBox" data-i="${i}" hidden><input type="text" class="chatNew" data-i="${i}" value="${escapeAttr(okName)}" maxlength="60" autocomplete="off" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 새 현장 이름')}" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;margin-top:4px"><div class="chatNewMsg" data-i="${i}" role="status" style="font-size:11.5px;line-height:1.5;margin-top:2px"></div></div>`:'');
     return `<div class="psr-row" data-chat-row="${i}"><label class="psr-chk"><input type="checkbox" class="chatChk" data-i="${i}"${g.sure?' checked':''} aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t))} 보고 묶음 배정"></label>${thumbs}<div class="psr-txt">${head}${quote}<div class="psr-target">${sel}${newBox}</div></div></div>`;
   }).join('');
   const nPh=plan.reduce((a,g)=>a+g.photos.length,0);
@@ -40949,8 +41079,8 @@ async function hjChatApply(plan){
   root.querySelectorAll('.chatChk:checked').forEach(el=>{
     const g=plan[+el.dataset.i];if(!g)return;
     let to=String((root.querySelector('.chatSel[data-i="'+el.dataset.i+'"]')||{}).value||''),fresh=false;
-    if(hjNewSiteChoice(to)){
-      // '＋ 새 현장' — 이름 칸에 고쳐 적은 이름으로 다시 본다. 비슷한 현장·짧은 이름이면 그 묶음 아래에 까닭을 적고 멈춘다(안전판·배정 전에)
+    if(hjPhotoNewIs(to)){
+      // '＋ 새 현장' — 이름 칸에 고쳐 적은 이름으로 다시 본다. 비슷한 현장·짧은 이름(빈 이름 칸 포함)이면 그 묶음 아래에 까닭을 적고 멈춘다(안전판·배정 전에)
       const t=hjChatNewSync(root,el.dataset.i)||hjNewSiteTarget(hjNewSiteChoice(to));
       if(!t.to){if(!blocked)blocked=el.dataset.i;return;}
       to=t.to;fresh=t.fresh;
@@ -41990,7 +42120,7 @@ function hjCalSyncGoingRef(s){return {going:{id:s.id,date:s.date,to:hjSchSpan(s)
    (말없이 삼키는 것보다 보이는 쪽 — 구글 바로 읽기·.ics 는 태그·설명으로 알아본다).
    list = 같은 날·같은 열쇠의 읽은 일정(hjCalSyncTitle 결과가 합쳐진 것), uidOf(appId) = 그 앱 일정의 구글 uid(없으면 ''). 돌려주는 값 = 칸마다의 목록. */
 const HJ_CALSYNC_COPY_DAY_RE=/-d\d+$/;   // 태그 hjKey 의 이어지는 날 꼬리 'id-dN'
-function hjCalSyncSlots(list,uidOf){
+function hjCalSyncSlots(list,uidOf,locOf){
   const copy=x=>!!x.copy||x.mark==='app'||String(x.memo||'').includes(HJ_CALSYNC_COPY_NOTE),tm=x=>String(x.time||''),lc=x=>hjCalSyncKey(x.location);
   const slots=[],at=new Map();
   list.forEach(x=>{if(copy(x))return;
@@ -41999,8 +42129,10 @@ function hjCalSyncSlots(list,uidOf){
     if(!s){s={time:tm(x),loc:'',uids:new Set()};slots.push(s);}
     if(u)s.uids.add(u);if(!s.loc)s.loc=l;at.set(x,s);});
   if(slots.length<2)return [list];
-  list.forEach(x=>{if(!copy(x))return;const au=uidOf(x.appId);
-    at.set(x,(au&&slots.find(y=>y.uids.has(au)))||slots.find(y=>y.time===tm(x))||slots[0]);});
+  // 통합 검토(11/15): 사본이 가리키는 앱 일정의 '장소'(그 일정의 구글 원본 위치)와 같은 칸, 그다음 사본 자신의 위치와 같은 칸(화면 글은 태그가 없다)이
+  //   시각만 같은 칸보다 먼저(같은 시각 두 현장이면 시각만으론 못 가린다 — 사본이 남의 칸에 붙으면 그 칸이 사본의 '[현장]' 으로 미리 골라진다)
+  list.forEach(x=>{if(!copy(x))return;const au=uidOf(x.appId),al=locOf?locOf(x):'';
+    at.set(x,(au&&slots.find(y=>y.uids.has(au)))||(al&&slots.find(y=>y.loc===al))||(lc(x)&&slots.find(y=>y.time===tm(x)&&y.loc===lc(x)))||slots.find(y=>y.time===tm(x))||slots[0]);});
   return slots.map(s=>list.filter(x=>at.get(x)===s));
 }
 function hjCalSyncPlan(events,opts){
@@ -42022,12 +42154,17 @@ function hjCalSyncPlan(events,opts){
   const apps=(state.schedule||[]).filter(s=>s&&ISO.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid).map(s=>{const u=String(s.icsUid||'');
     return {s,key:hjCalSyncKey(hjCalSyncTitle(s.title).title),uid:u&&!HJ_CALSYNC_SYNTH_UID_RE.test(u)?u:'',used:false,recur:!!s.icsRecur};});
   const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name);
+  /* 통합 검토(11/15) 앱 일정의 장소 열쇠 — 맞추기가 넣은 일정은 메모에 구글 위치('장소: …')를 남긴다. 같은 날·같은 제목·같은 시각의 칸이 여럿이면(v600)
+     시각만으론 어느 기록이 어느 칸인지 못 가린다 — 화면 글로 넣은 기록(합성 uid)은 다시 읽을 때 위치가 유일한 단서다. */
+  const locA=a=>a._loc!==undefined?a._loc:(a._loc=hjCalSyncKey(hjSchPlaceOf(a.s)));
+  const locFit=(g,a)=>!g._loc||!locA(a)||g._loc===locA(a);   // 둘 다 위치가 있는데 다르면 다른 일감
   const rows=[];let lo='',hi='';
   // v600 묶음(같은 날·같은 열쇠)을 칸으로 — 다른 구글 일정은 따로 줄(hjCalSyncSlots). sibs = 그 묶음의 칸 수(1 이면 예전과 같다)
   const copyOf=k=>{k=String(k||'');return k?apps.find(a=>String(a.s.id)===k)||apps.find(a=>String(a.s.id)===k.replace(HJ_CALSYNC_COPY_DAY_RE,''))||null:null;};
   const gs=[];
   [...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key)).forEach(g=>{
-    const ss=hjCalSyncSlots(g.list,k=>(copyOf(k)||{}).uid||'');
+    // 사본이 가리키는 앱 일정 — 태그(appId)가 있으면 그 일정, 화면 글처럼 태그가 없으면 제목 머리 '[현장]' 의 그날 같은 제목 앱 일정(장소가 있는 것)
+    const ss=hjCalSyncSlots(g.list,k=>(copyOf(k)||{}).uid||'',x=>{const a=copyOf(x.appId)||(x.tag?apps.find(o=>o.s.date===g.date&&o.key===g.key&&String(o.s.project||'')===x.tag&&!!locA(o)):null);return a?locA(a):'';});
     ss.forEach(list=>gs.push({date:g.date,key:g.key,list,sibs:ss.length}));});
   const allUids=new Set(),seriesUids=new Set();
   gs.forEach(g=>{
@@ -42039,6 +42176,7 @@ function hjCalSyncPlan(events,opts){
     g._rep=rep;g._uids=new Set(g.list.map(x=>String(x.uid||'')).filter(Boolean));g._uidsOne=new Set(g.list.filter(x=>!x.series).map(x=>String(x.uid||'')).filter(Boolean));
     g._tags=new Set(g.list.map(x=>x.tag).filter(Boolean));
     g._copyOf=new Set(g.list.map(x=>copyOf(x.appId)).filter(Boolean));   // v600 이 칸의 사본들이 가리키는 앱 일정
+    g._loc=hjCalSyncKey(rep.location);
     g.list.forEach(x=>{const u=String(x.uid||'');if(!u)return;allUids.add(u);if(x.series)seriesUids.add(u);});
     g._base={date:g.date,time:rep.time,to:(g.list.find(x=>x.to)||{}).to||'',hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||'',
       series:!!(rep.series&&rep.uid),invite:g.list.every(x=>x.invite),sibs:g.sibs};
@@ -42062,10 +42200,18 @@ function hjCalSyncPlan(events,opts){
   /* v600 한 공정은 하루에 한 칸만 이어지는 날로 삼는다 — 같은 날 같은 제목의 다른 칸(다른 구글 일정)까지 '이어지는 날'로 삼키면 그 일정이 말없이 사라진다.
      그 날을 덮는 공정 수만큼만(두 현장의 같은 이름 공정이면 두 칸). 칸이 하나뿐인 묶음은 예전 그대로. */
   const contDay=new Map(),contFull=g=>g.sibs>1&&(contDay.get(g.date+'|'+g.key)|0)>=planned.filter(p=>p.key===g.key&&p.from<g.date&&g.date<=p.to&&projOk(g,p.proj)).length;
+  /* 통합 검토(11/15) 칸이 여럿인 날의 '이어지는 날' 한 칸은 그 공정에 가장 맞는 칸 — 읽은 차례(구글은 시작 시각 순)로 첫 칸을 삼키면, 그날 더 이른 시각의
+     다른 현장 일정이 이어지는 날로 사라지고 공정 자신의 이어지는 날이 체크된 새 일정으로 나왔다. 맞음 = 그 공정을 가리키는 사본('id-dN') > 같은 시각 > 같은 위치. */
+  const coverApps=g=>apps.filter(a=>a.used&&a.key===g.key&&projOk(g,a.s.project)&&a.s.date<g.date&&planned.some(p=>p.key===a.key&&p.proj===String(a.s.project||'')&&p.from<g.date&&g.date<=p.to));
+  const fitCont=(y,a)=>(y._copyOf.has(a)?4:0)+(String(y._rep.time||'')===String(a.s.time||'')?2:0)+(y._loc&&y._loc===locA(a)?1:0);
+  const contBetter=g=>{const jobs=coverApps(g);if(!jobs.length)return false;
+    const mine=Math.max(...jobs.map(a=>fitCont(g,a)));
+    return gs.some(y=>y!==g&&y.date===g.date&&y.key===g.key&&y._base&&!y._pair&&!y._base.to&&jobs.some(a=>fitCont(y,a)>mine));};
   const contOf=g=>{
     if(g._base.to)return false;
     let hit=planned.some(p=>p.key===g.key&&p.from<g.date&&g.date<=p.to&&projOk(g,p.proj));
     if(hit&&contFull(g))hit=false;
+    if(hit&&g.sibs>1&&contBetter(g))return false;   // 통합 검토(11/15): 이 공정에 더 맞는 다른 칸이 있으면 그 칸이 이어지는 날(이 칸은 새 일정 줄로)
     if(!hit){const b=apps.find(x=>!x.used&&x.s.date<from&&x.key===g.key&&projOk(g,x.s.project)&&x.s.date<g.date&&g.date<=endOf(x));
       if(b){b.used=true;plan(b.key,b.s.project,b.s.date,endOf(b));hit=true;}}   // 시작이 읽은 기간보다 앞 — 구글에서 그 시작을 못 봤을 뿐
     if(!hit)return false;
@@ -42089,6 +42235,9 @@ function hjCalSyncPlan(events,opts){
     if(tag&&live.includes(tag))project=tag;
     try{cands=hjStmtMatch(base.title+(base.location?' '+base.location:'')).filter(c=>c.score>=0.5).slice(0,3);}catch(e){}
     if(!project&&cands[0]&&cands[0].score>=0.6)project=cands[0].name;
+    /* 통합 검토(11/15): 제안 이름이 진행 현장 이름과 똑같으면 그 현장(새 현장을 골라도 잇기만 할 곳) — 맞추기로 만든 현장은 사진·견적이 없어 이름 맞추기 점수가
+       0.6 밑이라(−0.2) 그 현장의 다음 일감이 '현장 없이'(체크됨)로 들어갔다. */
+    if(!project){let s0='';try{s0=hjNewSiteName(base.title)||hjNewSiteName(base.location,{addr:true});}catch(e){}if(s0&&live.includes(s0))project=s0;}
     if(base.invite)project='';
     const quiet=!!(base.invite||base.series||(extra&&(extra.done||extra.going)));
     /* v601 맞는 현장이 없는 새 일정 — 미리보기에 '＋ 새 현장'을 낼 줄(siteNew)과 제안 이름(suggest, 없으면 '' — v599 hjNewSiteName: 제목 먼저, 없으면 구글 위치를 주소로).
@@ -42149,10 +42298,17 @@ function hjCalSyncPlan(events,opts){
      화면 글로 넣어 구글 uid 가 없는 기록도 다시 읽으면 제 칸과 짝이 되어 '이미 같음'. 차례대로 짝 지으면 시각이 같은 기록이 없는 앞 칸(앱에서 시각을 고친 일정)이
      뒤 칸의 기록을 먼저 잡아 '시간 다름' 두 줄이 나오고, 반영하면 두 현장의 시각이 뒤바뀐다. 묶음의 첫 칸 차례에 한 번(그 날 앱 일정을 쓰는 때는 예전과 같게),
      시각이 같은 짝이 없는 칸은 아래 예전 규칙으로. 칸이 하나뿐인 묶음은 아래 '같은 날 같은 제목' 줄의 시각 우선만. */
+  /* 통합 검토(11/15): 위치가 같은 기록을 시각보다 먼저 — 같은 시각(둘 다 종일 포함)·다른 위치 칸에서 시각만 보면 화면 글로 넣은 기록(합성 uid)이
+     읽은 차례대로 엇갈려, 다른 현장 기록의 시각·기간을 바꾸거나 새 현장 일정을 '이미 같음'으로 삼키고 있던 현장 일정을 한 번 더 넣었다.
+     ① 위치가 같은 기록(시각이 달라도 — 구글에서 시각만 바꾼 것) ② 시각이 같은 기록(둘 다 위치가 있으면 같은 위치만). */
   const timePair=g=>{if(g._timeDone)return;
-    gs.forEach(y=>{if(y.date!==g.date||y.key!==g.key)return;y._timeDone=true;if(y._pair||!y._base)return;
-      const c=apps.filter(x=>!x.used&&x.s.date===y.date&&x.key===y.key&&String(x.s.time||'')===String(y._rep.time||'')&&projOk(y,x.s.project));
-      const x=c.find(o=>y._copyOf.has(o))||c[0];if(x){y._pair=x;x.used=true;}});
+    const sib=gs.filter(y=>y.date===g.date&&y.key===g.key);
+    sib.forEach(y=>{y._timeDone=true;if(y._pair||!y._base||!y._loc)return;
+      const c=apps.filter(x=>!x.used&&x.s.date===y.date&&x.key===y.key&&projOk(y,x.s.project)&&locA(x)===y._loc);
+      const x=c.find(o=>y._copyOf.has(o))||c.find(o=>String(o.s.time||'')===String(y._rep.time||''))||c[0];if(x){y._pair=x;x.used=true;}});
+    sib.forEach(y=>{if(y._pair||!y._base)return;
+      const c=apps.filter(x=>!x.used&&x.s.date===y.date&&x.key===y.key&&String(x.s.time||'')===String(y._rep.time||'')&&projOk(y,x.s.project)&&locFit(y,x));
+      const x=c.find(o=>y._copyOf.has(o))||c.find(o=>!locA(o))||c[0];if(x){y._pair=x;x.used=true;}});
   };
   gs.forEach(g=>{
     if(g.sibs>1)timePair(g);
@@ -42173,7 +42329,9 @@ function hjCalSyncPlan(events,opts){
       plan(g.key,a.s.project,a.s.date,span?base.to:sp.to);return;}
     // 같은 날 같은 제목 — '[현장명]' 표시와 현장이 맞는 앱 일정을 먼저
     // v600 그다음은 시각이 같은 앱 일정 — 같은 날 같은 제목의 앱 일정이 여럿일 수 있다(구글에서 한 건이 지워져 한 줄만 남았을 때 엉뚱한 기록의 시각을 바꾸지 않게)
-    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key).sort((x,y)=>(projOk(g,y.s.project)?1:0)-(projOk(g,x.s.project)?1:0)||(String(y.s.time||'')===String(rep.time||'')?1:0)-(String(x.s.time||'')===String(rep.time||'')?1:0))[0];
+    // 통합 검토(11/15) 위치가 같은 기록을 시각보다 먼저(구글에서 한 건이 지워져 한 줄만 남았을 때 다른 현장 기록을 '이미 같음'으로 잡고 남은 기록을 '앱에만'으로 내지 않게).
+    //   칸이 여럿인 묶음에서는 위치가 다른 기록을 잡지 않는다(그 기록은 그 위치의 칸 것이다).
+    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key&&(g.sibs<2||locFit(g,x))).sort((x,y)=>(projOk(g,y.s.project)?1:0)-(projOk(g,x.s.project)?1:0)||(g._loc&&locA(y)===g._loc?1:0)-(g._loc&&locA(x)===g._loc?1:0)||(String(y.s.time||'')===String(rep.time||'')?1:0)-(String(x.s.time||'')===String(rep.time||'')?1:0))[0];
     if(same){g._base=null;return sameDay(g,base,rep,same);}
     /* v588 이어지는 날 — 구글의 하루짜리 일정이 같은 제목의 앱 여러 날 공정의 이어지는 날에 있으면 이미 같음(제미나이는 여러 날 작업을 날마다 따로 만든다).
        같은 날 짝이 먼저다(그 날 따로 있는 앱 일정이 묻히지 않게). 검토 뒤: 반영 뒤 기간(planned)만 본다 — 위 contOf. */
@@ -42206,8 +42364,11 @@ function hjCalSyncPlan(events,opts){
     const going=apps.find(a=>!a.recur&&a.key===g.key&&projOk(g,a.s.project)&&hjCalSyncGoing(a.s)&&Math.abs(hjDaysBetween(a.s.date,g.date))<=HJ_CALSYNC_MOVE);
     rows.push(newRow(g,base,going?hjCalSyncGoingRef(going.s):undefined));
   });
+  // 통합 검토(11/15): 읽은 사본(태그 hjKey)이 가리키는 앱 일정은 구글에 있다 — 짝을 못 지었어도 '앱에만(체크하면 지움)'으로 내지 않는다
+  const copied=new Set();gs.forEach(g=>g._copyOf.forEach(a=>copied.add(a)));
   if(lo){const a0=lo>from?lo:from;
-    apps.forEach(a=>{if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
+    apps.forEach(a=>{if(!a.used&&copied.has(a)&&a.s.date>=a0&&a.s.date<=hi){a.used=true;stats.same++;return;}
+      if(a.used||a.s.date<a0||a.s.date>hi||hjSchReported(a.s))return;
       rows.push({status:'apponly',check:false,date:a.s.date,time:a.s.time||'',title:String(a.s.title||''),key:a.key,dupN:0,marks:[],location:'',memo:'',app:{id:a.s.id,date:a.s.date,time:a.s.time||''},project:a.s.project||''});});}
   /* v588 검토 — 반복 일정(구글에서 바로 읽으면 회차마다 따로 온다)의 새 회차는 한 줄로(같은 uid·같은 제목). 매일 반복하는 개인 일정 하나가 체크된 새 일정
      수십 줄로 쏟아지지 않게. 체크 해제 — 체크하면 회차마다 일정 하나씩 넣는다(occ). */
@@ -42240,7 +42401,12 @@ function hjCalSyncNewPick(v){return String(v||'').indexOf('__new__:')===0;}
 // 적은 이름으로 무엇이 되나는 공용 hjNewSiteTarget(v599 묶음) — 카톡 보고·추측 배정 창과 같은 규칙
 // 새로 만드는 현장에 적을 주소 — 구글 위치 글 그대로(120자). 비었거나 출입 번호처럼 보이거나 링크(화상 회의 주소 등)면 '' — 주소는 계약서·팀 지시에 실린다
 const HJ_CALSYNC_LINK_RE=/^https?:\/\//i;
-function hjCalSyncNewAddr(loc){const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}
+/* 통합 검토(11/15): 동·호수는 떼고 적는다 — 현장 이름은 단지('모란아파트' — v331: 아파트 이름 = 현장, 동·호수 = 세대)인데 첫 줄 위치의 '303동 704호'가
+   현장 주소에 남으면, 같은 단지의 다른 세대 일정(같은 반영의 다음 줄·나중 일감)이 팀 공유 글 '주소:'·작업자 문안·팀 지시 unit·구글 사본 위치에
+   첫 세대로 나갔다. 세대는 일정마다 메모의 '장소:' 에 그대로 남는다. 번지('달빛동 55-3')·층은 남긴다. */
+const HJ_ADDR_UNIT_RE=/(^|[^가-힣\d])(\d{1,4}\s*동\s*\d{1,5}\s*호|\d{1,5}\s*호(?![가-힣])|\d{1,4}\s*동(?![가-힣])|\d{3,4}-\d{3,4}(?!\d))/g;
+function hjAddrNoUnit(t){return String(t||'').replace(HJ_ADDR_UNIT_RE,'$1').replace(/\s{2,}/g,' ').trim();}
+function hjCalSyncNewAddr(loc){const t=hjAddrNoUnit(hjStmtCell(loc)).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}
 // 막힌 까닭 한 줄(미리보기 줄 아래·결과 창·토스트가 같이 쓴다) — 비슷한 현장은 이름을 적는다(보관한 현장은 '(보관)')
 function hjCalSyncNewWhy(t){
   const arch=new Set((state.projects||[]).filter(p=>p&&p.archived).map(p=>p.name)),sim=((t&&t.similar)||[]).map(n=>n+(arch.has(n)?'(보관)':'')).join(' · ');
@@ -42254,7 +42420,7 @@ function hjCalSyncNewFix(t){
 }
 /* 미리보기의 새 현장 칸 맞추기 — '＋ 새 현장'을 고른 줄만 이름 칸을 보이고, 적은 이름으로 무엇이 되는지 줄 아래에 바로 적는다(막히는 이름은 반영 전에 보이게).
    체크된 줄 여럿이 같은 새 이름이면 첫 줄이 만들고 나머지는 잇는다 — 주소는 그 줄들 가운데 처음으로 적을 수 있는 구글 위치(반영 hjCalSyncApply 와 같은 차례).
-   읽기만. 앞 줄이 만들 이름과 '비슷한' 다른 새 이름은 여기서 미리 알 수 없다 — 반영 때 그 줄만 막히고 결과에 적힌다. */
+   읽기만. 앞 줄이 만들 이름과 '비슷한' 다른 새 이름은 아래 ghost 로 미리 본다(통합 검토 11/15 — 예전엔 반영 때에야 그 줄만 막혔다). */
 function hjCalSyncNewSync(box){
   const plan=window.__hjCalSyncPlan;if(!box||!plan)return;
   const first=new Map();   // 새로 만들 이름 → {i 만드는 줄, addr 적을 주소}
@@ -42262,19 +42428,28 @@ function hjCalSyncNewSync(box){
     const i=+nb.dataset.i,s=box.querySelector('.csSel[data-i="'+i+'"]'),c=box.querySelector('.csChk[data-i="'+i+'"]'),on=!!(s&&hjCalSyncNewPick(s.value));
     nb.hidden=!on;
     return {nb,i,loc:(plan.rows[i]||{}).location,on,checked:!!(c&&c.checked),t:on?hjNewSiteTarget(nb.querySelector('.csNew').value):null};});
+  /* 통합 검토(11/15): 앞 줄이 만들 새 현장을 잠깐 있는 셈 치고 이 줄의 이름을 다시 본다(반영과 같은 차례·같은 규칙 — 읽기만, 끝나면 그대로 되돌린다).
+     띄어쓰기만 다른 '달빛 타워'·'달빛타워' 처럼 반영 때 비슷한 현장으로 막힐 줄이 미리보기에서는 '새 현장을 만들어 잇습니다'로 보였다. */
+  const ghost=[];
+  rows.forEach(x=>{if(!x.on||!x.checked||!x.t.fresh||ghost.includes(x.t.to))return;
+    if(ghost.length){const keep=state.projects;let t2=null;
+      try{state.projects=(keep||[]).concat(ghost.map(n=>({name:n})));t2=hjNewSiteTarget(x.t.to);}finally{state.projects=keep;}
+      if(t2&&!t2.to){x.t=Object.assign({},t2,{ghost:true});return;}}
+    ghost.push(x.t.to);});
   rows.forEach(x=>{if(!x.on||!x.checked||!x.t.fresh)return;
-    const ad=hjCalSyncNewAddr(x.loc),g=first.get(x.t.to);
-    if(!g)first.set(x.t.to,{i:x.i,addr:ad});else if(!g.addr&&ad)g.addr=ad;});
+    const ad=hjCalSyncNewAddr(x.loc),g=first.get(x.t.to),cut=!!ad&&hjAddrNoUnit(hjStmtCell(x.loc))!==hjStmtCell(x.loc);
+    if(!g)first.set(x.t.to,{i:x.i,addr:ad,cut});else if(!g.addr&&ad){g.addr=ad;g.cut=cut;}});
   rows.forEach(x=>{if(!x.on)return;
     const t=x.t,g=t.fresh&&x.checked?first.get(t.to):null,join=!!g&&g.i!==x.i,msg=x.nb.querySelector('.csNewMsg'),ad=x.nb.querySelector('.csNewAddr'),addr=t.fresh?(g?g.addr:hjCalSyncNewAddr(x.loc)):'';
     msg.dataset.state=!t.to?t.why:t.fresh?(join?'join':'new'):'exists';
     msg.style.color=t.to?'var(--muted)':'var(--hj-warn-fg)';
-    msg.textContent=!t.to?hjCalSyncNewWhy(t)+hjCalSyncNewFix(t)+' · 이대로면 이 줄은 넣지 않아요'
+    msg.textContent=!t.to?(t.ghost?'위 줄의 새 현장 ‘'+hjNewSiteSimText(t.similar)+'’와 비슷해요 — 같은 곳이면 이름을 똑같이 적어 주세요':hjCalSyncNewWhy(t)+hjCalSyncNewFix(t))+' · 이대로면 이 줄은 넣지 않아요'
       :t.fresh?(join?'같은 이름의 새 현장을 위 줄에서 만들어요 — 이 일정도 그 현장에 잇습니다':'새 현장을 만들어 이 일정을 잇습니다 · 이름은 고칠 수 있어요(단계·유형·고객은 현장 화면에서)')
       :'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 잇습니다(주소는 그대로)';
     if(t.to&&!x.checked)msg.textContent+=' · 이 줄을 체크해야 반영돼요';   // 체크 해제 줄(완료 보고한 일정과 같은 구글 일정 등)에서 골랐을 때
     ad.hidden=!t.fresh;
-    ad.textContent=t.fresh?(addr?'📍 현장 주소로 저장: '+addr:hjStmtCell(x.loc)?'구글 위치가 출입 번호·링크처럼 보여 현장 주소로는 적지 않아요':'구글 위치가 없어 현장 주소는 비워 둡니다'):'';
+    const unitCut=g?!!g.cut:!!addr&&hjAddrNoUnit(hjStmtCell(x.loc))!==hjStmtCell(x.loc);
+    ad.textContent=t.fresh?(addr?'📍 현장 주소로 저장: '+addr+(unitCut?' (동·호수는 떼고 — 세대는 일정마다 장소로 남아요)':''):hjStmtCell(x.loc)?'구글 위치가 출입 번호·링크처럼 보여 현장 주소로는 적지 않아요':'구글 위치가 없어 현장 주소는 비워 둡니다'):'';
     x.nb.querySelector('.csNew').setAttribute('aria-invalid',t.to?'false':'true');
   });
 }
@@ -42355,16 +42530,21 @@ async function hjCalSyncApply(plan,picks){
 }
 function hjCalSyncRowText(r){
   const when=hjMdDow(r.date)+' '+(r.time||'종일');
+  /* 통합 검토(11/15) 같은 날 같은 제목의 앱 일정이 여럿이면(다른 현장·다른 세대) 바꿀 일정이 어느 현장 것인지 줄에 적는다 — 시간·기간·날짜·지우기 줄은
+     제목만 보여 어느 현장 일정이 바뀌는지 알 수 없었다. */
+  const who=(()=>{const id=r.app&&r.app.id,s0=id?(state.schedule||[]).find(x=>x&&x.id===id):null;if(!s0)return '';
+    const twins=(r.sibs|0)>1||(state.schedule||[]).filter(x=>x&&x.date===s0.date&&hjCalSyncKey(hjCalSyncTitle(x.title).title)===r.key).length>1;
+    if(!twins)return '';const pl=hjSchPlaceOf(s0);return ' ['+(s0.project||'현장 없음')+(pl?' · '+hjCut(pl,30):'')+']';})();
   const spanTxt=()=>' 기간 '+(r.app.to?'~'+hjMdDow(r.app.to):'하루')+' → ~'+hjMdDow(r.to)+(r.hfix>1?' · 하루 1시간 → '+r.hfix+'시간':'');
-  if(r.status==='time')return when+' '+r.title+' — 시간 '+(r.app.time||'종일')+' → '+r.time+(r.span?' ·'+spanTxt():'');
+  if(r.status==='time')return when+' '+r.title+who+' — 시간 '+(r.app.time||'종일')+' → '+r.time+(r.span?' ·'+spanTxt():'');
   // v588 구글이 기준 — 앱 기간보다 짧아도 구글대로 줄이는 쪽(체크된 채)
-  if(r.status==='span')return when+' '+r.title+' —'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':'');
+  if(r.status==='span')return when+' '+r.title+who+' —'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':'');
   const ttl=()=>' 제목 ‘'+hjCut(String((r.app&&r.app.title)||'').trim()||'일정',30)+'’ → ‘'+hjCut(r.title,30)+'’';
-  if(r.status==='rename')return when+' '+r.title+' —'+ttl()+(r.timeChg?' · 시간 '+(r.app.time||'종일')+' → '+r.time:'')+(r.span?' ·'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':''):'');
+  if(r.status==='rename')return when+' '+r.title+who+' —'+ttl()+(r.timeChg?' · 시간 '+(r.app.time||'종일')+' → '+r.time:'')+(r.span?' ·'+spanTxt()+(r.shorter?' (구글 기간대로 줄여요)':''):'');
   // v580 사람이 고친 메모 기간은 반영하지 않으므로 구글 끝 날짜를 약속하지 않는다
-  if(r.status==='move')return when+' '+r.title+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date)+(r.to&&r.to>r.date?(r.own===false?' (메모의 기간은 손으로 고친 것이라 그대로 — 날짜만 옮겨요)':' ~ '+hjMdDow(r.to)):'')+
+  if(r.status==='move')return when+' '+r.title+who+' — 날짜 '+hjMdDow(r.app.date)+' → '+hjMdDow(r.date)+(r.to&&r.to>r.date?(r.own===false?' (메모의 기간은 손으로 고친 것이라 그대로 — 날짜만 옮겨요)':' ~ '+hjMdDow(r.to)):'')+
     (r.fix?' · 예전 맞추기가 끝 날짜로 넣은 일정 바로잡기':'')+(r.rename?' ·'+ttl():'');
-  if(r.status==='apponly')return when+' '+r.title+(r.overlap?' — 구글 여러 날 일정('+hjMdDow(r.overlap.from)+'~'+hjMdDow(r.overlap.to)+')과 겹쳐요(체크하면 앱에서 지움)':' — 구글 캘린더에 없음(체크하면 앱에서 지움)');
+  if(r.status==='apponly')return when+' '+r.title+who+(r.overlap?' — 구글 여러 날 일정('+hjMdDow(r.overlap.from)+'~'+hjMdDow(r.overlap.to)+')과 겹쳐요(체크하면 앱에서 지움)':' — 구글 캘린더에 없음(체크하면 앱에서 지움)');
   // v588 검토 — 반복 회차 한 줄·받은 초대·완료 보고한 일정의 같은 구글 일정은 체크 해제로 두고 까닭을 적는다
   const occ=Array.isArray(r.occ)&&r.occ.length>1?' 🔁 반복 '+r.occ.length+'회('+r.occ.slice(0,4).map(o=>hjMdDow(o.date)).join('·')+(r.occ.length>4?'…':'')+')':'';
   const why=r.invite?' — 받은 초대(응답 전)라 체크 해제 · 맞으면 체크':r.going?' — 진행 중인 ‘'+hjCut(String(r.going.title||'').trim()||'일정',30)+'’('+hjMdDow(r.going.date)+'~'+hjMdDow(r.going.to)+')과 같은 작업일 수 있어 체크 해제 · 따로 하는 작업이면 체크':r.done?' — 완료 보고한 ‘'+hjCut(String(r.done.title||'').trim()||'일정',30)+'’('+hjMdDow(r.done.date)+')과 같은 구글 일정이라 체크 해제 · 다시 하는 작업이면 체크':r.series?' — 반복 일정이라 체크 해제 · 맞으면 체크':'';
@@ -46628,8 +46808,11 @@ function hjWoCandidates(name,fromDay){
         ref:String(s.id),due:day,day,n:c?c.day:1,startTime:typeof s.time==='string'?s.time:'',endTime:typeof s.endTime==='string'?s.endTime:'',crew:hjCrewList(s.crew)});});
   return out;
 }
-function hjWoAddrSafe(addr){return hjWoText(String(addr||'').replace(/\d+\s*동\s*\d+\s*호/g,'').replace(/\d+\s*호/g,'').replace(/\s{2,}/g,' ').trim(),120);}
+function hjWoAddrSafe(addr){return hjWoText(String(addr||'').replace(/\d+\s*동\s*\d+\s*호/g,'').replace(/\d+\s*호(?![가-힣])/g,'').replace(/\s{2,}/g,' ').trim(),120);}   // 통합 검토(11/15) '둔산1호점'·'2호선' 은 호수가 아니다
 function hjWoUnit(p){const parsed=aptNameParse(String(p&&p.customer&&p.customer.addr||''))||aptNameParse(String(p&&p.name||''));return parsed&&parsed.dong&&parsed.ho?parsed.dong+'동 '+parsed.ho+'호':'';}
+// 글 안의 '○동 ○호'(어디에 있든) → '101동 202호' 또는 ''. 'N-M' 은 번지와 헷갈려 보지 않는다.
+const HJ_WO_UNIT_RE=/(\d{1,4})\s*동\s*(\d{1,5})\s*호/;
+function hjWoUnitText(t){const m=String(t||'').match(HJ_WO_UNIT_RE);return m&&+m[1]>0&&+m[2]>0?(+m[1])+'동 '+(+m[2])+'호':'';}
 /* 패킷 — 인터페이스 문서의 필드만, 그 이름 그대로. */
 function hjWoBuild(name,draft){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
@@ -46651,6 +46834,8 @@ function hjWoPrivacyIssues(packet,p){
   const masked=json.replace(/010-\*{4}-\d{4}/g,'');
   if(/01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/.test(masked))issues.push('전화번호 형식');
   if(/\d[\d,]{2,}\s*원|\d+\s*만\s*원|금액|견적가|잔금|계약금|중도금|수금/.test(json))issues.push('금액');
+  // 통합 검토(11/15) 출입 번호처럼 보이는 글이 남아 있으면 내보내지 않는다(제목·메모·주소는 hjTitleOut·hjAccessScrub 이 먼저 뺀다 — 남았다면 새 길이 빠뜨린 것)
+  if(HJ_ACCESS_CODE.test(json))issues.push('출입 번호');
   return issues;
 }
 /* 인터페이스 스키마 검증 — 팀 앱이 그대로 읽을 수 있는지(보내기 전 자가 검사·검사용). */
@@ -49841,15 +50026,22 @@ function hjWoBuildDay(day){
   rows.forEach(s=>{
     const c=s.date===day?null:hjSchContOn(s,day),contTail=c?' ('+c.day+'/'+c.days+'일째)':'',nth=c?c.day:1;   // v587 이어지는 날이면 '(2/3일째)' — 공정표 꼬리 '(N일차 시작)' 는 뗀다
     const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s,nth);if(again)used.add(again);
-    const tail=(trade?' ('+trade+')':'')+contTail,rawTitle=c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'')||'작업':(s.title||'작업');
+    const tOut=hjTitleOut(c?String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,''):(s.title||'작업')),tail=(trade?' ('+trade+')':'')+contTail,rawTitle=tOut.text||'작업';   // 통합 검토(11/15) 제목의 출입 번호는 뺀다
     // v605 현장 주소가 비어 있으면 일정 메모의 구글 '장소'를 주소로 — 호수는 뗀다(인터페이스 규칙 hjWoAddrSafe). 고객 이름·전화·금액으로 읽히는 장소는 쓰지 않는다
     // (그때는 메모 줄로 남아 hjRetScrub 이 지운다). 주소로 쓴 장소는 detail 에 다시 싣지 않는다.
-    const rawPlace=hjWoAddrSafe(p.customer&&p.customer.addr)?'':hjSchPlaceOf(s),placeAddr=hjWoAddrSafe(rawPlace),placeOk=!!placeAddr&&!hjWoPrivacyIssues({addr:placeAddr},p).length;
-    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo,placeOk?rawPlace:''),
+    // 통합 검토(11/15) 지울 것(전화·메일 — hjRetScrub)이 든 장소도 주소로 쓰지 않는다 — 관리실 042-·070- 번호가 project.addr 로 그대로 나갔다(개인정보 검사는 010·고객 번호만 본다).
+    //   현장 주소와 같은 곳인 장소(맞추기가 만든 현장 — 주소 = 장소에서 동·호수를 뗀 글)는 detail 에 다시 싣지 않는다(세대는 아래 unit 으로).
+    //   같은 곳인데 장소가 더 자세하면(도로명 앞부분 — 현장 주소가 단지 이름뿐일 때) 장소를 주소로.
+    const addr0=String((p.customer&&p.customer.addr)||'').trim(),place0=hjSchPlaceOf(s),same=!!place0&&hjSchPlaceSame(addr0,place0);
+    const placeWins=!hjWoAddrSafe(addr0)||(same&&hjSchAddrToks(place0).length>hjSchAddrToks(addr0).length),rawPlace=placeWins?place0:'',placeAddr=hjWoAddrSafe(rawPlace);
+    const placeOk=!!placeAddr&&hjRetScrub(placeAddr,(p.customer||{}).name)===placeAddr&&!hjWoPrivacyIssues({addr:placeAddr},p).length,usedPlace=placeOk?rawPlace:(same&&!placeWins?place0:'');
+    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(rawTitle,(p.customer||{}).name),c?120-tail.length:120)+tail,detail:hjWoMemoSafe(p,s.memo,usedPlace),
       assignee:hjWoText(crew.join(','),20),due:day,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
       checklist:(HJ_WO_CHECKLIST_BY[trade]||HJ_WO_CHECKLIST).slice(),photosWanted:HJ_WO_PHOTOS.map(x=>x[0]),notes:''});
     const o=one.orders[0];o.guideKey=hjWoGuideKey(p,trade);if(placeOk)o.project.addr=placeAddr;
-    orders.push(o);refs.push({name:p.name,order:o,again:!!again,cut:hjWoMemoCut(s.memo),items:[{kind:'sched',ref:String(s.id),day,n:nth,text:hjWoText((c?rawTitle:(s.title||'일정'))+contTail,120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
+    // 통합 검토(11/15): 세대는 이 일정 장소의 동·호수가 먼저 — 단지 현장의 일감마다 세대가 다르다(현장 주소의 세대는 첫 일감 것일 수 있다)
+    const pu=hjWoUnitText(hjSchPlaceOf(s));if(pu&&o.project)o.project.unit=pu;
+    orders.push(o);refs.push({name:p.name,order:o,again:!!again,cut:hjWoMemoCut(s.memo)+tOut.cut,items:[{kind:'sched',ref:String(s.id),day,n:nth,text:hjWoText((c?rawTitle:(s.title||'일정'))+contTail,120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
   });
   return {packet:{type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders},refs};
 }

@@ -7,11 +7,12 @@
    ③ 화면(폰 390) — 못 찾은 보고 줄에 적은 글 · '＋ 새 현장'은 고르지 않은 채·묶음 체크 안 됨 · 고르면 체크+이름 칸 · 이름 칸의 까닭 글(비슷·있음·보관·짧음) ·
       비슷한 현장이 있으면 선택지 대신 그 현장 이름 · 넘침 없음·44px·16px · 여기까지 자료 불변 (UI)
    ④ 배정 — 안전판 실패 → 현장도 배정도 없음 · 비슷한 이름 → 그 묶음 아래 까닭, 안전판도 안 찍음 · 성공 → 안전판 1회, 고친 이름으로 생성(0단계·유형 없음·고객 빈칸),
-      같은 이름 두 묶음은 현장 하나, 있는 이름은 넣기만, 안 고른 묶음은 그대로 · 대화 글은 저장본에 없음 · 다시 열면 그 보고는 현장을 찾음 (APPLY)
+      같은 이름 두 묶음은 현장 하나, 있는 이름은 넣기만, 안 고른 묶음은 그대로 · 대화 글은 저장본에 없음 · 다시 열면 그 보고는 현장을 찾음(남은 묶음은 이름 입력 선택지만) (APPLY)
    ⑤ 넣을 사진이 없으면 현장을 만들지 않음 · 오래된 창은 만들지도 넣지도 않음 · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (GUARD)
    HJ_V602_BASELINE=<commit> 은 ①, HJ_V602_MUTATION=any-sender(상대 글도 씀)는 ①, merge-ignores-suggest 는 ②, preselect-new(새 현장을 미리 고름)·
    no-similar-guard(비슷한 이름도 새 이름으로 침)는 ③, no-precheck(막힌 묶음을 말없이 건너뛰고 나머지를 배정)·create-before-snapshot(안전판 전에 만듦)는 ④,
-   empty-site(사진 없이 현장만 만듦)·no-stale(오래된 창 가드 없음)는 ⑤ 에서 실패해야 한다. */
+   empty-site(사진 없이 현장만 만듦)·no-stale(오래된 창 가드 없음)는 ⑤ 에서 실패해야 한다.
+   통합 검토(11/15): far-new-line(아는 현장 줄이 창 안에 있으면 더 가까운 새 현장 줄을 무시)은 ①, no-name-input(이름이 안 읽힌·막힌 묶음에 이름 입력 선택지 없음)은 ③ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -26,11 +27,13 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'any-sender': ["        if(x.who!==m.who||HJ_CHAT_PHOTO_RE.test(String(x.text||'').trim()))return;\n", "        if(HJ_CHAT_PHOTO_RE.test(String(x.text||'').trim()))return;\n"],
   'merge-ignores-suggest': ["&&l.project===e.project&&(l.suggest||'')===(e.suggest||'')&&e.t-l.t<=30*60000", '&&l.project===e.project&&e.t-l.t<=30*60000'],
-  'preselect-new': ["newOpt=nw?hjNewSiteOptionHtml(e.suggest):'';", "newOpt=nw?hjNewSiteOptionHtml(e.suggest,true):'';"],
+  'preselect-new': ["(okName?hjNewSiteOptionHtml(okName):'')", "(okName?hjNewSiteOptionHtml(okName,true):'')"],
   'no-similar-guard': ["  if(c.ok)return {to:c.name,fresh:true,why:'',similar:[]};\n", "  if(c.ok||c.why==='similar')return {to:c.name,fresh:true,why:'',similar:[]};\n"],
   'no-precheck': ['      if(!t.to){if(!blocked)blocked=el.dataset.i;return;}\n', '      if(!t.to)return;\n'],
   'create-before-snapshot': ["  try{snapped=await hjSnapshot('카톡 보고 배정 전',true,true);}catch(e){snapped=false;}\n", "  picks.forEach(pk=>{if(pk.fresh)ensureProjectExists(pk.to);});\n  try{snapped=await hjSnapshot('카톡 보고 배정 전',true,true);}catch(e){snapped=false;}\n"],
   'empty-site': ['    if(!todo.length)return;   // 넣을 사진이 없으면 현장도 만들지 않는다(빈 현장 방지)\n', ''],
+  'far-new-line': ['      if(best&&hint&&hint.suggest&&hint.dist<best.dist)best=null;\n', ''],
+  'no-name-input': ["(okName?hjNewSiteOptionHtml(okName):'')||'<option value=\"__new__:\">＋ 새 현장 (이름 입력)</option>';", "(okName?hjNewSiteOptionHtml(okName):'');"],
   'no-stale': [["  if(typeof __tabStale!=='undefined'&&__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}\n  const picks=[];let noTarget=0,blocked=null;\n", '  const picks=[];let noTarget=0,blocked=null;\n'],
     ["  if(typeof __tabStale!=='undefined'&&__tabStale){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}\n  const names=new Set(", '  const names=new Set(']]
 };
@@ -136,6 +139,18 @@ async function open() {
       assert.deepEqual(by('13:10').slice(3), ['', '사진 4장', '시험시 달빛동 55-3 옥상 방수', '달빛동 55-3'], '여러 줄 글의 장소 줄 · 주소 꼴 이름 ' + JSON.stringify(by('13:10')));
       assert.deepEqual(by('15:00').slice(3), ['', '사진 2장', '보람마을 누수 확인했습니다', '보람마을'], JSON.stringify(by('15:00')));
       assert.deepEqual([by('16:00').slice(3), by('16:10').slice(3)], [['', '사진 5장', '', ''], ['', '사진 6장', '', '']], '글이 없는 보고는 예전 그대로');
+      // 통합 검토(11/15) — 현장 두 곳을 연달아 보고(아는 현장 → 9분 뒤 새 현장, 반대 순서도): 사진에 더 가까운 줄이 새 현장 이름이면 그 보고는 새 현장 것이고
+      //   두 보고가 한 묶음으로 합쳐지지 않는다(예전에는 30분 창 안의 아는 현장 글 때문에 새 현장 사진이 그 현장으로 합쳐져 체크된 채 배정됐다)
+      const near = await page.evaluate(() => {
+        const t = d => d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+        const mk = lines => ['박기사 님과 카카오톡 대화', '', '--------------- 2026년 11월 14일 토요일 ---------------'].concat(lines).join('\n');
+        const one = lines => { const reps = hjChatReports([hjChatParse(mk(lines), 'n.txt')]); return { reps: reps.map(e => [t(e.t), e.n, e.project, e.suggest]), merged: hjChatMerge(reps).map(e => [t(e.t), e.n, e.project || e.suggest]) }; };
+        return { A: one(['[박기사] [오후 5:40] 사진 3장', '[박기사] [오후 5:41] 가온아파트 3동 105호 배수관 교체 완료', '[박기사] [오후 5:49] 사진 2장', '[박기사] [오후 5:50] 은하빌라 201호 욕실 누수 탐지 완료했습니다']),
+          B: one(['[박기사] [오후 5:40] 사진 2장', '[박기사] [오후 5:41] 은하빌라 201호 욕실 누수 탐지 완료했습니다', '[박기사] [오후 5:49] 사진 3장', '[박기사] [오후 5:50] 가온아파트 3동 105호 배수관 교체 완료']) };
+      });
+      assert.deepEqual(near.A.reps, [['17:40', 3, '가온아파트', ''], ['17:49', 2, '', '은하빌라']], '아는 현장 → 새 현장 ' + JSON.stringify(near.A));
+      assert.deepEqual(near.A.merged, [['17:40', 3, '가온아파트'], ['17:49', 2, '은하빌라']], '두 보고는 따로 ' + JSON.stringify(near.A.merged));
+      assert.deepEqual(near.B.reps, [['17:40', 2, '', '은하빌라'], ['17:49', 3, '가온아파트', '']], '새 현장 → 아는 현장 ' + JSON.stringify(near.B));
       assert.deepEqual(by('17:00').slice(5), ['모란아파트 303동 704호 재방문', '모란아파트']);
       assert.equal(r.length, 11, '사진 메시지 11개');
     });
@@ -167,9 +182,10 @@ async function open() {
       assert.equal(ui.rows.length, 6, '묶음 여섯 ' + JSON.stringify(ui.rows.map(x => x.text.slice(0, 40))));
       assert.ok(ui.rows[0].text.includes('“' + MORAN + '”') && !/“사진 2장”/.test(ui.rows[0].text), '못 찾은 보고 줄에 적은 글 ' + ui.rows[0].text);
       assert.deepEqual(ui.rows[0].opts, ['|현장 고르기 — 보고 글에서 못 찾음', '__new__:모란아파트|＋ 새 현장: 모란아파트'], '새 현장 선택지는 맨 위 ' + JSON.stringify(ui.rows[0].opts));
-      assert.deepEqual(ui.rows.map(x => [x.val, x.chk, x.nNew, x.box]), [['', false, 1, true], ['', false, 0, null], ['', false, 1, true], ['', false, 1, true], ['', false, 0, null], ['', false, 1, true]], '고르지 않은 채 · 체크 안 됨 · 이름 칸 숨김 ' + JSON.stringify(ui.rows.map(x => [x.val, x.chk, x.nNew, x.box])));
-      assert.ok(ui.rows[1].text.includes('“작업 사진 공유드립니다”') && !ui.rows[1].sim, '이름이 안 읽힌 묶음은 선택지도 안내도 없음 ' + JSON.stringify(ui.rows[1]));
-      assert.ok(/비슷한 현장: 보람마을 2단지 — 같은 곳이면 위에서 그 현장을 고르세요/.test(ui.rows[4].sim), '비슷한 현장이 있으면 선택지 대신 그 이름 ' + JSON.stringify(ui.rows[4]));
+      // 통합 검토(11/15): 현장을 못 찾은 묶음은 모두 '＋ 새 현장' 선택지 — 이름이 안 읽히거나 막힌 묶음은 '＋ 새 현장 (이름 입력)'(빈 칸)
+      assert.deepEqual(ui.rows.map(x => [x.val, x.chk, x.nNew, x.box]), [['', false, 1, true], ['', false, 1, true], ['', false, 1, true], ['', false, 1, true], ['', false, 1, true], ['', false, 1, true]], '고르지 않은 채 · 체크 안 됨 · 이름 칸 숨김 ' + JSON.stringify(ui.rows.map(x => [x.val, x.chk, x.nNew, x.box])));
+      assert.ok(ui.rows[1].text.includes('“작업 사진 공유드립니다”') && !ui.rows[1].sim && ui.rows[1].opts[1] === '__new__:|＋ 새 현장 (이름 입력)', '이름이 안 읽힌 묶음은 이름 입력 선택지 ' + JSON.stringify(ui.rows[1]));
+      assert.ok(/비슷한 현장: 보람마을 2단지 — 같은 곳이면 위에서 그 현장을 고르세요 · 다른 곳이면 ‘＋ 새 현장 \(이름 입력\)’/.test(ui.rows[4].sim) && ui.rows[4].opts[1] === '__new__:|＋ 새 현장 (이름 입력)', '비슷한 현장이 있으면 그 이름 + 이름 입력 ' + JSON.stringify(ui.rows[4]));
       assert.equal(ui.nosite.length, 7, '모든 보고 보기의 못 찾은 보고 7건');
       assert.equal(ui.nosite.filter(t => /“사진/.test(t)).length, 1, '글이 없는 보고(4:00·4:10)만 사진 N장 ' + JSON.stringify(ui.nosite));
       assert.ok(ui.nosite.some(t => t.includes('“' + MORAN + '”')), '대조 줄에도 적은 글');
@@ -198,6 +214,13 @@ async function open() {
       m = await say('모란아파트'); assert.equal(m[0], 'new');
       await page.selectOption(row(0) + '.chatSel', '');
       assert.deepEqual(await page.evaluate(() => { const r = document.querySelector('#modalRoot [data-chat-row="0"]'); return [r.querySelector('.chatChk').checked, r.querySelector('.chatNewBox').hidden]; }), [false, true], '고르기를 풀면 체크도 이름 칸도 풀린다');
+      // 이름이 안 읽힌 묶음 — '이름 입력'을 고르면 빈 이름 칸이 열리고(짧음), 적은 이름으로 무엇이 되는지 보인다
+      await page.selectOption(row(1) + '.chatSel', '__new__:');
+      const blank = await page.evaluate(() => { const r = document.querySelector('#modalRoot [data-chat-row="1"]'); return [r.querySelector('.chatChk').checked, r.querySelector('.chatNewBox').hidden, r.querySelector('.chatNew').value, r.querySelector('.chatNewMsg').dataset.state]; });
+      assert.deepEqual(blank, [true, false, '', 'short'], '이름 입력 — 빈 칸·짧음 ' + JSON.stringify(blank));
+      await page.fill(row(1) + '.chatNew', '새봄주택');
+      assert.equal(await page.evaluate(() => document.querySelector('#modalRoot [data-chat-row="1"] .chatNewMsg').dataset.state), 'new', '적은 이름으로 새 현장');
+      await page.selectOption(row(1) + '.chatSel', '');
       assert.equal(await page.evaluate(() => JSON.stringify(serializeData())), before, '보기·고르기만으로는 자료가 바뀌지 않는다');
     });
 
@@ -244,9 +267,9 @@ async function open() {
       ['탐지 완료했습니다', '303동', '재방문', '작업 사진 공유드립니다', '옥상 방수', '배관 누수', '은하수빌라'].forEach(w => assert.ok(!rec.saved.includes(w), '대화 글은 저장본에 없다: ' + w));
       // (라) 다시 읽으면 모란 보고는 현장을 찾고(✓), 남은 묶음은 안 고른 둘뿐 — 새 현장 선택지는 더 없다
       assert.equal(await review(), 8);
-      const again = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#modalRoot [data-chat-row]')].map(r => r.querySelector('.psr-txt').textContent.replace(/\s+/g, ' ')), nNew: document.querySelectorAll('#modalRoot .chatSel option[value^="__new__:"]').length,
+      const again = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#modalRoot [data-chat-row]')].map(r => r.querySelector('.psr-txt').textContent.replace(/\s+/g, ' ')), nNew: [...document.querySelectorAll('#modalRoot .chatSel option[value^="__new__:"]')].map(o => o.value),
         ok: [...document.querySelectorAll('#modalRoot details [data-chat-audit="ok"]')].map(x => x.textContent), summary: document.querySelector('#chatSummary').textContent.replace(/\s+/g, ' ') }));
-      assert.ok(again.rows.length === 2 && /작업 사진 공유드립니다/.test(again.rows[0]) && /보람마을 누수 확인했습니다/.test(again.rows[1]) && again.nNew === 0, JSON.stringify(again));
+      assert.ok(again.rows.length === 2 && /작업 사진 공유드립니다/.test(again.rows[0]) && /보람마을 누수 확인했습니다/.test(again.rows[1]) && JSON.stringify(again.nNew) === '["__new__:","__new__:"]', '남은 둘은 이름 입력 선택지만 ' + JSON.stringify(again));
       assert.ok(/내 사진 보고 8건\(현장 찾음 3건\)/.test(again.summary) && again.ok.filter(t => t.includes('모란아파트')).length === 2, '모란 보고 둘이 ✓ ' + JSON.stringify(again));
       await page.evaluate(() => closeModal());
     });
