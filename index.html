@@ -8511,9 +8511,18 @@ function hjPhotoOrgPlan(){
   const refs=hjPlaceRefs();
   const schC=new Map(),schOf=d=>{if(!schC.has(d))schC.set(d,hjPlaceSchedNames(d));return schC.get(d);};
   const map=new Map();
+  // v603 '단서 없음'인데 위치는 있는 사진(그날 일정 없음 · 아는 현장과 먼 곳 — 처음 간 곳)은 자리별로 나눈다: 그날 첫 사진 자리에서 150m(HJ_PLACE_NEAR_M) 안이면 같은 자리.
+  //   예전에는 날짜로만 묶어 하루에 처음 간 두 곳 사진이 한 줄이 됐다 — 한 줄을 한 현장(또는 '＋ 새 현장')으로 넣을 수 없었다. 다른 판단 묶음은 그대로.
+  const spots=new Map();
+  const spotOf=(day,f)=>{
+    const ll=hjPlaceLL(f);let a=spots.get(day);if(!a){a=[];spots.set(day,a);}
+    let i=a.findIndex(x=>geoDist(ll[0],ll[1],x[0],x[1])*1000<=HJ_PLACE_NEAR_M);
+    if(i<0){a.push(ll);i=a.length-1;}
+    return i;
+  };
   un.forEach(f=>{
     const day=hjKDayFast(f)||'',s=schOf(day),j=hjPlaceJudge(f,s,refs);
-    const key=[day,j.k,j.site||'',j.gps||'',(j.cands||[]).map(x=>x.name).sort().join('+'),s.join('+'),(j.k==='none'||j.k==='multi')?(j.ll?'L':'N'):''].join('|');
+    const key=[day,j.k,j.site||'',j.gps||'',(j.cands||[]).map(x=>x.name).sort().join('+'),s.join('+'),(j.k==='none'||j.k==='multi')?(j.ll?'L':'N'):'',(j.k==='none'&&j.ll)?spotOf(day,f):''].join('|');
     let g=map.get(key);
     if(!g){g={day,k:j.k,site:j.site||'',gps:j.gps||'',sch:s.slice(),files:[],ids:[],ms:[],cand:new Map(),near:new Map(),ll:!!j.ll};map.set(key,g);}
     g.files.push(f);g.ids.push(f.id);
@@ -8608,6 +8617,7 @@ function photoSuggestLabel(sg,short){
   if(sg.why==='partial')return short?'나머지':'이 묶음의 나머지 사진과 같은 현장';
   if(sg.why==='schedule')return short?'참고: 그날 일정':'참고: 그날 일정표에 이 현장만 있음 (확인 후 누르세요)';
   if(sg.why==='gpsck')return short?'참고: 위치 확인':'참고: '+(sg.ck||'위치 확인 필요')+' (확인 후 누르세요)';
+  if(sg.why==='folder')return short?'참고: 폴더 이름':'참고: 📁 사진 폴더 이름이 이 현장과 같아요 (확인 후 체크하세요)';   // v603 🧭 창에서만 생긴다
   return short?'참고: 같은 날':'참고: 같은 날 배정한 현장 (확인 후 누르세요)';
 }
 function photoSuggestApply(i){
@@ -8713,10 +8723,116 @@ function hjThumbStrip(files,attr,wrapCls,cls,moreCls){
   return '<span class="'+wrapCls+'">'+ps.map(f=>{const k=use.indexOf(f);return k<0?none(photoImg(f,160)):btn(f,'사진 크게 보기 '+(k+1)+'/'+use.length,photoImg(f,160),'',true);}).join('')+
     (all.length>3?(use.length?btn(use[0],'사진 크게 보기 — '+(all.length-3)+'장 더, 첫 장부터','+'+(all.length-3),moreCls,false):none('+'+(all.length-3),moreCls)):'')+'</span>';
 }
+/* ---------- v603 🧭·🧹 '＋ 새 현장' — 앱에 아직 없는 곳에서 찍은 사진을 그 창에서 새 현장으로 ----------
+   11/12~13 대표가 맡긴 일('구글 포토 나머지 사진 위치를 확인해서 프로젝트 생성')에서 두 창은 '이미 있는 현장'만 고를 수 있었다 — 처음 간 곳 사진은
+   창을 닫고 현장을 만든 뒤 돌아와 그 묶음을 다시 찾아야 했다(v571: 사진의 절반이 그 현장 첫 방문). 이름 규칙은 v599 한 곳(hjNewSiteName·hjNewSiteCheck).
+   · 제안 이름(hjPhotoNewHint, 읽기만):
+     ① 묶음의 미배정 사진이 모두 '현장사진/<폴더>/' 한 폴더에 있고 그 폴더가 흔한 이름·날짜 꼴이 아니면 폴더 이름 — PC 에서 사람이 나눠 둔 것이다
+        (드라이브 가져오기 __importTree 의 GENERIC·isProjName 과 같은 생각). 단지·주소 꼴이면 그 토막만('시험시 달빛로 77 달빛아파트' → '달빛아파트').
+        폴더가 진행 중인 현장과 같은 이름(띄어쓰기·'아파트' 차이만)이면 새 현장이 아니라 그 현장을 '참고'로(exist — 미리 고르되 체크 안 함, PHOTO_SUGGEST_SURE 아님).
+     ② 없으면 묶음 사진에 저장된 주소(위치 있는 사진의 f.address — 앱이 예전에 조회해 둔 글이다. 여기서 새로 조회하지 않는다)에서 ' · ' 뒤 건물 이름 먼저, 없으면 도로명+번호.
+     ③ 둘 다 없으면 제안 없이 '＋ 새 현장 (이름 입력)' — 빈 이름 칸.
+   · 선택지는 내놓기만 한다 — 미리 고르지 않고, 새 현장 줄은 미리 체크하지 않는다. 이름은 칸에서 고칠 수 있다.
+   · 적은 이름으로 무엇이 되나(hjPhotoNewTarget): 새 이름 → 안전판 뒤에 만든다(ensureProjectExists — 단계 0·유형 없음·고객 칸 빈칸. 조회한 주소를 고객 주소에
+     적지 않는다 — 고객 문서에 찍히는 칸이다) · 같은 이름의 진행 현장 → 만들지 않고 그 현장에 넣는다 · 비슷한 현장·보관한 같은 이름 현장·한 글자 →
+     만들지도 넣지도 않고 까닭(그 현장 이름)을 줄 아래에 적는다(빈 쌍둥이 현장 방지 — v526 주석). 현장 유형(누수/인테리어)은 짐작하지 않는다. */
+const HJ_PHOTO_DIR_GENERIC=new Set(['만물인테리어','현장사진','견적서','명함','데이터','백업','정리완료','_정리완료','사진','photos','img','이미지','문서','기타','완료','원본','새 폴더','새폴더',
+  '미분류','미배정','카톡','카카오톡','kakaotalk','톡클라우드','구글포토','구글 포토','google photos','camera','dcim','screenshots','스크린샷','download','downloads','다운로드','시공 전','시공 중','시공 후','시공전','시공중','시공후']);
+const HJ_PHOTO_DIR_SKIP_RE=/^[_.\d]/;   // 숨김·앱 폴더, 숫자로 시작(날짜 꼴 '2026-11-12'·'1109 작업')
+// 사진이 놓인 '현장사진/<폴더>/' 의 폴더 이름 — 흔한 이름·날짜 꼴·공정 이름·긴 글(24자 넘음)이면 ''
+function hjPhotoSiteDir(f){
+  const seg=String((f&&f.prefix)||'').normalize('NFC').split('/').filter(Boolean);
+  if(seg[0]!=='현장사진'||!seg[1])return '';
+  const n=seg[1].trim();
+  if(!n||n.length>24||HJ_PHOTO_DIR_SKIP_RE.test(n)||HJ_PHOTO_DIR_GENERIC.has(n.toLowerCase())||HJ_PHASE_SEQ.includes(n))return '';
+  return n;
+}
+// 사람이 적은 이름(폴더·건물 이름) → 현장 이름: 단지·주소 꼴이면 그 토막(v599), 아니면 동·호수만 뗀 글(v331: 아파트 이름 = 현장, 동·호수 = 세대)
+function hjPhotoNamedSite(text){
+  const n=hjNewSiteName(text,{addr:true});
+  return n||hjStmtCell(String(text||'').replace(HJ_STMT_UNIT_STRIP_RE,' ')).slice(0,40);
+}
+function hjPhotoAddrSite(addr){
+  const parts=String(addr||'').split(' · ');
+  if(parts.length>1){const n=hjPhotoNamedSite(parts.slice(1).join(' '));if(n.length>=2)return n;}
+  return hjNewSiteName(parts[0],{addr:true});
+}
+// 묶음(미배정 사진들) → {folder 폴더 이름, exist 그 폴더와 같은 이름의 진행 현장, name 새 현장 제안 이름, src 'folder'|'addr'|''}. 읽기만.
+function hjPhotoNewHint(files){
+  const out={folder:'',exist:'',name:'',src:''};
+  files=(files||[]).filter(Boolean);if(!files.length)return out;
+  const dirs=new Set(files.map(hjPhotoSiteDir)),folder=dirs.size===1?[...dirs][0]:'';
+  if(folder){
+    out.folder=folder;
+    const site=hjPhotoNamedSite(folder),keys=[hjNormName(folder),hjNormName(site)].filter(Boolean);
+    const same=(state.projects||[]).filter(p=>p&&p.name&&!p.archived&&(p.name===folder||p.name===site||keys.includes(hjNormName(p.name))));
+    const exact=same.filter(p=>p.name===folder||p.name===site);
+    if(same.length===1||exact.length===1){out.exist=(exact.length===1?exact[0]:same[0]).name;return out;}
+    const c=same.length?null:hjNewSiteCheck(site);
+    if(c&&c.ok){out.name=c.name;out.src='folder';return out;}
+  }
+  const addr=mostCommon(files.filter(f=>hjPhotoHasGps(f)&&f.address).map(f=>String(f.address)));   // 위치 없는 사진의 옛 주소는 출처를 모른다(clusterPhotos 주석)
+  if(addr){const c=hjNewSiteCheck(hjPhotoAddrSite(addr));if(c.ok){out.name=c.name;out.src='addr';}}
+  return out;
+}
+function hjPhotoNewIs(v){return String(v||'').indexOf('__new__:')===0;}
+function hjPhotoNewTarget(name){
+  const c=hjNewSiteCheck(name);
+  if(c.ok)return {to:c.name,fresh:true,why:'',similar:[]};
+  if(c.why==='exists'&&(state.projects||[]).some(p=>p&&p.name===c.name&&!p.archived))return {to:c.name,fresh:false,why:'exists',similar:[]};
+  return {to:'',fresh:false,why:c.why==='exists'?'archived':c.why,similar:c.similar||[]};
+}
+function hjPhotoNewSimText(names){
+  const arch=new Set((state.projects||[]).filter(p=>p&&p.archived).map(p=>p.name));
+  return (names||[]).map(n=>n+(arch.has(n)?'(보관)':'')).join(' · ');
+}
+// 고르기 칸의 '＋ 새 현장' 선택지(제안 이름이 있으면 그 이름, 없으면 이름 입력) — 고르지 않은 채로 맨 위에(현장 수십 곳 아래로 밀리지 않게)
+function hjPhotoNewOptionHtml(hint){
+  return (hint&&hint.name?hjNewSiteOptionHtml(hint.name):'')||'<option value="__new__:">＋ 새 현장 (이름 입력)</option>';
+}
+// 고르기 칸 바로 뒤(같은 부모 안)에 두는 새 현장 이름 칸 — '＋ 새 현장'을 골랐을 때만 보인다
+function hjPhotoNewBoxHtml(name,aria){
+  return '<div class="hjPnBox" hidden><input type="text" class="hjPnName" value="'+escapeAttr(name||'')+'" maxlength="60" autocomplete="off" placeholder="새 현장 이름 — 예: 달빛아파트" aria-label="'+escapeAttr(aria)+'" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;margin-top:4px">'+
+    '<div class="hjPnMsg" role="status" style="font-size:11.5px;line-height:1.5;margin-top:2px"></div></div>';
+}
+// 이름 칸을 보이고/숨기고, 적은 이름으로 무엇이 되는지 바로 아래에 적는다(막히는 이름은 배정 전에 보이게) → 새 현장을 골랐으면 hjPhotoNewTarget 결과, 아니면 null
+function hjPhotoNewSync(sel){
+  const box=sel&&sel.parentElement?sel.parentElement.querySelector('.hjPnBox'):null;
+  if(!box)return null;
+  const on=hjPhotoNewIs(sel.value);box.hidden=!on;
+  if(!on)return null;
+  const inp=box.querySelector('.hjPnName'),msg=box.querySelector('.hjPnMsg'),t=hjPhotoNewTarget(inp?inp.value:'');
+  if(msg){
+    msg.dataset.state=t.why||'new';
+    msg.style.color=t.to?'var(--muted)':'var(--hj-warn-fg)';
+    msg.textContent=t.fresh?'새 현장을 만들어 이 묶음 사진을 넣습니다 · 이름은 고칠 수 있어요'
+      :t.why==='exists'?'이미 있는 현장이에요 — 새로 만들지 않고 그 현장에 넣습니다'
+      :t.why==='similar'?'비슷한 현장: '+hjPhotoNewSimText(t.similar)+' — 위에서 그 현장을 고르거나 이름을 바꿔 주세요'
+      :t.why==='archived'?'보관한 현장과 이름이 같아요: '+hjPhotoNewSimText(t.similar)+' — 이름을 바꾸거나 보관을 푼 뒤 고르세요'
+      :'현장 이름을 두 글자 이상 적어 주세요';
+  }
+  if(inp)inp.setAttribute('aria-invalid',t.to?'false':'true');
+  return t;
+}
+// 고르기 칸을 바꿨을 때 — 이름 칸을 맞추고, 이름이 비어 있으면(이름 입력 선택지) 바로 적을 수 있게 초점을 준다
+function hjPhotoNewPicked(sel){
+  const t=hjPhotoNewSync(sel);
+  if(t&&!t.to&&t.why==='short'){const inp=sel.parentElement.querySelector('.hjPnName');if(inp&&!inp.value.trim()){try{inp.focus();}catch(e){}}}
+  return t;
+}
+function hjPhotoNewWire(root){
+  if(root)root.querySelectorAll('.hjPnName').forEach(inp=>{inp.oninput=()=>{const sel=inp.closest('.hjPnBox').parentElement.querySelector('select');if(sel)hjPhotoNewSync(sel);};});
+}
+// 막힌 새 현장 줄로 데려간다(그 줄 아래에 까닭이 적혀 있다)
+function hjPhotoNewFocus(sel){
+  const inp=sel&&sel.parentElement?sel.parentElement.querySelector('.hjPnName'):null;
+  if(inp){try{inp.scrollIntoView({block:'center'});inp.focus();}catch(e){}}
+}
 /* ---------- v523 🧭 추측 배정 보기: 현장 없는 사진 묶음을 한 창에서 훑고 체크한 것만 배정 ----------
    사진 탭 요약 줄 [🧭 추측 배정 보기]·첫 화면 점검 줄 '미배정 사진 n장'에서 연다. 묶음(clusterPhotos)과 추천(photoSuggestFor —
    GPS·재방문·나머지·같은 날·그날 일정)은 사진 탭과 같은 것을 쓴다. 확실한 추천(PHOTO_SUGGEST_SURE)은 체크된 채, 참고는 체크 해제로,
    단서 없는 묶음은 현장 고르기 칸으로 나온다. 묶음마다 사진 3장 미리보기(v584: 누르면 창 위에서 크게 보기). 배정 전 안전판 1회(못 만들면 아무것도 바꾸지 않는다).
+   v603: 확실한 추천만 고정 글이고 참고(같은 날·그날 일정·위치 확인·폴더 이름)는 제안 현장을 미리 골라 둔 고르기 칸 — 모든 고르기 칸 맨 위에 '＋ 새 현장'(바로 위 v603 주석).
    AI 키 없이 동작한다 — AI 자동 정리(aiAutoOrganize)는 가져오기 뒤 제안·공정 태깅용으로 그대로 둔다. */
 function hjPhotoSuggestReviewData(){
   const all=(state.files||[]).filter(f=>f&&f.kind==='photo');
@@ -8725,7 +8841,15 @@ function hjPhotoSuggestReviewData(){
   const ctx=photoSuggestContext();
   const when=c=>{const w=(c.items||[]).find(p=>p.when)?.when;return w?w.getTime():0;};
   return clusters.filter(c=>c.items.some(p=>!p.project)).sort((a,b)=>when(b)-when(a))
-    .map(c=>{const sg=photoSuggestFor(c,ctx,clusters);return {c,sg,open:c.items.filter(p=>!p.project),sure:!!(sg&&PHOTO_SUGGEST_SURE.includes(sg.why))};});
+    .map(c=>{
+      let sg=photoSuggestFor(c,ctx,clusters);
+      const open=c.items.filter(p=>!p.project),sure=!!(sg&&PHOTO_SUGGEST_SURE.includes(sg.why));
+      // v603 확실한 추천이 없는 묶음만 새 현장 단서를 본다(nw). 폴더 이름이 진행 중인 현장과 같으면 그 현장을 '참고'로 —
+      //   같은 날·그날 일정 짐작보다 사람이 나눠 둔 폴더가 먼저다. 위치 확인 참고(gpsck)는 그대로 두고 폴더는 줄 머리에만 보인다.
+      const nw=sure?null:hjPhotoNewHint(open);
+      if(nw&&nw.exist&&(!sg||sg.why==='sameday'||sg.why==='schedule'))sg={name:nw.exist,why:'folder',km:null,ids:open.map(p=>p.id)};
+      return {c,sg,open,sure,nw};
+    });
 }
 function hjPhotoSuggestReview(opts){
   opts=opts||{};
@@ -8738,53 +8862,81 @@ function hjPhotoSuggestReview(opts){
   const list=rows.map((r,i)=>{
     const c=r.c,w=c.items.find(p=>p.when)?.when;
     const place=hjPhotoHasGps(c)?(c.address?hjPlaceShort(c.address):(c.place||'GPS 있음')):'위치 미확인';
-    const head='<b>'+escapeHtml(fmtDay(w))+'</b> · 미배정 '+r.open.length+'장'+(c.items.length>r.open.length?' / '+c.items.length+'장':'')+' · <span style="color:var(--muted)">'+escapeHtml(place)+'</span>';
-    // v571 위치 확인 참고(gpsck)는 현장을 바꿀 수 있게 고르기 칸(제안 현장을 미리 골라 둠) + 이유 글
-    const fixed=r.sg&&r.sg.why!=='gpsck';
+    const head='<b>'+escapeHtml(fmtDay(w))+'</b> · 미배정 '+r.open.length+'장'+(c.items.length>r.open.length?' / '+c.items.length+'장':'')+' · <span style="color:var(--muted)">'+escapeHtml(place)+'</span>'+
+      (r.nw&&r.nw.folder?' · <span data-psr-folder style="color:var(--muted)">📁 '+escapeHtml(r.nw.folder)+'</span>':'');
+    // v571 위치 확인 참고(gpsck)는 현장을 바꿀 수 있게 고르기 칸(제안 현장을 미리 골라 둠) + 이유 글.
+    // v603 확실한 추천(체크된 줄)만 고정 글 — 참고(같은 날·그날 일정·폴더 이름)도 고르기 칸으로 바꿨다: 참고가 틀리면 이 창에서 다른 현장·새 현장을 고를 수 있게.
+    //   '＋ 새 현장' 선택지는 고르지 않은 채 맨 위에 두고(제안 이름이 없으면 이름 입력), 고르면 이름 칸이 열린다.
+    const fixed=r.sure;
     const target=fixed?'→ <b>"'+escapeHtml(r.sg.name)+'"</b> <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>'
-      :'<select class="psrSel" data-i="'+i+'" aria-label="'+escapeAttr(fmtDay(w))+' 묶음 현장 고르기" style="min-height:44px;max-width:100%"><option value="">'+(r.sg?'현장 고르기':'현장 고르기 — 단서 없음')+'</option>'+(r.sg?poptSel(r.sg.name):popt)+'</select>'+
-        (r.sg?' <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>':'');
+      :'<select class="psrSel" data-i="'+i+'" aria-label="'+escapeAttr(fmtDay(w))+' 묶음 현장 고르기" style="min-height:44px;max-width:100%"><option value="">'+(r.sg?'현장 고르기':'현장 고르기 — 단서 없음')+'</option>'+hjPhotoNewOptionHtml(r.nw)+(r.sg?poptSel(r.sg.name):popt)+'</select>'+
+        (r.sg?' <small style="color:var(--muted)">'+escapeHtml(photoSuggestLabel(r.sg))+'</small>':'')+
+        (r.nw&&r.nw.name?' <small data-psr-newhint="'+r.nw.src+'" style="color:var(--muted)">＋ 새 현장 제안: <b>'+escapeHtml(r.nw.name)+'</b> · '+(r.nw.src==='folder'?'📁 폴더 이름':'📍 사진에 저장된 주소')+'에서</small>':'')+
+        hjPhotoNewBoxHtml(r.nw?r.nw.name:'',fmtDay(w)+' 묶음 새 현장 이름');
     return '<div class="psr-row" data-psr="'+i+'"><label class="psr-chk"><input type="checkbox" class="psrChk" data-i="'+i+'"'+(r.sure?' checked':'')+' aria-label="'+escapeAttr(fmtDay(w))+' 묶음 배정"></label>'+thumbs(r)+'<div class="psr-txt">'+head+'<div class="psr-target">'+target+'</div></div></div>';
   }).join('');
   const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th,.psr-th:hover{width:48px;height:48px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);flex:0 0 auto;cursor:zoom-in;transform:none;box-shadow:none}.psr-th img{width:100%;height:100%;object-fit:cover;display:block}.psr-th div{font-size:10px}.psr-txt{flex:1 1 150px;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.psr-target{margin-top:2px}@media (max-width:480px){.psr-th,.psr-th:hover{width:44px;height:44px}.psr-row{gap:6px;flex-wrap:wrap}}</style>'+
-    '<div class="hint" style="margin:0 0 6px">현장 없는 사진 <b>'+unN+'장</b> · '+rows.length+'묶음. 확실한 추천 '+sureN+'묶음은 체크돼 있고, 참고(같은 날·그날 일정·위치 확인)는 체크를 풀어 두었습니다'+(noneN?'. 단서 없는 '+noneN+'묶음은 현장을 고르면 함께 배정됩니다':'')+'. 배정 전 안전판을 한 번 만듭니다.</div>'+
+    '<div class="hint" style="margin:0 0 6px">현장 없는 사진 <b>'+unN+'장</b> · '+rows.length+'묶음. 확실한 추천 '+sureN+'묶음은 체크돼 있고, 참고(같은 날·그날 일정·위치 확인·폴더 이름)는 체크를 풀어 두었습니다'+(noneN?'. 단서 없는 '+noneN+'묶음은 현장을 고르면 함께 배정됩니다':'')+'. 앱에 아직 없는 현장은 고르기 칸의 ‘＋ 새 현장’으로 만들어 넣을 수 있어요(고른 묶음만). 배정 전 안전판을 한 번 만듭니다.</div>'+
     '<div id="psrList" style="max-height:56vh;overflow:auto">'+list+'</div>'+
     '<div class="hint" style="margin:8px 0 0">되돌리기: 더보기 → 🛡 안전판(스냅샷) → "추측 배정 전". 사진을 누르면 이 창 위에서 크게 볼 수 있어요 — 닫으면 체크·고른 현장은 그대로예요.</div>'+
     '<div class="hint" style="margin:6px 0 0"><button type="button" class="ghost tiny" id="psrChat" style="min-height:44px">💬 카톡 대화 파일로 찾기</button> 협력사 톡방에 보낸 \'사진 N장 + 현장 이름\' 보고로 현장을 찾습니다(v528).</div>';
   openModal('🧭 추측 배정 보기 — 현장 없는 사진 '+unN+'장',body,
     [{label:'체크한 묶음 배정',cls:'clay',fn:()=>hjPhotoSuggestReviewApply(rows)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
-  if(root)root.querySelectorAll('.psrSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.psrChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;});
+  if(root)root.querySelectorAll('.psrSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.psrChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;hjPhotoNewPicked(sel);});
+  hjPhotoNewWire(root);   // v603 새 현장 이름 칸
   hjThumbBind(root,'[data-psr-photo]','data-psr-photo',btn=>{const row=btn.closest('[data-psr]'),r=row&&rows[+row.dataset.psr];return r?r.open.map(p=>p.id):[];});   // v584
   {const cb=root&&root.querySelector('#psrChat');if(cb)cb.onclick=()=>hjChatPick();}   // v528
   return rows.length;
 }
 async function hjPhotoSuggestReviewApply(rows){
   const root=document.getElementById('modalRoot');if(!root)return 0;
-  const picks=[];let noTarget=0;
+  const stale=()=>typeof __tabStale!=='undefined'&&__tabStale;
+  const picks=[];let noTarget=0,blocked=null,anyNew=false;
   root.querySelectorAll('.psrChk:checked').forEach(el=>{
     const r=rows[+el.dataset.i];if(!r)return;
     const sel=root.querySelector('.psrSel[data-i="'+el.dataset.i+'"]');
-    const to=sel?String(sel.value||''):(r.sg?r.sg.name:'');
+    let to=sel?String(sel.value||''):(r.sg?r.sg.name:''),fresh=false;
+    if(sel&&hjPhotoNewIs(to)){
+      // v603 '＋ 새 현장' — 이름 칸에 적은(고친) 이름으로 다시 본다. 비슷한 현장·보관한 같은 이름·짧은 이름이면 그 줄 아래에 까닭을 적고 멈춘다(안전판·배정 전에)
+      anyNew=true;
+      const t=hjPhotoNewSync(sel);
+      if(!t||!t.to){if(!blocked)blocked=sel;return;}
+      to=t.to;fresh=t.fresh;
+    }
     if(!to){noTarget++;return;}
-    picks.push({r,to});
+    picks.push({r,to,fresh});
   });
+  if(blocked){hjPhotoNewFocus(blocked);toast('새 현장 이름을 확인해 주세요 — 비슷한 현장이 있거나 이름이 짧아 만들지 않았어요(배정도 하지 않음)');return 0;}
+  // 오래된 창에서는 새 현장을 만들지 않는다 — 여기서 만든 현장은 저장되지 않고(v457 문지기) 새로고침하면 사라진다
+  if(anyNew&&stale()){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요(새 현장은 오래된 창에서 만들지 않아요)');return 0;}
   if(!picks.length){toast(noTarget?'체크한 묶음의 현장을 먼저 골라 주세요':'배정할 묶음을 체크하세요');return 0;}
   const btns=[...root.querySelectorAll('.mfoot button')];btns.forEach(b=>b.disabled=true);
   let snapped=false;
   try{snapped=await hjSnapshot('추측 배정 전',true,true);}catch(e){snapped=false;}
   if(!snapped){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('안전판을 만들지 못해 배정하지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
-  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name));
-  let n=0,g=0;
-  picks.forEach(({r,to})=>{
+  if(anyNew&&stale()){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요(새 현장은 오래된 창에서 만들지 않아요)');return 0;}
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),liveF=new Set(state.files||[]);
+  let n=0,g=0,late=0;const made=[],lateSim=[];
+  picks.forEach(({r,to,fresh})=>{
+    const todo=r.open.filter(p=>!p.project&&liveF.has(p));
+    if(fresh){
+      // 새 현장은 안전판 뒤, 넣을 사진이 있을 때만 만든다(빈 현장 방지). 안전판을 기다리는 사이 — 또는 같은 이름을 적은 앞 줄이 — 그 이름을 만들었으면
+      //   만들지 않고 그 현장에 넣고, 비슷한 이름이 생겼으면('달빛아파트' 다음의 '달빛 아파트') 그 줄은 그대로 둔다.
+      if(!todo.length)return;
+      const t=hjPhotoNewTarget(to);
+      if(!t.to){late++;t.similar.forEach(x=>{if(!lateSim.includes(x))lateSim.push(x);});return;}
+      to=t.to;
+      if(t.fresh&&ensureProjectExists(to)){made.push(to);names.add(to);}
+    }
     if(!names.has(to))return;
-    let k=0;r.open.forEach(p=>{if(p.project)return;p.project=to;k++;});
-    if(k){n+=k;g++;try{portalAutoSync(to);}catch(e){}}
+    if(todo.length){todo.forEach(p=>{p.project=to;});n+=todo.length;g++;try{portalAutoSync(to);}catch(e){}}
   });
-  if(!n){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('배정할 사진이 없습니다(이미 배정됨)');return 0;}
+  const lateT=late?' · 새 현장을 못 만든 '+late+'묶음은 그대로(비슷한 현장: '+hjPhotoNewSimText(lateSim)+')':'';
+  if(!n){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast(late?'배정하지 않았습니다'+lateT+' — 그 현장을 고르거나 이름을 바꿔 주세요':'배정할 사진이 없습니다(이미 배정됨)');return 0;}
   try{__photoCache.key=null;}catch(e){}
   markDirty();closeModal();render();
-  toast(g+'묶음 '+n+'장을 배정했습니다'+(noTarget?' · 현장 안 고른 '+noTarget+'묶음은 그대로':'')+' — 되돌리려면 🛡 안전판을 여세요');
+  toast(g+'묶음 '+n+'장을 배정했습니다'+(made.length?' · 새 현장 '+made.length+'곳('+made.join(', ')+')을 만들었어요':'')+(noTarget?' · 현장 안 고른 '+noTarget+'묶음은 그대로':'')+lateT+' — 되돌리려면 🛡 안전판을 여세요');
   return n;
 }
 
@@ -14227,17 +14379,25 @@ async function aiAutoOrganize(opts){
     const popt=selectableProjects('').map(p=>p.name);
     const dayT=g=>g.day?hjMdDow(g.day):'날짜 없음';
     const opt=(n,sel)=>'<option value="'+escapeAttr(n)+'"'+(sel?' selected':'')+'>'+escapeHtml(n)+'</option>';
-    const optHtml=g=>{
+    // v603 처음 간 곳 묶음(단서 없음 + 위치 있음 — 자리별로 나뉜다)에는 '＋ 새 현장'을 낸다(🧭 창과 같은 규칙: 고르지 않은 채, 체크 안 함, 이름은 고칠 수 있음).
+    //   제안 이름은 사진 폴더·저장된 주소에서(hjPhotoNewHint — 창에서만 보인다. AI 도구 결과(근거 글)에는 주소를 싣지 않는다).
+    const newHint=g=>(g.k==='none'&&g.ll)?hjPhotoNewHint(g.files):null;
+    const optHtml=(g,nh)=>{
       const top=g.top.filter(n=>popt.includes(n));
-      return '<option value="">'+(g.pre?'현장 고르기':'현장 고르기 — 확인필요')+'</option>'+top.map(n=>opt(n,n===g.pre)).join('')+
+      return '<option value="">'+(g.pre?'현장 고르기':'현장 고르기 — 확인필요')+'</option>'+(nh?hjPhotoNewOptionHtml(nh):'')+top.map(n=>opt(n,n===g.pre)).join('')+
         (top.length?'<option value="" disabled>──────</option>':'')+popt.filter(n=>!top.includes(n)).map(n=>opt(n,false)).join('');
     };
     const thumbs=g=>hjThumbStrip(g.files,'data-org-photo','hjorg-thumbs','hjorg-th','hjorg-more');   // v584 썸네일 = 크게 보기 단추
-    const row=(g,i)=>'<div class="hjorg-row" data-org="'+i+'" data-org-k="'+g.k+'">'+
+    const row=(g,i)=>{
+      const nh=newHint(g),addr=nh?mostCommon(g.files.filter(f=>f.address).map(f=>String(f.address))):'';
+      const where=nh?[addr?'📍 '+hjPlaceShort(addr):'',nh.folder?'📁 '+nh.folder:'',nh.name?'＋ 새 현장 제안: '+nh.name:''].filter(Boolean).join(' · '):'';
+      return '<div class="hjorg-row" data-org="'+i+'" data-org-k="'+g.k+'">'+
       '<label class="hjorg-chk"><input type="checkbox" class="orgChk" data-i="'+i+'"'+(g.ok?' checked':'')+' aria-label="'+escapeAttr(dayT(g)+' 사진 '+g.ids.length+'장 배정')+'"></label>'+thumbs(g)+
       '<div class="hjorg-txt"><b>'+escapeHtml(dayT(g))+'</b> · '+g.ids.length+'장 · <span class="hjorg-k">'+escapeHtml(g.label)+'</span>'+
-      '<div class="hjorg-why">'+escapeHtml(g.why)+'</div>'+
-      '<select class="orgSel" data-i="'+i+'" aria-label="'+escapeAttr(dayT(g)+' 사진 '+g.ids.length+'장 현장')+'">'+optHtml(g)+'</select></div></div>';
+      '<div class="hjorg-why">'+escapeHtml(g.why)+'</div>'+(where?'<div class="hjorg-why" data-org-where>'+escapeHtml(where)+'</div>':'')+
+      '<select class="orgSel" data-i="'+i+'" aria-label="'+escapeAttr(dayT(g)+' 사진 '+g.ids.length+'장 현장')+'">'+optHtml(g,nh)+'</select>'+
+      (nh?hjPhotoNewBoxHtml(nh.name,dayT(g)+' 사진 '+g.ids.length+'장 새 현장 이름'):'')+'</div></div>';
+    };
     const sec=(k,t)=>'<div class="hjorg-sec" data-org-sec="'+k+'">'+t+'</div>';
     const list=(okG.length?sec('ok','✅ 위치·일정 일치 — 체크해 두었어요 · '+okG.length+'묶음 '+okN+'장')+okG.map((g,i)=>row(g,i)).join(''):'')+
       (ckG.length?sec('check','🔎 확인필요 — 현장을 확인하고 체크하세요 · '+ckG.length+'묶음 '+ckN+'장')+ckG.map((g,i)=>row(g,okG.length+i)).join(''):'');
@@ -14248,20 +14408,30 @@ async function aiAutoOrganize(opts){
       '.hjorg-th,.hjorg-th:hover{width:48px;height:48px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);flex:0 0 auto;cursor:zoom-in;transform:none;box-shadow:none}.hjorg-th img{width:100%;height:100%;object-fit:cover;display:block}.hjorg-th div{font-size:10px}'+
       '.hjorg-txt{flex:1 1 150px;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.hjorg-k{font-weight:600}.hjorg-why{color:var(--muted);font-size:12.5px}.orgSel{min-height:44px;max-width:100%;margin-top:4px;font-size:16px}'+
       '@media (max-width:480px){.hjorg-th,.hjorg-th:hover{width:44px;height:44px}.hjorg-row{gap:6px;flex-wrap:wrap}}</style>'+
-      '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">사진마다 <b>위치</b>와 <b>그날 일정</b>을 함께 봤어요. 둘이 같은 현장을 가리킨 묶음만 체크해 두었고, 엇갈리거나 위치·일정이 부족한 묶음은 <b>확인필요</b>로 체크를 풀어 두었어요(현장을 고르면 체크돼요). 동·호수는 위치로 정하지 않아요. 배정 전 안전판을 한 번 만들고, Gemini 키가 있으면 공정까지 자동 인식합니다.</div>'+
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">사진마다 <b>위치</b>와 <b>그날 일정</b>을 함께 봤어요. 둘이 같은 현장을 가리킨 묶음만 체크해 두었고, 엇갈리거나 위치·일정이 부족한 묶음은 <b>확인필요</b>로 체크를 풀어 두었어요(현장을 고르면 체크돼요). 처음 간 곳(아는 현장과 먼 곳) 사진은 자리별로 나눠 두었고, 고르기 칸의 ‘＋ 새 현장’으로 현장을 만들어 넣을 수 있어요. 동·호수는 위치로 정하지 않아요. 배정 전 안전판을 한 번 만들고, Gemini 키가 있으면 공정까지 자동 인식합니다.</div>'+
       '<div id="orgList" style="max-height:52vh;overflow:auto">'+list+'</div>'+
       '<div id="orgProgWrap" style="display:none;margin-top:10px"><div class="progress"><i id="orgBar"></i></div><small id="orgStat" style="color:var(--clay)"></small></div>'+
       '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;min-height:44px"><input type="checkbox" id="orgAutoChk"'+(auto?' checked':'')+'><span>📥 다음부터 사진 가져오면 묻지 않고 자동 실행 — 위치·일정이 맞는 묶음만</span></label>',
       [{label:'✅ 선택 적용 + 공정 태깅',cls:'clay',fn:async()=>{
           const root=document.getElementById('modalRoot');if(!root)return;
-          const picks=[];let noTarget=0;
+          const stale=()=>typeof __tabStale!=='undefined'&&__tabStale;
+          const picks=[];let noTarget=0,blocked=null,anyNew=false;
           root.querySelectorAll('.orgChk:checked').forEach(el=>{
             const g=rows[+el.dataset.i];if(!g)return;
-            const s=root.querySelector('.orgSel[data-i="'+el.dataset.i+'"]'),to=String((s&&s.value)||'');
+            const s=root.querySelector('.orgSel[data-i="'+el.dataset.i+'"]');let to=String((s&&s.value)||''),fresh=false;
+            if(s&&hjPhotoNewIs(to)){
+              // v603 '＋ 새 현장' — 이름 칸에 적은 이름으로 다시 본다(🧭 창과 같은 규칙). 막히는 이름이면 그 줄 아래에 까닭을 적고 멈춘다(안전판·배정 전에)
+              anyNew=true;
+              const t=hjPhotoNewSync(s);
+              if(!t||!t.to){if(!blocked)blocked=s;return;}
+              to=t.to;fresh=t.fresh;
+            }
             if(!to){noTarget++;return;}
-            picks.push({g,to});
+            picks.push({g,to,fresh});
           });
-          const chosen=hjOrgHints(picks);
+          if(blocked){hjPhotoNewFocus(blocked);toast('새 현장 이름을 확인해 주세요 — 비슷한 현장이 있거나 이름이 짧아 만들지 않았어요(배정도 하지 않음)');return;}
+          if(anyNew&&stale()){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요(새 현장은 오래된 창에서 만들지 않아요)');return;}
+          let chosen=hjOrgHints(picks);
           if(!chosen.length){toast(noTarget?'체크한 묶음의 현장을 먼저 골라 주세요':'배정할 묶음을 체크하세요');return;}
           root.querySelectorAll('button').forEach(b=>b.disabled=true);
           const pw=root.querySelector('#orgProgWrap'),bar=root.querySelector('#orgBar'),st=root.querySelector('#orgStat');
@@ -14269,19 +14439,38 @@ async function aiAutoOrganize(opts){
           // v523 배정 전 안전판 1회 — 추측 배정 보기와 같은 규칙(못 만들면 바꾸지 않는다)
           if(chosen.length){let snapped=false;try{snapped=await hjSnapshot('AI 자동 정리 전',true,true);}catch(e){snapped=false;}
             if(!snapped){root.querySelectorAll('button').forEach(b=>b.disabled=false);if(pw)pw.style.display='none';toast('안전판을 만들지 못해 배정하지 않았습니다. 잠시 후 다시 시도하세요.');return;}}
+          // v603 새 현장은 안전판 뒤에, 넣을 사진이 남아 있을 때만 만든다. 그 사이 같은 이름이 생겼으면 그 현장에 넣고, 비슷한 이름이 생겼으면 그 묶음은 그대로 둔다.
+          const made=[],lateSim=[];let late=0;
+          if(anyNew){
+            if(stale()){root.querySelectorAll('button').forEach(b=>b.disabled=false);if(pw)pw.style.display='none';toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요(새 현장은 오래된 창에서 만들지 않아요)');return;}
+            const liveF=new Set(state.files||[]);
+            picks.forEach(x=>{
+              if(!x.fresh)return;
+              if(!x.g.files.some(f=>!f.project&&liveF.has(f))){x.to='';return;}
+              const t=hjPhotoNewTarget(x.to);
+              if(!t.to){x.to='';late++;t.similar.forEach(n=>{if(!lateSim.includes(n))lateSim.push(n);});return;}
+              x.to=t.to;
+              if(t.fresh&&ensureProjectExists(t.to))made.push(t.to);
+            });
+            if(made.length)markDirty();
+            chosen=hjOrgHints(picks);
+          }
           const {assigned}=await __orgApplyHints(chosen);
-          [...new Set(picks.map(x=>x.to))].forEach(to=>{try{portalAutoSync(to);}catch(e){}});
+          [...new Set(picks.map(x=>x.to).filter(Boolean))].forEach(to=>{try{portalAutoSync(to);}catch(e){}});
           const vis=await aiVisionPhaseAll((d,t,lab)=>{if(bar)bar.style.width=Math.round(d/Math.max(1,t)*100)+'%';if(st&&lab)st.textContent=lab;});
           render();closeModal();
           const leftUn=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
           const lines=['🧹 정리 완료','• 현장 배정: '+assigned+'장','• 공정 태깅: '+(vis.공정태깅||0)+'장'+(vis.생략?' — '+vis.생략:'')+(vis.중단?' · '+vis.중단:'')+(vis.남음?' · 남음 '+vis.남음:'')];
+          if(made.length)lines.push('• 새 현장: '+made.length+'곳 ('+made.join(', ')+')');
+          if(late)lines.push('• 새 현장을 못 만든 '+late+'묶음은 그대로 — 비슷한 현장: '+hjPhotoNewSimText(lateSim));
           if(noTarget)lines.push('• 현장을 안 고른 '+noTarget+'묶음은 그대로');
           if(leftUn)lines.push('• 남은 미배정: '+leftUn+'장');
           __orgSummaryModal('🧹 AI 자동 정리',lines);
         }},
        {label:'나중에',cls:'ghost',fn:closeModal}],true);
     const root=document.getElementById('modalRoot');
-    if(root)root.querySelectorAll('.orgSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.orgChk[data-i="'+sel.dataset.i+'"]');if(chk&&sel.value)chk.checked=true;});
+    if(root)root.querySelectorAll('.orgSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.orgChk[data-i="'+sel.dataset.i+'"]');if(chk&&sel.value)chk.checked=true;hjPhotoNewPicked(sel);});
+    hjPhotoNewWire(root);   // v603 새 현장 이름 칸
     hjThumbBind(root,'[data-org-photo]','data-org-photo',btn=>{const row=btn.closest('[data-org]'),g=row&&rows[+row.dataset.org];return g?g.files.map(f=>f.id):[];});   // v584
     const c=root&&root.querySelector('#orgAutoChk');
     if(c)c.onchange=e=>{localStorage.setItem('hj_auto_org',e.target.checked?'1':'0');toast(e.target.checked?'다음부터 자동 실행합니다(위치·일정이 맞는 묶음만)':'끔 — 매번 이 제안 창을 띄웁니다');};

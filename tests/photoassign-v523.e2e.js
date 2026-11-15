@@ -1,6 +1,6 @@
 /* v523 🧭 추측 배정 보기 — 현장 없는 사진 묶음을 한 창에서 훑고(추정 현장·근거·사진 3장) 체크한 것만 배정, 안전판 1회. AI 키 없이.
    + photoSuggestFor 에 '그날 일정' 참고 단서(일정표가 한 현장만 가리킬 때, 💰 제외, 두 현장이면 없음). 합성 자료만, 바깥 쓰기 0.
-   ① 사진 탭(1280) [🧭 미배정 n장 추측 배정 보기] → 창: 묶음 6(최신순) · GPS 묶음은 체크·사진 3장+'+1' · 일정 묶음은 참고(체크 해제) · 단서 없는 3묶음은 현장 고르기 칸
+   ① 사진 탭(1280) [🧭 미배정 n장 추측 배정 보기] → 창: 묶음 6(최신순) · GPS 묶음은 체크·사진 3장+'+1' · 일정 묶음은 참고(체크 해제 — v603 부터 제안 현장을 미리 고른 고르기 칸) · 단서 없는 3묶음은 현장 고르기 칸
       (두 현장 일정인 날·💰 일정만 있는 날은 단서 없음) · 묶음 헤더 👉 버튼에도 '참고: 그날 일정' (SCHEDULE)
    ② 안전판 실패 → 아무것도 바꾸지 않고 안내, 단추 다시 켜짐 (SNAPSHOT)
    ③ 참고 묶음 체크 + 단서 없는 묶음 현장 고르기(고르면 체크됨) → 배정: GPS 4 · 일정 2 · 고른 1 · 나머지(partial) 1 = 4묶음 8장, 안 고른 2묶음 그대로, 안전판 '추측 배정 전' 1개 (APPLY)
@@ -83,7 +83,7 @@ const rowsInfo = page => page.evaluate(() => {
     title: (root.querySelector('#modalTitle') || {}).textContent || '',
     rows: [...root.querySelectorAll('.psr-row')].map(r => ({
       text: r.querySelector('.psr-txt').textContent.replace(/\s+/g, ' ').trim(), checked: r.querySelector('.psrChk').checked,
-      imgs: r.querySelectorAll('.psr-th img').length, more: (r.querySelector('.psr-more') || {}).textContent || '', select: !!r.querySelector('.psrSel'),
+      imgs: r.querySelectorAll('.psr-th img').length, more: (r.querySelector('.psr-more') || {}).textContent || '', select: !!r.querySelector('.psrSel'), sel: (r.querySelector('.psrSel') || {}).value || '',
     })),
     foot: [...root.querySelectorAll('.mfoot button')].map(b => ({ t: b.textContent, h: Math.round(b.getBoundingClientRect().height), disabled: b.disabled })),
   };
@@ -115,7 +115,9 @@ const rowsInfo = page => page.evaluate(() => {
     assert(/2026\.08\.10 · 미배정 4장/.test(rG.text) && rG.checked && /"둔산현장"/.test(rG.text) && /\d+m 거리/.test(rG.text) && rG.imgs === 3 && rG.more === '+1', 'gps row checked with 3 thumbs + 1 ' + JSON.stringify(rG));
     assert(/2026\.08\.07/.test(rM.text) && rM.select && !rM.checked, '💰-only schedule day gives no clue ' + JSON.stringify(rM));
     assert(/2026\.08\.06/.test(rX.text) && rX.select && !rX.checked, 'two-project schedule day gives no clue ' + JSON.stringify(rX));
-    assert(/2026\.08\.05 · 미배정 2장/.test(rS.text) && !rS.checked && /"은행현장"/.test(rS.text) && /참고: 그날 일정표/.test(rS.text) && rS.imgs === 2, 'SCHEDULE row advisory, unchecked ' + JSON.stringify(rS));
+    // v603: 참고(그날 일정·같은 날) 줄도 고정 글 대신 고르기 칸 — 제안 현장을 미리 골라 두고 체크는 풀어 둔다(틀리면 이 창에서 다른 현장·새 현장을 고를 수 있게)
+    assert(/2026\.08\.05 · 미배정 2장/.test(rS.text) && !rS.checked && rS.select && rS.sel === '은행현장' && /참고: 그날 일정표/.test(rS.text) && rS.imgs === 2, 'SCHEDULE row advisory, preselected picker, unchecked ' + JSON.stringify(rS));
+    assert(!rP.select && !rG.select && [rN, rM, rX].every(x => x.sel === ''), 'sure rows stay fixed text · no-clue rows have nothing preselected ' + JSON.stringify(m.rows.map(x => [x.select, x.sel])));
     assert(m.foot.length === 2 && /체크한 묶음 배정/.test(m.foot[0].t), JSON.stringify(m.foot));
   });
 
