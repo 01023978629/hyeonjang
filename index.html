@@ -39291,6 +39291,89 @@ function hjStmtNewName(loc){
   const s=hjStmtCell(loc).replace(/\([^)]*\)/g,' ').replace(HJ_STMT_UNIT_STRIP_RE,' ').replace(HJ_STMT_CITY_RE,' ');
   return s.split(/\s+/).filter(Boolean).filter(t=>!/^[가-힣]{1,4}동$/.test(t)).join(' ').trim().slice(0,40);
 }
+/* v599 새 현장 이름 제안 — 캘린더 일정·카톡 보고·사진 주소처럼 '앱에 아직 없는 현장'을 가리키는 글에서 현장 이름을 뽑는 한 곳(읽기만).
+   대표가 11/12~13 두 번 맡긴 일(캘린더·톡방·사진을 보고 현장을 만들어 정리)에서 앱은 '이미 있는 현장'만 고를 수 있었다 — '＋ 새 현장'은 📑 내역서 반영(v526)뿐이었다.
+   hjStmtNewName 은 내역서 '위치' 칸(짧은 글)용이라 문장을 넣으면 문장이 통째로 나온다. 여기는 토막 하나만 고른다.
+   ① 단지·건물 낱말로 끝나는 토막('모란아파트'·'한빛타워') — 동·호수·도시·조사('에서'…)를 떼고(v331: 아파트 이름 = 현장, 동·호수 = 세대), 뒤의 'N단지·N차'는 붙인다.
+      낱말만 있는 토막('아파트'·'더샵')은 앞 토막과 잇는다('둔산 더샵'). 낱말이 토막 끝이 아니면('단지내') 이름으로 보지 않는다.
+   ② 없으면 주소 꼴만 — 도로명+번호('새벽로 12') 또는 동+번지('달빛동 55-3'). 위치 정보가 없으면 주소가 이름이다(대표 11/13).
+      자유 글(opts.addr 아님)에서는 앞에 행정구역(○○시·구·동…)이 있거나 번지에 '-'·'번지'가 있을 때만 — '욕실로 2번'·'출동 3건'을 주소로 읽지 않게.
+   ③ 둘 다 아니면 '' — 작업 글·사람 이름으로 현장을 만들지 않는다.
+   만들기는 사람이 '＋ 새 현장'을 골랐을 때만(미리 고르지 않는다). 같은·비슷한 현장이 있으면 선택지를 내지 않는다(hjNewSiteCheck — 빈 쌍둥이 현장 방지, v526 주석). */
+const HJ_NEWSITE_TOK_RE=/[\s,·/|]+/;
+const HJ_NEWSITE_WRAP_RE=/\([^)]*\)/g;
+const HJ_NEWSITE_MARK_RE=/[\[\]@]/g;
+const HJ_NEWSITE_JOSA_RE=/(?:에서|에게|으로|입니다|이에요|예요|에|의|은|는|이|가|로|도|요)$/;
+const HJ_NEWSITE_AREA_RE=/^[가-힣]{1,6}(?:특별자치시|광역시|특별시|시|군|구|읍|면|동|리)$/;
+const HJ_NEWSITE_ROAD_RE=/^[가-힣][가-힣0-9]{1,11}(?:로|길)$/;
+const HJ_NEWSITE_EURO_RE=/으로$/;
+const HJ_NEWSITE_ROADN_RE=/^\d{1,3}번?길$/;
+const HJ_NEWSITE_NUM_RE=/^(\d{1,4}(?:-\d{1,4})?)(번지)?$/;
+const HJ_NEWSITE_LOT_RE=/^[가-힣]{1,5}\d?(?:동|리|가)$/;
+const HJ_NEWSITE_SUB_RE=/^\d{1,2}(?:단지|차)$/;
+const HJ_NEWSITE_EXTRA_WORDS=['빌라','빌딩','상가','프라자','플라자','타워','하이츠','센트럴','파크','스카이','리버','시티','편한세상','apt'];
+function hjNewSiteWords(){return APT_WORDS.concat(HJ_NEWSITE_EXTRA_WORDS);}
+// 토막 안 마지막 단지·건물 낱말의 끝 위치(없으면 -1)
+function hjNewSiteWordEnd(tok){
+  const low=String(tok||'').toLowerCase();let end=-1;
+  hjNewSiteWords().forEach(w=>{const i=low.lastIndexOf(w);if(i>=0)end=Math.max(end,i+w.length);});
+  return end;
+}
+function hjNewSiteBare(tok){const low=String(tok||'').toLowerCase();return hjNewSiteWords().some(w=>low===w);}
+function hjNewSiteAddr(toks,free){
+  for(let i=0;i<toks.length;i++){
+    const t=toks[i],areaBefore=i>0&&HJ_NEWSITE_AREA_RE.test(toks[i-1]);
+    if(HJ_NEWSITE_ROAD_RE.test(t)&&!HJ_NEWSITE_EURO_RE.test(t)){
+      let j=i+1,road=t;
+      if(toks[j]&&HJ_NEWSITE_ROADN_RE.test(toks[j])){road+=' '+toks[j];j++;}
+      const m=toks[j]?toks[j].match(HJ_NEWSITE_NUM_RE):null;
+      if(m&&(!free||areaBefore))return road+' '+m[1];
+    }
+    if(HJ_NEWSITE_LOT_RE.test(t)&&!HJ_DONG_STOP.includes(t)){
+      const m=toks[i+1]?toks[i+1].match(HJ_NEWSITE_NUM_RE):null;
+      if(m&&(!free||m[1].indexOf('-')>0||m[2]||areaBefore))return t+' '+m[1];
+    }
+  }
+  return '';
+}
+function hjNewSiteName(text,opts){
+  const o=opts||{},raw=hjStmtCell(text).replace(HJ_NEWSITE_WRAP_RE,' ').replace(HJ_NEWSITE_MARK_RE,' ').replace(HJ_STMT_CITY_RE,' ');
+  if(!raw.trim())return '';
+  const toks=raw.replace(HJ_STMT_UNIT_STRIP_RE,' ').split(HJ_NEWSITE_TOK_RE).filter(Boolean);
+  for(let i=0;i<toks.length;i++){
+    let t=toks[i];
+    if(hjNewSiteWordEnd(t)<0)continue;
+    // '선비마을로 12'·'센트럴파크로 5' 는 길 이름 — 단지 이름으로 읽지 않는다(아래 주소 꼴이 맡는다)
+    if(HJ_NEWSITE_ROAD_RE.test(t)&&toks[i+1]&&(HJ_NEWSITE_NUM_RE.test(toks[i+1])||HJ_NEWSITE_ROADN_RE.test(toks[i+1])))continue;
+    const cut=t.replace(HJ_NEWSITE_JOSA_RE,'');
+    if(cut!==t&&cut&&hjNewSiteWordEnd(cut)===cut.length)t=cut;
+    if(hjNewSiteWordEnd(t)!==t.length)continue;
+    if(hjNewSiteBare(t)){const prev=toks[i-1]||'';if(prev.length<2||HJ_NEWSITE_NUM_RE.test(prev))continue;t=prev+' '+t;}
+    if(toks[i+1]&&HJ_NEWSITE_SUB_RE.test(toks[i+1]))t+=' '+toks[i+1];
+    if(t.length>=3)return t.slice(0,40);
+  }
+  return hjNewSiteAddr(raw.split(HJ_NEWSITE_TOK_RE).filter(Boolean),!o.addr).slice(0,40);
+}
+/* 그 이름으로 새 현장을 만들어도 되는가 → {name, ok, why:''|'short'|'exists'|'similar', similar:[이름]}. 읽기만.
+   같은 이름(보관 현장 포함)·비슷한 이름(hjSimilarProjects)·이름 맞추기 0.6↑(hjStmtMatch — 맞추기·내역서와 같은 기준)이 있으면 ok=false — 그 현장을 고르게 한다. */
+function hjNewSiteCheck(name){
+  const n=hjStmtCell(name).slice(0,60);
+  if(n.length<2)return {name:n,ok:false,why:'short',similar:[]};
+  const all=(state.projects||[]).filter(p=>p&&p.name);
+  if(all.some(p=>p.name===n))return {name:n,ok:false,why:'exists',similar:[n]};
+  const key=hjNormName(n),sim=[];
+  all.forEach(p=>{if(p.archived&&key&&hjNormName(p.name)===key)sim.push(p.name);});
+  hjSimilarProjects(n).forEach(x=>{if(!sim.includes(x))sim.push(x);});
+  hjStmtMatch(n).forEach(c=>{if(c.score>=0.6&&!sim.includes(c.name))sim.push(c.name);});
+  return sim.length?{name:n,ok:false,why:'similar',similar:sim}:{name:n,ok:true,why:'',similar:[]};
+}
+// 고르기 칸의 '＋ 새 현장: 이름' 선택지(값 '__new__:이름' — v526 내역서 반영과 같은 꼴). 만들 수 없는 이름이면 ''.
+function hjNewSiteOptionHtml(name,selected){
+  const c=hjNewSiteCheck(name);
+  return c.ok?'<option value="'+escapeAttr('__new__:'+c.name)+'"'+(selected?' selected':'')+'>＋ 새 현장: '+escapeHtml(c.name)+'</option>':'';
+}
+// 고른 값이 '＋ 새 현장'이면 그 이름, 아니면 ''
+function hjNewSiteChoice(v){v=String(v||'');return v.indexOf('__new__:')===0?hjStmtCell(v.slice(8)).slice(0,60):'';}
 // 위치 한 줄 → 현장 후보 [{name,score,why}] (점수순). 동·호수가 그 현장에 등록돼 있으면 +0.35, 같은 점수면 자료가 많은 현장 먼저.
 //   사진·견적이 하나도 없는 현장은 −0.2 — 10/31 실자료에 동네 이름이나 호수가 붙은 빈 중복 현장('솔동보람아파트'·'보람아파트 101호' 꼴)이 있고
 //   실제 사진·견적은 원래 현장('보람아파트')에 있다(이름이 더 똑같아도 빈 현장으로 보내지 않는다 — 고르는 건 사람).
