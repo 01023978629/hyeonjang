@@ -4052,7 +4052,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v607-nosite';
+const APP_BUILD='hyeonjang-v608-photorule';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -32796,6 +32796,21 @@ const CW_SAFE=`[지킬 것]
 - 앱 파일(현장*.html·sw.js·*.md·_현장*.json·현장_백업*·_백업·데이터·_정리완료)은 옮기거나 고치지 않는다.
 - 현장웹이 두 창 이상 열려 있으면 먼저 알려 주고, 최신 자료가 있는 창 하나로 저장한다.
 - 애매한 것은 표로 보여 주고 멈춰서 묻는다.`;
+/* v608 대표 11/16 "구글 포토와 카카오서랍은 내가 현장에서 작업한 사진만 분류해서 받아서 저장하고 프로젝트에 넣어줘야해 —
+   현장웹은 정리 및 관리 용이고 만물웹은 홍보용이야". 구글 포토에는 개인 사진이, 톡서랍에는 남이 보낸 사진이 섞여 있다.
+   이 규칙은 저장된 명령 글이 아니라 복사할 때 끝에 붙인다(cwRuleTail) — 기본 명령은 처음 들어온 날의 글로 저장되고
+   (coworkTasksEnsure) 새 문구로 바뀌지 않아서, 글만 고치면 이미 쓰던 기기·대표가 고친 명령에는 규칙이 안 들어간다. */
+const CW_PHOTO_OWN_HEAD='[대표 규칙 — 현장 작업 사진만 · 위 할 일보다 먼저 지킨다]';
+const CW_PHOTO_OWN=CW_PHOTO_OWN_HEAD+`
+- 구글 포토·톡서랍·다운로드 폴더에서 내가 현장에서 작업하며 찍은 사진·동영상만 받아 현장사진에 넣는다. 개인 사진(가족·여행·음식 등)·화면 캡처·남이 보낸 사진(협력사·고객이 올린 것)·광고·문서 이미지는 받지도 옮기지도 않는다.
+- 현장 작업 사진인지 애매하면 넣지 말고 '확인필요' 표에 날짜·장수·어디서(톡방 이름·구글 포토)만 적어 나에게 묻는다.
+- 현장웹은 정리·관리용이다 — 사진은 만물 폴더 현장사진/<현장 이름>/ 에 두고, 현장(프로젝트)은 현장웹 화면에서 만들고 넣는다(_현장.json 을 고쳐 만들지 않는다).
+- 만물웹(홈페이지)은 홍보용이다 — 이 일에서는 홈페이지에 아무것도 올리지 않는다(사례 글은 따로 📰 사례 내보내기).
+- 끝날 때 현장 작업 사진이 아니라서 받지 않은 장수도 알려 준다.`;
+const CW_PHOTO_OWN_IDS=['cw_sitesort','cw_photoin'];
+function cwRuleTail(t){
+  return t&&CW_PHOTO_OWN_IDS.includes(t.id)&&!String(t.prompt||'').includes(CW_PHOTO_OWN_HEAD)?'\n\n'+CW_PHOTO_OWN:'';
+}
 function cwDefaultsV529(){
   const N=COMPANY.name;
   return [
@@ -33238,7 +33253,8 @@ function coworkTaskEdit(id){
     '<textarea id="cwPrompt" placeholder="너는 만물인테리어의 ○○ 비서다. 이 폴더의 ○○ 파일을 읽어서…" style="width:100%;padding:11px;font-size:13px;min-height:220px;line-height:1.6;font-family:inherit">'+(t?escapeHtml(t.prompt):'')+'</textarea>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">💡 명령은 구체적일수록 좋아요: ①누구인지(역할) ②어떤 파일을 ③무엇을 해서 ④어떻게 저장할지 ⑤하지 말 것. 회사명·현장명·담당자를 넣으면 더 정확합니다.</div>'+
     // v604 저장된 명령에는 자리 글자가 그대로 보인다 — 지우면 복사할 때 일정표·현장 목록이 안 채워진다는 것을 고치는 자리에서 알린다
-    '<div id="cwSlotHint" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">🔁 {오늘} · {최근일정} · {현장목록} 이라고 적은 자리는 복사할 때 오늘 날짜 · 최근 일정(2주 전~3일 뒤) · 현장 목록으로 바뀝니다. 여기 저장된 글은 그대로예요.</div>';
+    '<div id="cwSlotHint" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">🔁 {오늘} · {최근일정} · {현장목록} 이라고 적은 자리는 복사할 때 오늘 날짜 · 최근 일정(2주 전~3일 뒤) · 현장 목록으로 바뀝니다. 여기 저장된 글은 그대로예요.</div>'+
+    (t&&CW_PHOTO_OWN_IDS.includes(t.id)?'<div id="cwOwnHint" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">📌 이 명령은 복사할 때 끝에 「대표 규칙 — 현장 작업 사진만」이 붙어요(구글 포토·톡서랍에서 현장 작업 사진만 · 현장웹은 정리·관리용 · 만물웹은 홍보용). 여기 저장된 글은 그대로예요.</div>':'');   // v608
   openModal(isNew?'+ 클로드 명령 추가':'✏️ 명령 수정',body,[
     {label:'저장',cls:'clay',fn:()=>{
       const title=document.getElementById('cwTitle').value.trim();
@@ -34616,6 +34632,7 @@ function coworkOrderText(due){
     md+='---\n\n## '+(i+1)+'. '+(x.task.icon||'📋')+' '+x.task.title+'  · 주기: '+coworkSchedLabel(x.sched)+'\n\n';
     md+=cwSkillLine(x.task)+'\n\n';
     md+=cwFill(x.task.prompt)+'\n\n';   // 통합 검토(11/15) 지시서 파일에도 {오늘}·{최근일정}·{현장목록}을 채운다(예전엔 글자 그대로 들어갔다)
+    const own=cwRuleTail(x.task);if(own)md+=own.trim()+'\n\n';   // v608 사진 명령엔 대표 규칙
   });
   md+='---\n\n### 완료 후\n- 산출물을 이 폴더에 저장하세요(파일명 규약 준수).\n- 사장님께 "앱 → 더보기 → ⏰ Cowork 예약에서 해당 작업 [✅ 완료]를 눌러 주세요"라고 안내하세요.\n';
   md+='\n'+coworkSkillCatalogText()+'\n';
@@ -35711,9 +35728,10 @@ function cwSkillLine(t){
   if(t.skill)return '🧰 사용할 스킬: '+t.skill;
   return '🧰 스킬 안내: 작업 성격에 맞는 만물 스킬이 있으면 함께 쓰세요 — 견적서=manmul-estimate · 확인서/합의서=manmul-docs · 홍보 글=manmul-marketing · 고객 답장=manmul-customer · 상담/실측=manmul-consult · 아파트 서류=manmul-apt · 인력/정산=manmul-crew';
 }
-function cwWithSkill(t){
+function cwWithSkillBody(t){
   return cwSkillLine(t)+'\n\n'+cwFill(t.prompt);
 }
+function cwWithSkill(t){return cwWithSkillBody(t)+cwRuleTail(t);}   // v608 사진 명령엔 대표 규칙을 복사할 때 붙인다
 function coworkSkillCatalogText(){
   return [
     '# 만물인테리어 — 클로드 스킬 명령문 카탈로그',
