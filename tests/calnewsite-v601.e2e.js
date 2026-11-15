@@ -33,8 +33,8 @@ const MUT = {
   'addr-existing': ['    if(made.has(t.to)){const p=state.projects.find(q=>q&&q.name===t.to),ad=', '    if(true){const p=state.projects.find(q=>q&&q.name===t.to),ad='],
   'access-addr': ["const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}", "const t=hjStmtCell(loc).slice(0,120);return t&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}"],
   'link-addr': ["const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)&&!HJ_CALSYNC_LINK_RE.test(t)?t:'';}", "const t=hjStmtCell(loc).slice(0,120);return t&&!hjLooksLikeAccessCode(t)?t:'';}"],
-  'no-dead-stop': ["  if(sel.every(x=>wantsNew(x)&&!hjCalSyncNewTarget(hjNewSiteChoice(x.project)).to))throw new Error(", "  if(false)throw new Error("],
-  'create-before-snapshot': ["  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}\n", "  sel.forEach(x=>{if(wantsNew(x)){const t=hjCalSyncNewTarget(hjNewSiteChoice(x.project));if(t.fresh)ensureProjectExists(t.to);}});\n  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}\n"]
+  'no-dead-stop': ["  if(sel.every(x=>wantsNew(x)&&!hjNewSiteTarget(hjNewSiteChoice(x.project)).to))throw new Error(", "  if(false)throw new Error("],
+  'create-before-snapshot': ["  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}\n", "  sel.forEach(x=>{if(wantsNew(x)){const t=hjNewSiteTarget(hjNewSiteChoice(x.project));if(t.fresh)ensureProjectExists(t.to);}});\n  let snapped=false;try{snapped=await hjSnapshot('구글 캘린더 맞추기 전',true,true);}catch(e){snapped=false;}\n"]
 };
 let html = process.env.HJ_V601_BASELINE ? execFileSync('git', ['show', process.env.HJ_V601_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V601_MUTATION) {
@@ -213,7 +213,7 @@ const SEED = () => {
         const P = hjCalSyncPlan(hjCalApiEvents(items)), at = t => P.rows.findIndex(x => x.title === t);
         const picks = [[at('배관 점검'), '__new__:나래마을아파트'], [at('방수 확인'), '__new__:나래마을 아파트 2단지'], [at('타일 보수'), '__new__:옛빌라'], [at('실리콘'), '__new__:가'],
           [at('누수 탐지'), '__new__:은하빌라'], [at('샤시 점검'), '__new__:솔밭주택'], [at('샤시 실측'), '__new__:솔밭주택'], [at('도배'), '__new__:엉뚱한집'], [at('달빛아파트 반상회'), '__new__:달빛아파트']].map(([i, project]) => ({ i, project }));
-        const tg = n => { const t = hjCalSyncNewTarget(n); return [t.to, t.fresh, t.why, t.similar]; };
+        const tg = n => { const t = hjNewSiteTarget(n); return [t.to, t.fresh, t.why, t.similar]; };
         const out = { target: { ex: tg('나래마을아파트'), sim: tg('나래마을 아파트 2단지'), arch: tg('옛빌라'), short: tg('가'), ok: tg('은하빌라') } };
         const res = await hjCalSyncApply(P, picks);
         out.res = { added: res.added, np: res.newProjects, blocked: res.blocked.map(b => [b.title, b.name, b.why, b.similar]) };
