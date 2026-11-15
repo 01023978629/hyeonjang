@@ -3,10 +3,11 @@
    같은 규칙으로 '＋ 새 현장'을 내도록 이름 뽑기와 '만들어도 되는가'를 한 곳에 둔다. 합성 이름만, 바깥 쓰기 0.
    ① 이름 — 단지·건물 낱말로 끝나는 토막만(동·호수·도시·조사 뗌, N단지 붙임, 낱말만 있으면 앞 토막과 이음) · 없으면 주소 꼴(도로명+번호·동+번지) ·
       자유 글은 행정구역이 앞에 있거나 번지에 '-' 가 있을 때만 · 작업 글·사람 이름·'단지내'·'욕실로 2번'·'출동 3건'은 '' (NAME)
-   ② 만들어도 되는가 — 같은 이름·비슷한 이름·보관 현장과 같은 이름이면 ok=false + 그 현장 이름 · 선택지 글은 글자로(꺾쇠) · 고른 값 읽기 (CHECK)
+   ② 만들어도 되는가 — 같은 이름·비슷한 이름·보관 현장과 같은 이름이면 ok=false + 그 현장 이름 · 선택지 글은 글자로(꺾쇠) · 고른 값 읽기 ·
+      어디에 넣는가(hjNewSiteTarget: 새로·진행 현장에 잇기·보관/비슷함/짧음은 막음) (CHECK)
    ③ 읽기만 — 자료 한 글자도 안 바뀜 · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (READONLY)
    HJ_V599_BASELINE=<commit> 와 HJ_V599_MUTATION=whole-line(문장을 통째로)·no-josa(조사를 안 뗌)·mid-word(낱말이 토막 가운데여도 이름)·
-   road-as-complex(길 이름을 단지로)·free-road(자유 글의 도로명을 그냥 주소로)는 ①, no-similar(비슷한 현장을 안 봄)·no-archived(보관 현장을 안 봄)는 ② 에서 실패해야 한다. */
+   road-as-complex(길 이름을 단지로)·free-road(자유 글의 도로명을 그냥 주소로)는 ①, no-similar(비슷한 현장을 안 봄)·no-archived(보관 현장을 안 봄)·link-archived(보관한 같은 이름에 그대로 이음)는 ② 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -25,6 +26,7 @@ const MUT = {
   'road-as-complex': ['    if(HJ_NEWSITE_ROAD_RE.test(t)&&toks[i+1]&&(HJ_NEWSITE_NUM_RE.test(toks[i+1])||HJ_NEWSITE_ROADN_RE.test(toks[i+1])))continue;\n', ''],
   'free-road': ["      if(m&&(!free||areaBefore))return road+' '+m[1];", "      if(m)return road+' '+m[1];"],
   'no-similar': ["  hjSimilarProjects(n).forEach(x=>{if(!sim.includes(x))sim.push(x);});\n  hjStmtMatch(n).forEach(c=>{if(c.score>=0.6&&!sim.includes(c.name))sim.push(c.name);});\n", ''],
+  'link-archived': ["(state.projects||[]).some(p=>p&&p.name===c.name&&!p.archived))return {to:c.name,fresh:false,why:'exists',similar:[]};", "(state.projects||[]).some(p=>p&&p.name===c.name))return {to:c.name,fresh:false,why:'exists',similar:[]};"],
   'no-archived': ['  all.forEach(p=>{if(p.archived&&key&&hjNormName(p.name)===key)sim.push(p.name);});\n', '']
 };
 let html = process.env.HJ_V599_BASELINE ? execFileSync('git', ['show', process.env.HJ_V599_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
@@ -106,7 +108,10 @@ const NAMES = [
         same: hjNewSiteCheck('가온아파트'), gap: hjNewSiteCheck('가온 아파트'), part: hjNewSiteCheck('보람마을'), arch: hjNewSiteCheck('옛 빌라'), archSame: hjNewSiteCheck('옛빌라'),
         fresh: hjNewSiteCheck('모란아파트'), addr: hjNewSiteCheck('달빛동 55-3'), short: hjNewSiteCheck('x'),
         opt: hjNewSiteOptionHtml('모란<b>아파트'), optSel: hjNewSiteOptionHtml('모란아파트', true), optNo: hjNewSiteOptionHtml('가온 아파트'),
-        choice: [hjNewSiteChoice('__new__: 모란아파트 '), hjNewSiteChoice('가온아파트'), hjNewSiteChoice('')]
+        choice: [hjNewSiteChoice('__new__: 모란아파트 '), hjNewSiteChoice('가온아파트'), hjNewSiteChoice('')],
+        // 적용 직전에 다시 보는 한 곳(v602·v603·v601 창이 같이 쓴다)
+        target: [hjNewSiteTarget('모란아파트'), hjNewSiteTarget('가온아파트'), hjNewSiteTarget('옛빌라'), hjNewSiteTarget('가온 아파트'), hjNewSiteTarget('x')],
+        simText: hjNewSiteSimText(['가온아파트', '옛빌라'])
       }));
       assert.deepEqual([r.same.ok, r.same.why, r.same.similar], [false, 'exists', ['가온아파트']], '같은 이름 ' + JSON.stringify(r.same));
       assert.deepEqual([r.gap.ok, r.gap.why, r.gap.similar], [false, 'similar', ['가온아파트']], '띄어쓰기만 다른 이름 ' + JSON.stringify(r.gap));
@@ -120,6 +125,9 @@ const NAMES = [
       assert.ok(/ selected>/.test(r.optSel), '고른 채로 ' + r.optSel);
       assert.equal(r.optNo, '', '비슷한 현장이 있으면 선택지 없음');
       assert.deepEqual(r.choice, ['모란아파트', '', ''], '고른 값 ' + JSON.stringify(r.choice));
+      assert.deepEqual(r.target.map(x => [x.to, x.fresh, x.why]), [['모란아파트', true, ''], ['가온아파트', false, 'exists'], ['', false, 'archived'], ['', false, 'similar'], ['', false, 'short']], '어디에 넣는가 ' + JSON.stringify(r.target));
+      assert.deepEqual(r.target[3].similar, ['가온아파트'], '막을 때는 비슷한 현장을 알려 준다');
+      assert.equal(r.simText, '가온아파트 · 옛빌라(보관)', '안내 글 ' + r.simText);
     });
 
     await test('③ 읽기만 — 자료 불변 · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (READONLY)', async () => {
