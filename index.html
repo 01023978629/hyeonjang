@@ -41472,6 +41472,7 @@ async function importICS(text){
    구글 내보내기의 UTC 시각(…Z)을 한국 시각으로 바꾸지 않는다. 이 창은 읽은 일정을 앱 일정표와 대조해 **미리보기에서 고른 것만** 넣는다.
    · 읽는 것: 구글 캘린더 내보내기 .ics(…Z 는 한국 시각으로) 또는 캘린더 화면에서 복사한 글('오전 9시~오후 5시, 제목, 캘린더, 위치: …, 2026년 11월 6일' 줄).
    · 제목 맨 앞 '@'(제미나이 표시)·'[현장명]'(앱이 올린 표시)은 떼고 비교한다 — 같은 날 같은 제목은 한 줄('구글에 n번').
+     v600 부터 시각이나 위치가 다른 '다른 구글 일정'은 제목이 같아도 따로 줄(hjCalSyncSlots) — 한 줄로 보는 것은 앱이 올린 사본과 진짜 겹침뿐.
    · 새 일정 / 시간 다름 / 날짜 옮김(앞뒤 21일 안 같은 제목) / 앱에만 있음(지우기는 체크해야만, 작업 보고가 있는 일정은 대상 아님).
    · [파수꾼]·💰·생일·취소된 일정과 7일보다 오래된 일정은 건너뛴다. 현장은 '[현장명]' → 이름 맞추기(hjStmtMatch 0.6↑) 제안, 사람이 바꿀 수 있다.
    · 반영 전 🛡 안전판 1회(못 만들면 무변경), 미리보기 뒤 일정표가 바뀌었으면 거부. 구글 캘린더는 건드리지 않는다(읽기만). 새 저장 키 없음. */
@@ -41494,7 +41495,10 @@ function hjCalSyncTitle(raw){
    .ics 에는 태그가 없어 제목 머리·설명 끝줄로 알아보고, 화면 글(설명 없음)은 제목 머리로만 — 현장 없는 24시간 일정의 사본은 화면 글에서 알아볼 수 없다.
    사장님이 손으로 '[현장] 제목' 꼴로 넣은 시각 여러 날 일정도 예전처럼 시작일 하루로 읽는다. */
 const HJ_CALSYNC_COPY_NOTE='현장 앱 일정(자동)';   // apps-script/Watchdog.gs watchCalItem_ 설명 끝줄 — 바꾸면 두 곳 같이(timedspan-v595 가 Watchdog.gs 를 돌려 대조한다)
-function hjCalSyncAppCopy(raw,xp,memo){return !!(xp&&xp.private&&xp.private.hjKey)||hjCalSyncTitle(raw).mark==='app'||String(memo||'').includes(HJ_CALSYNC_COPY_NOTE);}
+function hjCalSyncAppCopy(raw,xp,memo){return !!(xp&&xp.private&&xp.private.hjKey)||!!(xp&&xp.shared&&xp.shared.hjKey)||hjCalSyncTitle(raw).mark==='app'||String(memo||'').includes(HJ_CALSYNC_COPY_NOTE);}
+/* v600 사본이 가리키는 앱 일정 id(Watchdog 태그 hjKey — 여러 날 공정의 이어지는 날은 'id-dN'). CalendarApp setTag 가 구글 API 에서 extendedProperties 의
+   private 로 올지 shared 로 올지 실물로 확인하지 못해 둘 다 본다(위 사본 판정도). 태그가 없으면 '' — .ics·화면 글에는 태그가 없다. */
+function hjCalSyncCopyKey(xp){return String((xp&&((xp.private&&xp.private.hjKey)||(xp.shared&&xp.shared.hjKey)))||'');}
 function hjCalSyncKey(t){return String(t||'').toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
 function hjCalSyncSkip(raw){const t=String(raw||'').trim();return /^\[(파수꾼|일정 알림)\]/.test(t)||/^💰/.test(t)||/happy birthday|^생일/i.test(t);}   // v590 apps-script Watchdog watch-v6 의 매일 9시 '[일정 알림]' 일정도 앱 일정이 아니다
 function hjCalSyncHours(a,b){   // 'HH:MM' 둘 → 시간(0.5 단위), 모르면 1
@@ -41588,7 +41592,8 @@ function hjCalSyncParseText(text){
     const tr=te&&te.end&&te.date===date&&!hjCalSyncAppCopy(raw)?hjCalSyncTimedRange({date,time},{date:te.end,time:clock(times[1])}):null;
     const to=allDay?(end>date&&hjDaysBetween(date,end)<=60?end:''):(tr?tr.to:'');
     const lm=tail.match(/^위치: (.*?)(?:, \d{4}년 \d{1,2}월 \d{1,2}일.*|,)?$/);
-    const k=date+'|'+time+'|'+raw+'|'+to;if(seen.has(k))return;seen.add(k);
+    // v600 위치까지 같은 줄만 '똑같은 줄' — 같은 시각·같은 제목이라도 위치가 다르면 다른 현장의 일정일 수 있다(맞추기 계획이 칸으로 나눈다)
+    const k=date+'|'+time+'|'+raw+'|'+to+'|'+(lm?lm[1].trim():'');if(seen.has(k))return;seen.add(k);
     out.push({uid:'',date,time,to,hours:allDay?8:(tr?tr.hours:(dateStart?1:hjCalSyncHours(time,clock(times[1])))),raw,location:lm?lm[1].trim():'',memo:'',cancelled:false});
   });
   out.unread=unread;
@@ -41616,6 +41621,33 @@ const HJ_CALSYNC_SYNTH_UID_RE=/^(?:gcal|nouid):/;
 /* 통합 검토 — 진행 중 보고가 있는 여러 날 공정(v591 hjSchContEnded 가 아직 끝나지 않았다고 보는 것). 맞추기는 이런 공정의 날짜·기간을 바꾸지 않는다(보고가 붙은 날). */
 function hjCalSyncGoing(s){return hjSchReported(s)&&!hjSchContEnded(s)&&hjSchSpan(s).days>1;}
 function hjCalSyncGoingRef(s){return {going:{id:s.id,date:s.date,to:hjSchSpan(s).to,title:String(s.title||'')}};}
+/* v600 같은 날 같은 제목이라도 '다른 구글 일정'은 한 줄로 삼키지 않는다 — 예전에는 읽은 일정을 '날짜|제목 열쇠' 하나로 묶어, 하루에 세 현장으로 잡힌
+   '@우수관 1개' 세 건(시각·위치·uid 가 다 다름)이 한 줄('구글에 3번')이 되고 앱에는 한 건만 들어갔다. 다시 읽으면 '같아요'라 나머지 두 현장 작업은
+   일정표·팀 지시·일정 공유·사진 현장 판단 어디에도 영영 안 들어왔다(11/12 운영 — 그때는 '제목에 동·호수를 넣어라'로 돌아갔다).
+   한 묶음(같은 날·같은 열쇠)을 칸으로 나눈다:
+   · 사본이 아닌 일정끼리 uid 가 다르고(또는 없고) 시작 시각이 다르거나, 둘 다 위치가 있는데 위치가 다르면 다른 칸(= 다른 줄).
+     같은 uid, 또는 같은 시각 + 같은(한쪽이 빈) 위치는 예전처럼 한 칸('구글에 n번' — 진짜 겹침).
+   · 앱이 올린 사본(제목 머리 '[현장]' · 태그 hjKey · 설명 끝줄)은 제 칸을 만들지 않는다 — 그 사본이 가리키는 앱 일정(appId)의 구글 일정(icsUid)이 있는 칸 →
+     시각이 같은 칸 → 첫 칸에 붙는다. 사본뿐인 묶음은 예전처럼 한 칸. 사본이 제 칸을 만들면 '@제목'+'[현장] 제목'이 두 줄이 되어 같은 일정을 한 번 더 넣게 된다.
+   · 칸이 하나면 묶음을 그대로 돌려준다(읽은 차례 그대로 — 대표 한 건 고르기가 예전과 같게). 칸 안의 차례도 읽은 차례.
+   화면 글에는 태그·설명이 없다 — 제목 머리 '[현장]' 이 없는 사본(현장 없는 일정·제목에 현장 이름이 든 일정)은 사본인 줄 모른다. 시각이 같고 위치가
+   같거나 한쪽이 비면 예전처럼 한 칸이지만, 앱에서 시각을 고쳤거나 현장 주소가 구글 위치 글과 다르면 체크된 새 일정 줄로 한 번 더 보인다
+   (말없이 삼키는 것보다 보이는 쪽 — 구글 바로 읽기·.ics 는 태그·설명으로 알아본다).
+   list = 같은 날·같은 열쇠의 읽은 일정(hjCalSyncTitle 결과가 합쳐진 것), uidOf(appId) = 그 앱 일정의 구글 uid(없으면 ''). 돌려주는 값 = 칸마다의 목록. */
+const HJ_CALSYNC_COPY_DAY_RE=/-d\d+$/;   // 태그 hjKey 의 이어지는 날 꼬리 'id-dN'
+function hjCalSyncSlots(list,uidOf){
+  const copy=x=>!!x.copy||x.mark==='app'||String(x.memo||'').includes(HJ_CALSYNC_COPY_NOTE),tm=x=>String(x.time||''),lc=x=>hjCalSyncKey(x.location);
+  const slots=[],at=new Map();
+  list.forEach(x=>{if(copy(x))return;
+    const u=String(x.uid||''),l=lc(x);
+    let s=(u&&slots.find(y=>y.uids.has(u)))||slots.find(y=>y.time===tm(x)&&(!l||!y.loc||y.loc===l));
+    if(!s){s={time:tm(x),loc:'',uids:new Set()};slots.push(s);}
+    if(u)s.uids.add(u);if(!s.loc)s.loc=l;at.set(x,s);});
+  if(slots.length<2)return [list];
+  list.forEach(x=>{if(!copy(x))return;const au=uidOf(x.appId);
+    at.set(x,(au&&slots.find(y=>y.uids.has(au)))||slots.find(y=>y.time===tm(x))||slots[0]);});
+  return slots.map(s=>list.filter(x=>at.get(x)===s));
+}
 function hjCalSyncPlan(events,opts){
   const today=localDate(),from=String((opts&&opts.from)||hjAddDays(today,-HJ_CALSYNC_BACK)),ISO=/^\d{4}-\d{2}-\d{2}$/;
   // v588 events.skipped = 구글 캘린더에서 바로 읽을 때 건너뛴 자동 일정(생일·근무지·메일에서 온 예약·거절한 초대 등), events.api = 구글에서 받은 일정 수
@@ -41636,7 +41668,12 @@ function hjCalSyncPlan(events,opts){
     return {s,key:hjCalSyncKey(hjCalSyncTitle(s.title).title),uid:u&&!HJ_CALSYNC_SYNTH_UID_RE.test(u)?u:'',used:false,recur:!!s.icsRecur};});
   const live=(state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name);
   const rows=[];let lo='',hi='';
-  const gs=[...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key));
+  // v600 묶음(같은 날·같은 열쇠)을 칸으로 — 다른 구글 일정은 따로 줄(hjCalSyncSlots). sibs = 그 묶음의 칸 수(1 이면 예전과 같다)
+  const copyOf=k=>{k=String(k||'');return k?apps.find(a=>String(a.s.id)===k)||apps.find(a=>String(a.s.id)===k.replace(HJ_CALSYNC_COPY_DAY_RE,''))||null:null;};
+  const gs=[];
+  [...groups.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.key.localeCompare(b.key)).forEach(g=>{
+    const ss=hjCalSyncSlots(g.list,k=>(copyOf(k)||{}).uid||'');
+    ss.forEach(list=>gs.push({date:g.date,key:g.key,list,sibs:ss.length}));});
   const allUids=new Set(),seriesUids=new Set();
   gs.forEach(g=>{
     if(!lo||g.date<lo)lo=g.date;if(!hi||g.date>hi)hi=g.date;
@@ -41646,9 +41683,10 @@ function hjCalSyncPlan(events,opts){
     const marks=[...new Set(g.list.map(x=>x.mark).filter(Boolean))];
     g._rep=rep;g._uids=new Set(g.list.map(x=>String(x.uid||'')).filter(Boolean));g._uidsOne=new Set(g.list.filter(x=>!x.series).map(x=>String(x.uid||'')).filter(Boolean));
     g._tags=new Set(g.list.map(x=>x.tag).filter(Boolean));
+    g._copyOf=new Set(g.list.map(x=>copyOf(x.appId)).filter(Boolean));   // v600 이 칸의 사본들이 가리키는 앱 일정
     g.list.forEach(x=>{const u=String(x.uid||'');if(!u)return;allUids.add(u);if(x.series)seriesUids.add(u);});
     g._base={date:g.date,time:rep.time,to:(g.list.find(x=>x.to)||{}).to||'',hours:rep.hours,title:rep.title,key:g.key,dupN:g.list.length,marks,location:rep.location,memo:String(rep.memo||'').slice(0,300),uid:rep.uid||'',
-      series:!!(rep.series&&rep.uid),invite:g.list.every(x=>x.invite)};
+      series:!!(rep.series&&rep.uid),invite:g.list.every(x=>x.invite),sibs:g.sibs};
   });
   apps.forEach(a=>{if(a.uid&&seriesUids.has(a.uid))a.recur=true;});
   const appOf=a=>{const sp=hjSchSpan(a.s);return {id:a.s.id,date:a.s.date,time:a.s.time||'',to:sp.days>1?sp.to:''};};
@@ -41666,12 +41704,17 @@ function hjCalSyncPlan(events,opts){
      (같은 uid, 또는 화면 글 맞추기의 'gcal:날짜|열쇠')이고 아직 하루짜리·1시간일 때만 구글의 하루 시간 수를 같이 싣는다 — 사람이 고친 시간은 그대로. */
   const hfixOf=(g,a,to)=>{const syn='gcal:'+a.s.date+'|'+a.key,ge=g.list.find(x=>x.time&&x.to&&(a.uid?String(x.uid||'')===a.uid:String(a.s.icsUid||'')===syn));
     return ge&&ge.to===to&&Number(a.s.hours)===1&&Number(ge.hours)>1&&hjSchSpan(a.s).days<=1?Number(ge.hours):0;};
+  /* v600 한 공정은 하루에 한 칸만 이어지는 날로 삼는다 — 같은 날 같은 제목의 다른 칸(다른 구글 일정)까지 '이어지는 날'로 삼키면 그 일정이 말없이 사라진다.
+     그 날을 덮는 공정 수만큼만(두 현장의 같은 이름 공정이면 두 칸). 칸이 하나뿐인 묶음은 예전 그대로. */
+  const contDay=new Map(),contFull=g=>g.sibs>1&&(contDay.get(g.date+'|'+g.key)|0)>=planned.filter(p=>p.key===g.key&&p.from<g.date&&g.date<=p.to&&projOk(g,p.proj)).length;
   const contOf=g=>{
     if(g._base.to)return false;
     let hit=planned.some(p=>p.key===g.key&&p.from<g.date&&g.date<=p.to&&projOk(g,p.proj));
+    if(hit&&contFull(g))hit=false;
     if(!hit){const b=apps.find(x=>!x.used&&x.s.date<from&&x.key===g.key&&projOk(g,x.s.project)&&x.s.date<g.date&&g.date<=endOf(x));
       if(b){b.used=true;plan(b.key,b.s.project,b.s.date,endOf(b));hit=true;}}   // 시작이 읽은 기간보다 앞 — 구글에서 그 시작을 못 봤을 뿐
     if(!hit)return false;
+    if(g.sibs>1)contDay.set(g.date+'|'+g.key,(contDay.get(g.date+'|'+g.key)|0)+1);
     g._base=null;stats.same++;stats.cont++;return true;
   };
   /* 구글이 날마다 따로 만든 이어지는 날(같은 제목·작업일로 이어짐·그날 앱에 같은 날 짝이 없는 하루짜리) — 시작이 옮겨진 여러 날 공정의 새 끝.
@@ -41742,7 +41785,17 @@ function hjCalSyncPlan(events,opts){
     plan(g.key,a.s.project,a.s.date,own&&span?base.to:endOf(a));
     if(!own)plan(g.key,tgt.s.project,tgt.s.date,span?base.to:endOf(tgt));
   };
+  /* v600 칸이 여럿인 묶음(같은 날 같은 제목의 다른 구글 일정들)의 같은 날 짝 — 시각이 같은 앱 일정을 칸마다 먼저 짓는다(그중 이 칸의 사본이 가리키는 일정이 있으면 그것).
+     화면 글로 넣어 구글 uid 가 없는 기록도 다시 읽으면 제 칸과 짝이 되어 '이미 같음'. 차례대로 짝 지으면 시각이 같은 기록이 없는 앞 칸(앱에서 시각을 고친 일정)이
+     뒤 칸의 기록을 먼저 잡아 '시간 다름' 두 줄이 나오고, 반영하면 두 현장의 시각이 뒤바뀐다. 묶음의 첫 칸 차례에 한 번(그 날 앱 일정을 쓰는 때는 예전과 같게),
+     시각이 같은 짝이 없는 칸은 아래 예전 규칙으로. 칸이 하나뿐인 묶음은 아래 '같은 날 같은 제목' 줄의 시각 우선만. */
+  const timePair=g=>{if(g._timeDone)return;
+    gs.forEach(y=>{if(y.date!==g.date||y.key!==g.key)return;y._timeDone=true;if(y._pair||!y._base)return;
+      const c=apps.filter(x=>!x.used&&x.s.date===y.date&&x.key===y.key&&String(x.s.time||'')===String(y._rep.time||'')&&projOk(y,x.s.project));
+      const x=c.find(o=>y._copyOf.has(o))||c[0];if(x){y._pair=x;x.used=true;}});
+  };
   gs.forEach(g=>{
+    if(g.sibs>1)timePair(g);
     const base=g._base,rep=g._rep,a=g._pair;
     if(a){g._base=null;
       if(a.s.date===g.date&&a.key===g.key)return sameDay(g,base,rep,a);
@@ -41759,7 +41812,8 @@ function hjCalSyncPlan(events,opts){
       rows.push(Object.assign(base,{status:'rename',check:true,timeChg,span,shorter:span&&sp.days>1&&base.to<sp.to,hfix:span?hfixOf(g,a,base.to):0,app}));
       plan(g.key,a.s.project,a.s.date,span?base.to:sp.to);return;}
     // 같은 날 같은 제목 — '[현장명]' 표시와 현장이 맞는 앱 일정을 먼저
-    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key).sort((x,y)=>(projOk(g,y.s.project)?1:0)-(projOk(g,x.s.project)?1:0))[0];
+    // v600 그다음은 시각이 같은 앱 일정 — 같은 날 같은 제목의 앱 일정이 여럿일 수 있다(구글에서 한 건이 지워져 한 줄만 남았을 때 엉뚱한 기록의 시각을 바꾸지 않게)
+    const same=apps.filter(x=>!x.used&&x.s.date===g.date&&x.key===g.key).sort((x,y)=>(projOk(g,y.s.project)?1:0)-(projOk(g,x.s.project)?1:0)||(String(y.s.time||'')===String(rep.time||'')?1:0)-(String(x.s.time||'')===String(rep.time||'')?1:0))[0];
     if(same){g._base=null;return sameDay(g,base,rep,same);}
     /* v588 이어지는 날 — 구글의 하루짜리 일정이 같은 제목의 앱 여러 날 공정의 이어지는 날에 있으면 이미 같음(제미나이는 여러 날 작업을 날마다 따로 만든다).
        같은 날 짝이 먼저다(그 날 따로 있는 앱 일정이 묻히지 않게). 검토 뒤: 반영 뒤 기간(planned)만 본다 — 위 contOf. */
@@ -41825,6 +41879,10 @@ async function hjCalSyncApply(plan,picks){
   const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name)),out={added:0,changed:0,removed:0,asMoved:0,ids:[],list:[]};   // v594 asMoved = 날짜를 옮긴 AS 방문 일정을 따라 방문일을 맞춘 AS 기록 수
   const note=(s,kind,from,fix,t0)=>{if(out.ids.includes(s.id))return;out.ids.push(s.id);const t=String(s.title||'');
     out.list.push({id:s.id,kind,fix:!!fix,title:t,fromTitle:t0!=null&&String(t0)!==t?String(t0):'',project:String(s.project||''),from,to:null,_s:s});};
+  /* v600 uid 없는(화면 글) 새 일정의 합성 uid — 같은 날 같은 제목이 칸마다 따로 들어오므로 기록마다 다르게: 'gcal:날짜|열쇠'(예전 꼴) → 이미 쓰였으면
+     'gcal:날짜|열쇠|HH:MM' → 그래도 겹치면 '#n'. 첫 기록은 예전 꼴 그대로(v580 fix·v595 hfix 가 그 꼴로 예전 맞추기 기록을 알아본다). */
+  const taken=new Set((state.schedule||[]).map(s=>String((s&&s.icsUid)||'')).filter(Boolean));
+  const synUid=(o,r)=>{const b='gcal:'+o.date+'|'+r.key,t=b+'|'+(o.time||'종일');let u=taken.has(b)?t:b;for(let n=2;taken.has(u);n++)u=t+'#'+n;taken.add(u);return u;};
   sel.forEach(({r,project})=>{
     if(r.status==='new'){
       // v576 여러 날 일정은 메모 머리를 공정표 꼴 '시작~끝 (N일)' 로 — hjSchSpan 이 읽어 이어지는 날(v354)·달력 막대가 생긴다. '@' 는 레코드에 icsBy 로도 남긴다(🤖 칩).
@@ -41832,7 +41890,7 @@ async function hjCalSyncApply(plan,picks){
       (Array.isArray(r.occ)&&r.occ.length?r.occ:[{date:r.date,time:r.time,to:r.to,hours:r.hours}]).forEach(o=>{
         const span=o.to&&o.to>o.date?o.date+'~'+o.to+' ('+(hjWorkDaysBetween(o.date,o.to)+1)+'일)':'';
         const rec=Object.assign(newSchedule(),{date:o.date,time:o.time||'',title:r.title,project:names.has(project)?project:'',hours:o.hours||(o.time?1:8),
-          memo:[span,r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||('gcal:'+o.date+'|'+r.key)});
+          memo:[span,r.location?'장소: '+r.location:'',r.memo,'구글 캘린더에서 가져옴'+(r.marks.includes('@')?' (@ 제미나이 입력)':'')].filter(Boolean).join('\n'),icsUid:r.uid||synUid(o,r)});
         if(r.marks.includes('@'))rec.icsBy='gemini';
         if(r.series)rec.icsRecur=true;
         state.schedule.push(rec);
@@ -41936,9 +41994,10 @@ function hjCalSyncRender(plan){
   box.innerHTML='<p data-cs-sum style="font-size:12.5px;margin:8px 0">'+(st.api?'<span data-cs-api>📅 구글 캘린더에서 '+st.api+'개 읽음</span> · ':'')+'읽은 일정 '+st.read+'건 — <b>새 일정 '+n('new')+'</b> · 시간 다름 '+n('time')+(n('span')?' · 기간 다름 '+n('span'):'')+(n('rename')?' · 제목 바뀜 '+n('rename'):'')+' · 날짜 옮김 '+n('move')+' · 이미 같음 '+st.same+(st.cont?' <span data-cs-cont>(여러 날 공정의 이어지는 날 '+st.cont+'건 포함)</span>':'')+' · 앱에만 '+n('apponly')+
       (st.gdup?' · <span data-cs-gdup>구글에 겹친 일정 '+st.gdup+'건(한 줄로 봄)</span>':'')+(st.skipped||st.old?' · 건너뜀 '+(st.skipped+st.old)+'(일정 알림·파수꾼·💰·생일·'+(st.api?'근무지·메일에서 온 예약·거절한 초대·':'')+HJ_CALSYNC_BACK+'일 넘게 지난 일정)':'')+
       (st.unread?' · <span data-cs-unread>날짜를 못 읽은 줄 '+st.unread+'개(두 날짜 꼴이 낯설어 건너뜀 — 구글 캘린더에서 확인)</span>':'')+'</p>'+
-    (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
+    (plan.rows.length?plan.rows.map((r,i)=>'<div data-cs-row="'+r.status+'" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 0;border-top:1px dashed var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;min-height:44px;font-size:12.5px;overflow-wrap:anywhere"><input type="checkbox" class="csChk" data-i="'+i+'"'+(r.check?' checked':'')+' style="width:22px;height:22px;flex:none"><span><b>'+L[r.status]+'</b> '+escapeHtml(hjCalSyncRowText(r))+(r.dupN>1?' <span style="color:var(--muted)">· 구글에 '+r.dupN+'번</span>':'')+(r.sibs>1?' <span data-cs-sibs style="color:var(--muted)">· 같은 날 같은 제목 '+r.sibs+'건(시각·위치가 달라 따로 봄)</span>':'')+(r.marks.includes('@')?' <span style="color:var(--muted)">· @ 제미나이</span>':'')+'</span></label>'+(r.status==='new'?sel(r,i):'')+'</div>').join('')
       :'<div data-cs-clean class="empty" style="margin-top:8px"><b>✓ 앱 일정표가 구글 캘린더와 같아요</b>넣거나 바꿀 일정이 없습니다.</div>')+
-    (st.gdup?'<p class="hint" style="margin-top:8px">구글 캘린더에 같은 날 같은 제목이 두 번 있으면(예: ‘@제목’과 ‘[현장명] 제목’) 앱에는 한 번만 넣습니다. 구글 쪽 정리는 구글 캘린더에서 하세요 — 이 창은 구글을 바꾸지 않습니다.</p>':'');
+    (st.gdup?'<p class="hint" style="margin-top:8px">구글 캘린더에 같은 날 같은 제목이 두 번 있으면(예: ‘@제목’과 ‘[현장명] 제목’) 앱에는 한 번만 넣습니다. 구글 쪽 정리는 구글 캘린더에서 하세요 — 이 창은 구글을 바꾸지 않습니다.</p>':'')+
+    (plan.rows.some(r=>r.sibs>1)?'<p class="hint" data-cs-sibs-hint style="margin-top:8px">같은 날 같은 제목이라도 시각이나 위치가 다른 구글 일정은 다른 작업으로 보고 줄을 따로 냅니다(예: 하루에 여러 현장의 ‘우수관 1개’). 같은 작업이 두 번 올라간 것이면 한 줄의 체크를 푸세요.</p>':'');
   const go=document.getElementById('csApply');if(go){go.disabled=!plan.rows.length;go.textContent=plan.rows.length?'체크한 일정 반영':'반영할 일정 없음';}
 }
 function hjCalSyncRead(text){
@@ -42013,7 +42072,9 @@ function hjCalApiEvent(ev){
   const tr=s.time&&!hjCalSyncAppCopy(ev.summary,ev.extendedProperties,ev.description)?hjCalSyncTimedRange(s,e):null;   // v595 시각 있는 여러 날(한국 시각으로 바꾼 뒤 24시간 이상) — .ics·화면 글과 같은 규칙, 앱이 올린 사본은 빼고
   return {uid:String(ev.iCalUID||ev.id||''),date:s.date,time:s.time,to:tr?tr.to:to,hours:s.time?(tr?tr.hours:(e&&e.date===s.date?hjCalSyncHours(s.time,e.time):1)):8,
     raw:String(ev.summary||''),location:String(ev.location||''),memo:hjCalApiText(ev.description).slice(0,300),cancelled:ev.status==='cancelled',series:!!ev.recurringEventId,
-    invite:!!me&&!(ev.organizer&&ev.organizer.self)&&rs!=='accepted'&&rs!=='declined',declined:rs==='declined'};
+    invite:!!me&&!(ev.organizer&&ev.organizer.self)&&rs!=='accepted'&&rs!=='declined',declined:rs==='declined',
+    // v600 사본인지(설명은 위에서 300자로 잘려 끝줄이 없을 수 있어 여기서 온 글로 본다)·사본이 가리키는 앱 일정(태그 hjKey) — 맞추기 계획의 칸 나누기가 쓴다
+    copy:hjCalSyncAppCopy(ev.summary,ev.extendedProperties,ev.description),appId:hjCalSyncCopyKey(ev.extendedProperties)};
 }
 // 구글이 준 items → 읽은 일정 목록. .skipped = 건너뛴 자동 일정(eventType)·날짜를 못 읽은 것, .api = 받은 수
 function hjCalApiEvents(items){
