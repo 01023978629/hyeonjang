@@ -21,7 +21,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 let html = process.env.HJ_V537_BASELINE ? execFileSync('git', ['show', process.env.HJ_V537_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 const MUT = {
-  'check-all': ["    plan.push(Object.assign(c,{apt,check:c.sure&&apt}));", "    plan.push(Object.assign(c,{apt,check:true}));"],
+  'check-all': ["plan.push(Object.assign(c,{apt,warn,check:c.sure&&apt&&!ownOther&&!otherCore}", "plan.push(Object.assign(c,{apt,warn,check:true}"],
   'no-before': ["      if(!seen.has(x.project)){if(JSON.stringify(p.aptUnits||null)!==before[x.project])throw new Error(", "      if(!seen.has(x.project)){if(false)throw new Error("]
 }[process.env.HJ_V537_MUTATION || ''];
 if (process.env.HJ_V537_MUTATION) {

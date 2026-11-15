@@ -20,7 +20,7 @@ const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone',
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
-  'no-scrub': ['function hjSchShareMemo(s){return hjMemoOut(s&&s.memo).text;}', "function hjSchShareMemo(s){return String(s&&s.memo||'').replace(/\\s+/g,' ').trim();}"]
+  'no-scrub': ['function hjSchShareMemo(s){return hjSchMemoOut(s).text;}', "function hjSchShareMemo(s){return String(s&&s.memo||'').replace(/\\s+/g,' ').trim();}"]
 };
 let html = process.env.HJ_V577_BASELINE ? execFileSync('git', ['show', process.env.HJ_V577_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V577_MUTATION) {

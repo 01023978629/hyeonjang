@@ -105,7 +105,8 @@ const BRIEF = r => [r.status, r.date, r.time || '종일', r.title, r.check];
       assert.deepEqual(ev[4], ['2026-11-11', '15:00', 1, '김고객 방문 - 보일러 점검, 구역 1,2 (시험로 14 1층)', '시험로 14 1층'], '쉼표 든 제목 — ' + JSON.stringify(ev[4]));
       assert.deepEqual(ev[5], ['2026-11-12', '', 8, '바닥 미장 작업', '']);
       assert.deepEqual(ev[7], ['2026-11-13', '08:30', 6, '@라온그린 104동 1503호 우수관 누수', '라온그린 104동 1503호'], '분 단위 시각·6시간 — ' + JSON.stringify(ev[7]));
-      assert.deepEqual(ev[12], ['2026-11-02', '19:20', 1, '긴 모임', '대강당'], '날짜로 시작하는 여러 날 줄 — ' + JSON.stringify(ev[12]));
+      // v595 시각 있는 여러 날 줄(24시간 이상)은 끝 날짜까지 읽고 하루 시간 수는 19:20~21:30 = 2 (예전엔 1) — 기간은 timedspan-v595 가 본다
+      assert.deepEqual(ev[12], ['2026-11-02', '19:20', 2, '긴 모임', '대강당'], '날짜로 시작하는 여러 날 줄 — ' + JSON.stringify(ev[12]));
       assert.ok(!ev.some(e => /크리스마스|birthday|^가온A 3동 1309호 앞베란다 우수관 방수$/.test(e[3])), '화면의 다른 줄(휴일·생일·제목만 있는 줄)은 안 읽음');
     });
     await test('② .ics 읽기 — …Z 는 한국 시각으로 · 종일 · TZID · 취소 (ICS)', async () => {

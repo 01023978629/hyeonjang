@@ -29,7 +29,7 @@ const MUT = {
   'staff-toast': ["render();\n  if(state.tab!=='quotemaker')return false;\n", 'render();\n'],
   'dun-wipe': ['act:"hjStmtDunOpen()",w:2.8', "act:\"state.tab='quotemaker';state.editingQuote=null;render()\",w:2.8"],
   'badge-old': ["setBadge('schedule',hjTodaySchRows(localDate()).length,", "setBadge('schedule',(state.schedule||[]).filter(s=>s&&s.date===localDate()).length,"],
-  'brief-old': ['const ts=hjDaySchView(today).sort(', "const ts=(state.schedule||[]).filter(s=>s.date===today).sort("],
+  'brief-old': ['const ts=hjDaySchView(today).sort((a,b)=>', "const ts=(state.schedule||[]).filter(s=>s.date===today).sort((a,b)=>"],
   'daily-brief-old': ['const todaySch=hjDaySchView(today).sort(byTime);', 'const todaySch=sch.filter(s=>s&&s.date===today).slice().sort(byTime);'],
   'wx-old': ["const sch=hjDaySchView(dateStr,s=>!/^💰/.test(s.title||''));", "const sch=(state.schedule||[]).filter(s=>s.date===dateStr&&!/^💰/.test(s.title||''));"],
   'morning-crash': ["+doing+'곳</div></div>'+", "+d.시공중현장.length+'곳</div></div>'+"]
