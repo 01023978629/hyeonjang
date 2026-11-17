@@ -19,7 +19,10 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # ubuntu-latest 가 26.04 로 넘어가면서(2026-11-17 확인) playwright@1.55.0 이 브라우저를 못 깐다
+    # ('Playwright does not support chromium on ubuntu26.04-x64') — 검사가 시작도 못 한다. 11/15 까지 통과하던 24.04 로 고정한다.
+    # playwright 를 26.04 지원 판으로 올릴 때 같이 풀 것(브라우저 판이 바뀌므로 전체 회귀를 다시 봐야 한다).
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
