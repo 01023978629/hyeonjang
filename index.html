@@ -762,6 +762,8 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   @media(max-width:720px){.photo-toolbar-main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.photo-toolbar-main button{width:100%;min-width:0;padding:10px 8px!important;font-size:14px!important;line-height:1.35;white-space:normal;overflow-wrap:anywhere}}
   body.a11y-big2 .photo-toolbar-main button{font-size:16px!important}
   .revisit{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(29,111,224,.12);color:var(--blueprint);font-weight:700}
+  /* v608 '현장 방문' 묶음 머리의 🏢 동·호수(hjClusterUnitHTML) — 흰·어두운 화면 모두 --ink 글자 · --card 바탕. 누르는 것 없음(재방문 표시와 같은 칩) */
+  .cluster-unit{font-size:12.5px;padding:2px 10px;border-radius:20px;background:var(--card);border:1px solid var(--line-soft);color:var(--ink);font-weight:800;word-break:keep-all;overflow-wrap:anywhere;max-width:100%;box-sizing:border-box}
   .suggest-btn small{font-weight:600;font-size:11px;margin-left:4px}
   @media(max-width:720px){.suggest-btn,#btnSuggestAll{min-height:44px;padding:8px 12px}}
   .unassigned-badge{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(232,145,45,.16);color:#9a5b12;font-weight:800}
@@ -4052,7 +4054,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v607-nosite';
+const APP_BUILD='hyeonjang-v608-visitunit';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6281,6 +6283,7 @@ function showHelp(){
     <p>사진은 촬영 시간 6시간 간격으로 ‘현장 방문’ 묶음이 됩니다. 묶음마다 현장을 지정하면 전체가 한 번에 배정됩니다.</p>
     <ul>
       <li><b>재방문</b> — GPS가 있으면 같은 장소 재방문을 ‘2/3차’처럼 표시합니다.</li>
+      <li><b>동·호수</b> — 현장의 [동·호수 관리]에서 세대를 연결해 둔 사진은 묶음 머리에 ‘🏢 101동 501호’처럼 보입니다. 세대가 여럿이거나 연결 안 한 사진이 섞이면 장수를 함께 적습니다(‘미지정’ = 세대를 연결하지 않은 사진).</li>
       <li><b>공정(작업단계)</b> — 사진을 현장에 배정한 뒤, ‘현장별 보기’에서 그 현장의 공정(방수 1차·철거·목공 등)을 추가하고 각 사진에 지정합니다. 사진이 공정별로 묶여 정리됩니다.</li>
       <li><b>중복</b> — 같은 사진을 자동 감지. 상단 ‘중복만 보기’로 확인 후 ‘대표만 남기기’로 정리합니다.</li>
       <li><b>주소 조회</b> — GPS 좌표를 실제 지명으로 바꿉니다.</li>
@@ -12678,7 +12681,8 @@ let __phaseProj=null;
    필요할 때 펼친다. 데스크톱 화면은 종전 그대로다. */
 let __photoMoreOpen=false;
 let __phaseBarOpen=false;
-function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')+':'+(p._worklabel||'')+':'+hjPhotoLeakTag(p)).join('|')+'#'+state.search+'#'+__photoLeakFilter;}
+// v608 세대 연결(_aptUnit)도 열쇠에 — 묶음 머리 🏢 동·호수가 [동·호수 관리]에서 연결·해제한 뒤 옛 사진 기록(저장 뒤 새 객체로 바뀜)을 들고 있지 않게
+function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')+':'+(p._worklabel||'')+':'+hjPhotoLeakTag(p)+':'+(p._aptUnit?(p._aptUnit.project||'')+'/'+(p._aptUnit.unitId||''):'')).join('|')+'#'+state.search+'#'+__photoLeakFilter;}
 // 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
 // 구글드라이브 '만물인테리어' 폴더 열기 (만물인테리어 검색 → 사진·견적 들어있는 그 폴더가 뜸)
 function openManmulFolder(){
@@ -18279,6 +18283,39 @@ function aptUnitPhotoGroups(p,units=aptUnitList(p)){
   return groups;
 }
 function aptUnitPhotos(p,unitId){return aptUnitPhotoGroups(p).get(unitId||'')||[];}
+/* v608 사진 탭 '현장 방문' 묶음 머리의 🏢 동·호수 (대표 11/17 "현장 방문에 동호수도 보이게").
+   · 그 묶음 사진에 연결해 둔 세대(_aptUnit — 현장의 [동·호수 관리]에서 등록·연결한 것)만 읽는다. 이름·일정·폴더 글에서 읽어낸 동·호수는 쓰지 않는다
+     — aptUnitBadge 와 같은 원칙(등록값처럼 보이면 앱이 멋대로 정한 것이 된다).
+   · 세는 것: units = 세대별 장수(많은 순, 같으면 먼저 나온 순) · linked = 세대가 이어진 장수 · rest = 동·호수를 관리하는 현장의 사진인데 세대가 없거나 끊긴 장수
+     (세대를 지웠거나 다른 현장으로 옮겨 aptUnitForPhoto 가 null). 현장 없는 사진은 rest 에 넣지 않는다 — 그건 '현장 미지정 n장' 배지가 센다.
+   · 한 묶음은 한 현장만 담는다(clusterPhotos 의 projectOk) — 세대 이름에 현장 이름을 붙이지 않는다.
+   · 읽기만. memo 는 한 번 그리는 동안 현장마다 aptUnitList 를 한 번만 부르려고(사진마다 부르면 사진 × 세대 검사). */
+function hjClusterUnits(c,memo){
+  const cache=memo||new Map(),rows=new Map(),items=c&&Array.isArray(c.items)?c.items:[];
+  let linked=0,managed=0;
+  for(const f of items){
+    if(!f||!f.project)continue;
+    if(!cache.has(f.project)){const p=aptUnitProject(f.project);cache.set(f.project,aptUnitManaged(p)?{p,units:aptUnitList(p)}:null);}
+    const hit=cache.get(f.project);if(!hit)continue;
+    managed++;
+    const u=f._aptUnit?aptUnitForPhoto(f,hit.p,hit.units):null;if(!u)continue;
+    linked++;
+    const k=f.project+'\u0000'+u.id;
+    if(!rows.has(k))rows.set(k,{label:aptUnitLabel(u),id:u.id,project:f.project,n:0,at:rows.size});
+    rows.get(k).n++;
+  }
+  return {units:[...rows.values()].sort((a,b)=>b.n-a.n||a.at-b.at),linked,rest:managed-linked,total:items.length};
+}
+const HJ_CLUSTER_UNIT_SHOW=2;   // 머리에 적는 세대 수 — 넘치면 '외 n곳'(전부는 title)
+/* 세대 하나·모두 연결 = '🏢 101동 501호' · 세대가 여럿이거나 연결 안 한 사진이 섞이면 장수를 붙이고 끝에 '· 미지정 n장'.
+   이어진 세대가 하나도 없으면 '' — 동·호수를 안 쓰는 현장·아직 연결하지 않은 묶음에는 아무것도 보이지 않는다. */
+function hjClusterUnitHTML(c,memo){
+  const r=hjClusterUnits(c,memo);if(!r.units.length)return '';
+  const count=r.units.length>1||r.rest>0,shown=r.units.slice(0,HJ_CLUSTER_UNIT_SHOW);
+  const text=shown.map(u=>u.label+(count?' '+u.n+'장':'')).join(' · ')+(r.units.length>shown.length?' 외 '+(r.units.length-shown.length)+'곳':'')+(r.rest>0?' · 미지정 '+r.rest+'장':'');
+  const full='동·호수 — '+r.units.map(u=>u.label+' '+u.n+'장').join(', ')+(r.rest>0?', 미지정 '+r.rest+'장':'');
+  return `<span class="cluster-unit" data-cluster-unit="${r.units.length}" title="${escapeAttr(full)}"><span aria-hidden="true">🏢 </span>${escapeHtml(text)}</span>`;
+}
 function aptUnitOrderProject(o){
   if(!o)return null;
   if(o.source==='office-intake'||o.projectIdentity)return officeIntakeBoundProject(o);
@@ -37227,7 +37264,9 @@ function viewPhotos(){
   // v550 폰 2열 묶음의 화면 밖 자리 높이 짐작(content-visibility) — 머리(+GPS·추천 줄)·작업명 줄·사진 줄 수로. 넉넉히 잡아 다음 묶음과 겹쳐 재지지 않게
   //   (전역 420px 그대로면 2열로 커진 묶음이 다음 묶음 머리와 겹쳐 재지고 — CI mobile-tap-table '버튼 겹침' — 스크롤 때 자리가 크게 튄다)
   const __clCellW=(()=>{try{const v=document.getElementById('view');const w=v&&v.clientWidth?v.clientWidth:(typeof innerWidth==='number'?innerWidth-28:362);return Math.max(110,(w-34)/2);}catch(e){return 164;}})();
-  const __clEst=(c,n,sg)=>{const rows=Math.max(1,Math.ceil(n/2));return Math.round(140+(hjPhotoHasGps(c)?60:0)+(sg?50:0)+66+rows*(__clCellW+72)+(rows-1)*10+40);};
+  // v608 🏢 동·호수 칩이 있는 묶음은 머리가 한 줄 더 될 수 있어 +24 (unit)
+  const __clEst=(c,n,sg,unit)=>{const rows=Math.max(1,Math.ceil(n/2));return Math.round(140+(hjPhotoHasGps(c)?60:0)+(sg?50:0)+(unit?24:0)+66+rows*(__clCellW+72)+(rows-1)*10+40);};
+  const __unitMemo=new Map();   // v608 hjClusterUnitHTML — 한 번 그리는 동안 현장마다 세대 목록 한 번
   if(typeof __clusterShowN!=='number'||__clusterShowKey!==state.activeProject+'|'+state.search){__clusterShowN=CHUNK;__clusterShowKey=state.activeProject+'|'+state.search;}
   const showN=Math.min(__clusterShowN, ordered.length);
   const hiddenN=ordered.length-showN;
@@ -37243,6 +37282,8 @@ function viewPhotos(){
     const nmapBtn=(hjPhotoHasGps(c)&&c.address&&!hjHasBuildingName(c.address))?`<button class="ghost tiny" data-nmap="${i}" title="네이버지도에서 이 주소의 건물명을 확인합니다">🔎 네이버지도</button>`:'';
     const bnameBtn=hjPhotoHasGps(c)&&c.address?`<button class="ghost tiny" data-bname="${i}" title="확인한 건물명을 이 묶음에 저장합니다">✏️ 건물명</button>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
+    // v608 🏢 동·호수 — 사진에 연결해 둔 세대만(hjClusterUnitHTML). '현장 미지정' 배지·재방문 뒤라 그 둘의 첫 줄 자리는 그대로
+    const unitChip=hjClusterUnitHTML(c,__unitMemo);
     // 위에 올라온 이유를 보여 준다. 배지가 없으면 "왜 순서가 뒤죽박죽이지"가 된다.
     const unN=c.items.filter(p=>!p.project).length;
     const sg=__sug[i];
@@ -37257,10 +37298,11 @@ function viewPhotos(){
     // "날짜 + 위치(짧게) + 작업명" 한 줄 요약(작업명이 있을 때)
     const placeShort=hjPhotoHasGps(c)?(c.address?hjPlaceShort(c.address):(c.place||'')):'위치 미확인';
     const autoName=[fmtDay(when), placeShort, worklabel].filter(Boolean).join(' · ');
-    html+=`<div class="cluster"${__narrow?` style="contain-intrinsic-size:auto ${__clEst(c,visible.length,sg)}px"`:''}><div class="cluster-h">
+    html+=`<div class="cluster"${__narrow?` style="contain-intrinsic-size:auto ${__clEst(c,visible.length,sg,unitChip)}px"`:''}><div class="cluster-h">
       <span class="when">${hjPhotoHasGps(c)?'현장 방문':'사진 묶음'} ${i+1} · ${fmtDay(when)}</span>
       ${unBadge}
       ${revisit}
+      ${unitChip}
       <span class="where">${where}</span>${geoBtn}${nmapBtn}${bnameBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
       ${repairBtn}
