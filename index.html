@@ -4052,7 +4052,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v607-nosite';
+const APP_BUILD='hyeonjang-v609-fontbtn';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -7030,7 +7030,16 @@ $('#btnInstall').onclick=installApp;
 // 다크모드 · 글자크기
 let __fontStep=0;const FONT_SCALES=['100%','112%','125%'];
 $('#btnDark').onclick=()=>{document.body.classList.toggle('dark');const on=document.body.classList.contains('dark');$('#btnDark').textContent=on?'☀️':'🌙';try{idbSet('pref_dark',on);}catch(e){}};
-$('#btnFont').onclick=()=>{__fontStep=(__fontStep+1)%FONT_SCALES.length;document.documentElement.style.setProperty('--fs',FONT_SCALES[__fontStep]);try{idbSet('pref_font',__fontStep);}catch(e){}};
+// v609 가⁺ = '♿ 화면 편하게 보기'의 글씨 크기(보통 → 크게 → 아주 크게)를 차례로 바꾼다. 예전엔 루트 글자 크기(--fs)만 112%·125%로 바꿨는데
+//   화면 글씨 대부분이 px 라 PC 1366 첫 화면에서 84개 중 5개만 커졌다(눌러도 티가 안 남). 설정 창과 같은 값(hj_a11y.big)이라 한쪽에서 바꾸면 다른 쪽도 같다.
+//   예전 --fs 값이 남은 기기는 첫 누름에 그 값을 지운다(두 겹으로 커지지 않게). 폰에서는 이 단추가 숨겨져 있다(더보기 → ♿ 화면 편하게).
+function hjFontBtnNext(){
+  if(__fontStep){__fontStep=0;document.documentElement.style.removeProperty('--fs');try{idbSet('pref_font',0);}catch(e){}}
+  const o=a11yGet();o.big=(Math.min(2,Math.max(0,Math.round(o.big)||0))+1)%3;a11ySave(o);a11yApply();
+  toast('글씨 크기: '+HJ_A11Y_BIG_LABELS[o.big]);
+  return o.big;
+}
+$('#btnFont').onclick=hjFontBtnNext;
 try{a11yApply();}catch(e){}
 window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveProject(false);}});
 /* ═══════════ v521 안 읽은 견적서 — 파일 하나 읽기(일괄 OCR 과 같은 규칙) + 견적서만 배경에서 자동 읽기 ═══════════
@@ -25148,6 +25157,7 @@ function syncGuide(){
 
 /* ═══════════ ♿ 접근성 — 큰 글씨·고대비 모드 ═══════════ */
 // 저장: localStorage hj_a11y = {big:0/1/2, contrast:0/1}
+const HJ_A11Y_BIG_LABELS=['보통','크게','아주 크게'];   // v609 설정 창과 상단 가⁺ 가 같은 이름을 쓴다
 function a11yGet(){
   try{const o=JSON.parse(localStorage.getItem('hj_a11y')||'{}');return {big:num(o.big)||0,contrast:num(o.contrast)||0};}catch(e){return {big:0,contrast:0};}
 }
@@ -25163,7 +25173,7 @@ function a11yApply(){
 }
 function a11yManage(){
   const a=a11yGet();
-  const bigLabels=['보통','크게','아주 크게'];
+  const bigLabels=HJ_A11Y_BIG_LABELS;
   const bigBtns=[0,1,2].map(n=>'<button class="a11yBig '+(a.big===n?'clay':'ghost')+' tiny" data-n="'+n+'" style="flex:1;padding:11px;font-size:'+(n===0?'13':n===1?'15':'17')+'px">'+bigLabels[n]+'</button>').join('');
   const body=
     '<div style="font-size:13px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:12px;margin-bottom:14px;line-height:1.6">눈이 편하도록 글씨 크기와 화면 대비를 조절합니다. 설정은 저장되어 다음에도 유지돼요.</div>'+
@@ -25178,7 +25188,9 @@ function a11yManage(){
       '<span style="flex:1"><b style="font-size:14px">고대비 모드</b><br><span style="font-size:12px;color:var(--muted)">글씨를 더 진하게, 테두리를 뚜렷하게</span></span>'+
       '<button class="a11yContrast '+(a.contrast?'clay':'ghost')+' tiny" style="min-width:56px;padding:9px 12px">'+(a.contrast?'켜짐':'꺼짐')+'</button>'+
     '</div>'+
-    '<div style="font-size:12px;color:var(--muted);margin-top:14px;background:#fffbeb;border-radius:10px;padding:10px;line-height:1.5">💡 화면이 너무 크거나 작으면 언제든 여기서 다시 조절할 수 있어요. 상단 <b>가⁺</b> 버튼으로도 글씨를 키울 수 있습니다.</div>';
+    '<div style="font-size:12px;color:var(--muted);margin-top:14px;background:#fffbeb;border-radius:10px;padding:10px;line-height:1.5">💡 화면이 너무 크거나 작으면 언제든 여기서 다시 조절할 수 있어요.'+
+      // v609 가⁺ 는 폰 화면(mobile-mode)에서 숨겨져 있다 — 없는 단추를 안내하지 않는다
+      (document.body.classList.contains('mobile-mode')?'':' <span data-a11y-fontbtn-tip>상단 <b>가⁺</b> 버튼을 눌러도 같은 글씨 크기가 차례로 바뀝니다.</span>')+'</div>';
   openModal('♿ 화면 편하게 보기',body,[{label:'닫기',cls:'clay',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelectorAll('.a11yBig').forEach(btn=>btn.onclick=()=>{
