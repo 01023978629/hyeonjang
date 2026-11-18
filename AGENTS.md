@@ -3,6 +3,61 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-18 v611 🗜 한 달 지난 현장 사진 → 현장별 ZIP 보관 · 낱장 삭제 (PC 에서 폴더를 열면 자동)
+
+대표 지시(11/18 "프로젝트에서 1달 넘어간 사진은 압축해서 보관해서 정리 될 수 있게해줘 원본은 압축본으로 보관 사진은 삭제 코드 수정 해줘").
+물음 두 개에 대표 답: 압축 방식 = **현장별 ZIP 으로 묶기**(원본 화질 그대로 · 용량은 거의 안 줄고 · 낱장은 앱 사진 목록에서 빠짐 — '사진마다 작게 줄이기'(긴 변 2000px)가 아님),
+실행 = **PC 에서 앱 열면 자동**(묻지 않음). 그날 대표 PC 자료(읽기만): 한 달 지난 PC 폴더 사진 870장 2.9GB(모두 `_정리완료/` · 현장 37곳 · 동영상 7개 별도), Drive 전용 기록 496장, 전체 사진 1,829장.
+**핀** `hyeonjang-v611-photozip`. 새 최상위 저장 키 없음(현장 안 `p.photoArchive`), apps-script·AI_TOOLS 무변경, 고객 발송 없음, 바깥 요청 없음.
+**이 판부터 앱이 PC 원본 사진 파일을 지운다** — v297 부터의 '원본은 지우지 않는다(앱 목록만)'의 첫 예외(대표 지시). 지우기 전에 같은 바이트가 ZIP 에 들어갔고 ZIP 을 다시 읽어 CRC32 가 맞는 것을 확인한다.
+다른 길(🗑 사진 삭제·중복 정리·AI 도구)은 여전히 목록만 — **새 길에서 원본을 지우려면 이 판의 '검사한 보관본이 있을 때만' 규칙을 따르라.**
+- 대상 `hjPhotoZipPlan({today})`(읽기만): 현장이 정해진(지금 있는 현장 이름) PC 폴더 사진 — 이번 스캔의 `handle` 이 있는 기록, 사진 확장자(`IMG`), 크기>0 — 중
+  촬영일(한국 날짜 `hjKDayFast`)이 `hjPzCutoff(오늘)` = **한 달 전 같은 날**(그 달에 없는 날이면 그 달 마지막 날 · 11/18 → 10/18)보다 앞선 것.
+  Drive 전용 가상 기록·동영상·현장 미지정·지운 현장('(삭제됨) …')·견적에서 온 기록은 그대로. 현장별 묶음, 먼저 찍은 차례. 손잡이(handle)는 저장되지 않으므로 **폴더를 읽은 세션에서만** 대상이 있다.
+- 어디에: 만물 폴더 맨 위 **`_사진보관/<현장>_사진보관.zip`** — 현장마다 하나(이름의 `\/:*?"<>|`·제어문자 → `_`, 80자). `HJ_PZ_PART_MAX`(500MB)를 넘으면 `_2`·`_3` …(`hjPzRoom` 한 셈).
+  ZIP 안 = `촬영일/원래 이름`(겹치면 ' (2)') + 실행마다 `_목록/<YYYYMMDD-HHMMSS>.csv`(UTF-8 BOM: 원래 위치·현장·촬영일시·공정·작업명·동·호수·위도·경도·주소·크기·CRC32 —
+  **앱 목록에서 빠지는 정보는 여기에만 남는다**, `= + - @` 로 시작하는 칸은 ' 를 붙임). 중앙 목록 주석 = 원래 위치. 날짜·시각 = 촬영 시각(한국).
+  ZIP 은 앱이 직접 쓴다(`hjPzLocal`·`hjPzCentral`·`hjPzEnd` — 무압축 STORE · 이름 UTF-8 표시 0x0800 · ZIP64 없음 · JSZip 안 씀 → 바깥 라이브러리·메모리 없이 한 장씩 흘려 쓴다).
+  원본 바이트 그대로라 화질·EXIF(촬영일·GPS)가 그대로고 작업 폴더의 [📦 압축 사진 불러오기(zip)](JSZip)로 다시 넣을 수 있다(현장 배정은 다시 해야 함 — csv 참고).
+  **`_사진보관` 은 스캔하지 않는다**(walk·hjScanListPaths·isAppOwnFile 세 곳 — `_백업|데이터|_중복정리_보관|_사진보관`).
+- 순서(현장마다 `hjPzProject`): 이미 있는 조각을 읽어(`hjPzReadDir` — 여러 조각·ZIP64·앞뒤에 다른 자료가 낀 ZIP 은 null → 그 ZIP 은 건드리지 않고 다음 번호) 담긴 사진 색인(크기·CRC32·이름 / 원래 위치·크기) →
+  사진마다 읽어 크기 확인·CRC32(`hjCrc32Async`) → 같은 사진(크기·CRC32·파일 이름)이 이미 있으면 다시 담지 않고 원본만 지움(dup) → 담기(`hjPzPut`) →
+  조각 마무리 `hjPzClosePart`: csv · 중앙 목록 · 끝 → 닫기 → **다시 읽어 검사 `hjPzVerify`**(개수 · 새 항목마다 목록·자리·머리·이름·크기·방식, 그리고 담긴 바이트의 CRC32 를 다시 계산) →
+  이미 있는 ZIP 에 덧붙일 때는 **`<ZIP>.작성중` 파일에 옛 내용(중앙 목록 앞까지 그대로)+새 사진을 쓰고 검사한 뒤 원래 이름으로 옮겨 쓰고 다시 검사**(원래 ZIP 은 닫는 순간 한 번에 바뀌어 깨진 채 남는 때가 없다 ·
+  옮겨 쓴 뒤 검사에 떨어지면 검사를 통과한 `.작성중` 은 남긴다) → 검사를 통과한 조각의 사진만 `hjPzDeleteSource`(같은 파일 `isSameEntry` · 읽은 뒤 크기·수정 시각 그대로일 때만 `removeEntry`) →
+  지운 사진만 `hjPzCommit` — `deletePhotoRecordsSafely` 와 같은 규칙(정리 표시 `{tomb:true}` · Drive ID 를 '다시 불러오지 않기' · 같은 Drive 파일을 쓰는 남는 기록이 있으면 안 올림)으로
+  `guardedPersistMediaFiles` 원자 저장, **같은 저장에 현장 요약 `p.photoArchive`**(실패면 요약을 되돌림, 다른 곳이 `state.files` 를 바꿨으면 400ms 뒤 세 번까지 다시).
+  검사·쓰기 실패면 우리가 만든 파일만 지우고 그 실행을 멈춘다(원본·기록 그대로). 안전판은 한 실행에 한 번 '한 달 지난 사진 ZIP 보관 전'(실패면 아무것도 안 함). 변경 기록 `hjAuditAdd('delete',…)`.
+  파일이 이미 없는데 ZIP 에 같은 원래 위치·크기가 있는 기록(지난번 원본을 지운 뒤 목록 저장 전에 멈춘 꼴)은 목록에서만 뺀다(heal). 원본을 지웠는데 목록 저장이 끝내 실패하면 `why:'commit'` 로 멈추고 다음 실행의 heal 이 정리한다.
+- `p.photoArchive` = `{n, bytes, zips:['_사진보관/…zip'], days:{날짜:장수}, labels:{날짜:{작업명:장수}(많은 셋)}, from, to, at}`. `hjPzArchivedEach` 로
+  **📑 내역서 줄 📷 사진 수(`hjStmtPhotoIndex`)와 '내역서에 아직 없는 작업'(`hjUnbilledPlan` — 미리보기 id 없음)이 보관한 날을 그대로 센다** — 대표의 청구 방식(내역서)이 사진 날짜를 작업 근거로 쓰기 때문.
+  사진 날짜를 근거로 쓰는 새 기능을 만들면 `hjPzArchivedEach` 도 같이 보라. 시공 전/후 비교·공사 스토리·사례·보험 증빙·AS 사진 같은 '사진 자체'가 필요한 곳은 한 달 지난 PC 사진이 없다(대표 선택 — ZIP 에서 다시 넣는다).
+- 자동 `hjPhotoZipAutoSchedule()`: **`scanDir` 이 정상으로 끝나면**(finally) `HJ_PZ_AUTO_DELAY_MS`(4초) 뒤 `hjPhotoZipAutoTry` → `hjPhotoZipRun({auto:true})`.
+  PC 앱을 열고 [📁 열기]·[다시 스캔]·폴더 연결로 폴더를 읽을 때마다(폴더 권한은 사람이 눌러야 해서 그 전에는 대상이 없다). 쓰기 권한(`queryPermission readwrite`)이 이미 있을 때만 — 자동은 묻지 않는다.
+  데모·오래된 창·직원 모드·폴더 없음·`_정리완료` 만 연결(`directOrganizedRoot`)이면 그 번은 안 함 · 폴더 읽는 중·사진 넣는 중·창 숨김·원자 저장 중(`__modalCloseLocked`)이면 15초마다 다시(40번=10분).
+  이 기기에서 끄고 켬: `localStorage hj_photo_zip_auto`('0' = 끔, 기본 켬) — ⋯ 사진 도구 창의 [자동 끄기]. **자동화 브라우저(`navigator.webdriver`)는 예약하지 않는다**(옛 검사의 합성 폴더를 지우지 않게 — v592 와 같은 이유).
+  다른 창과는 Web Lock `hj-photo-zip-v1`(ifAvailable) 으로 한 번에 하나. 보관 중(`window.__hjPzBusy`)에는 `scanDir` 이 '보관하는 중' 토스트로 안 읽는다(목록을 비우는 사이 지운 기록이 정리 표시 없이 빠지면 Drive 사본이 미배정으로 되살아난다).
+- 손으로: ⋯ 사진 도구 › 정리 (PC 폴더 연결 시) › '🗜 한 달 지난 사진 ZIP 보관 n장' → `hjPhotoZipView` 창(`[data-pz-view]` 대상 `[data-pz-pending]` · 자동 `[data-pz-auto]`·`#pzAutoToggle` ·
+  마지막 결과 `[data-pz-last]`(localStorage `hj_photo_zip_last`, `hjPhotoZipResultText`) · 막는 까닭 `[data-pz-block]` · 보관한 현장 `[data-pz-arch]`·`[data-pz-row]` 40곳) → `#pzRunNow` [🗜 지금 보관 (n장)] —
+  손으로 누르면 쓰기 권한을 물을 수 있다(사용자 동작). 대상이 없거나 막힌 경우 잠김. 진행 띠 `#hjPzBar`(role=status, 오른쪽 아래 · 폰은 하단 메뉴 위, [멈추기] `#hjPzStop` 44px → 지금 사진을 담은 조각까지 마무리하고 멈춤, 다음 실행이 같은 ZIP 에 이어서).
+  도움말 '📷 현장 사진 자동분류'에 한 줄.
+- 바뀌지 않는 것: Drive 사본(중계 서버에 지우는 길이 없다 — 다시 불러오지 않기만, Drive 용량은 그대로) · 동영상 · 현장 미지정 · 최근 한 달 · 폴더(빈 공정 폴더도 남음) · 폰(폴더가 없어 대상 없음).
+- 검사 `tests/photozip-v611.e2e.js` 7/7 — **OPFS(브라우저 안의 진짜 폴더 손잡이: 만들기·쓰기·바꿔 쓰기·지우기가 PC 폴더와 같은 API)** 와 python3 zipfile(쓴 ZIP 을 Node 로 꺼내 testzip·이름·주석·날짜·sha256·csv 대조):
+  ① PLAN(한 달 전 같은 날 6가지·대상 아닌 것 9가지·묶음 차례·읽기만·자동화 브라우저 예약 없음) ② RUN(현장별 ZIP 둘·원본 바이트·csv·원본 삭제와 남길 것·기록·정리 표시·removed_ids·요약·안전판 1회·내역서 사진 수와 내역서에 없는 작업 그대로)
+  ③ APPEND(덧붙임·옛 바이트 그대로·.작성중 없음·같은 사진·heal·조각 _2·[멈추기] 뒤 이어서) ④ GUARD(쓴 바이트를 일부러 깨면 새 ZIP 지움·덧붙이던 ZIP 한 바이트도 안 바뀜·원본·기록 그대로 · 안전판 실패 · 읽은 뒤 바뀐 원본 · 막는 경우 5 · 보관 중 스캔 거부)
+  ⑤ AUTO(진짜 `scanDir`: EXIF 촬영일 6/29 JPEG + 방금 만든 JPEG + 이미 있는 `_사진보관` — 읽은 뒤 묻지 않고 보관, `_사진보관` 은 목록에 안 들어감, 끄면 예약 안 함) ⑥ UI·폰 390(넘침 0·44px·하단 메뉴 안 가림)·핀·오류 0·바깥 쓰기 0.
+  기준선 9eacace(v610)는 ① 실패. 변이 all-ages ① · no-tomb·no-stmt ② · no-dedupe·no-heal ③ · no-verify(CRC 다시 계산 안 함)·no-tmp(덧붙일 때 원래 ZIP 에 바로 씀) ④ · no-scan-skip·no-auto ⑤ — 모두 의도한 곳에서 실패 확인.
+  **이 컨테이너 크로미움은 로캘(LANG)이 비어 있으면 OPFS 의 한글 파일·폴더 이름을 버린다**(이름이 빈 글자가 되어 '한글폴더'가 부모 폴더를 가리킴·파일은 TypeMismatchError·브라우저가 닫히기도 함) —
+  이 검사는 `LANG=C.UTF-8` 로 크로미움을 띄운다(CI 는 원래 UTF-8). **옛 '컨테이너 전용 실패 5개'(한글 내려받기 이름 — apartment-projects·bathroom-quality-v410·document-select·document-upload·team-workboard)도
+  같은 원인이었다** — `LANG=C.UTF-8 LC_ALL=C.UTF-8 node tests/run-all.js` 로 돌리면 모두 통과한다. 이 컨테이너에서 전체 회귀를 돌릴 때는 그렇게 돌려라.
+  관련 28개(scandup-v557·relayscan-v570·drivetomb-v560·photodupsync-v556·phototwins-v556·folderguard-v532·casefolder-v525·settings-safety·project-scan-order·photo-intake-safety·photo-no-recovery·gd-reingest·
+  chatphoto-v528·photo-source-status·worklabel-v405·stmtphoto-v568·unbilled-v566·stmttab-v565·healthline-v524·photoview-v584·stmtdraft-v579·photo-delete(-access)·photo-safety-ui·photodupclean-v522·visitunit-v610·mobile-more-sweep·uiux) 통과, 정적 *.check.js 전부.
+  전체 회귀(이 컨테이너, `LANG=C.UTF-8` · 동시 3 · 22분): **505개 중 505 통과, 0 실패, 재시도 0**.
+- 대표 확인 대기: ① 기준 = '한 달 전 같은 날'(30일 아님) ② ZIP 한 개 상한 500MB ③ 같은 사진(크기·CRC32·이름이 같은 것)은 한 번만 담는다 ④ Drive 사본은 지우지 않는다(용량 그대로) ⑤ 만물 폴더가 구글 드라이브와 동기화 중이면
+  첫 실행 때 ZIP 2.9GB 가 새로 올라가고 지운 사진은 드라이브 휴지통에 30일 남는다(그동안 드라이브 용량이 잠깐 늘 수 있다) ⑥ 빈 공정 폴더는 그대로 둔다.
+- 안 한 것(다음 판 후보): 폰·Drive 전용 사진(496장)의 보관(중계 서버에 Drive 파일을 지우거나 옮기는 길이 없다 — apps-script 변경·대표 수동 배포가 필요) · 동영상 · 사진마다 작게 줄이기(대표가 고르지 않음) ·
+  ZIP 안 사진을 앱에서 바로 보기(지금은 [📦 압축 사진 불러오기(zip)]로 다시 넣음 — 현장 배정은 csv 보고 다시) · 빈 공정 폴더 지우기 · 실제 Windows 탐색기·7-Zip 으로 연 확인(python zipfile·unzip 만 확인 — 이름 UTF-8 표시는 JSZip·7-Zip 과 같은 방식).
+
 ## 2026-11-17 v610 🏢 사진 탭 '현장 방문' 묶음 머리에 동·호수
 
 대표 지시(11/17 "현장 방문에 동호수도 보이게 코드 수정해줘"). **핀** `hyeonjang-v610-visitunit`. 새 저장 키 없음, 자료 쓰기 없음(화면만), apps-script·AI_TOOLS 무변경, 고객 발송 없음.
