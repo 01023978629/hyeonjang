@@ -3,7 +3,61 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-19 v612 🗜 한 달 지난 현장 사진 — PC 에는 줄인 사진 ZIP, 앱(폰·PC)에서는 구글 서버 사본 (v611 바꿈)
+
+대표 지시(11/19 "Pc에서는 압축 관리하고 구글서버에는 사진 자료가 올라왔게해서 pc에서만 용량을 주릴 수 있게해줘"). 물음 두 개에 대표 답:
+원본 = **원본은 안 남김**(구글에는 앱이 늘 올리던 사본 긴 변 1600px, PC ZIP 에는 줄인 사진 긴 변 2000px — 원본 화질은 어디에도 안 남는다), PC = **줄인 사진 ZIP**(2.9GB → 약 0.4GB 짐작).
+사진은 앱(폰·PC)에서 구글 사본으로 그대로 보인다 — v611 처럼 앱 목록에서 빠지지 않는다.
+**핀** `hyeonjang-v612-photozipdrive`. 새 최상위 저장 키 없음(현장 안 `p.photoArchive` 그대로), apps-script·AI_TOOLS 무변경, 고객 발송 없음. 바깥 요청은 기존 중계 action(listFiles·upload·thumbnail)뿐.
+- 대상 `hjPhotoZipPlan` 은 v611 그대로(+ `noDrive` = 구글 사본 ID 없는 수). **구글 서버 연결(`relayReady`)이 없으면 아무것도 안 한다** — block 'relay'(손으로는 안내·[지금 보관] 잠김, 자동은 마지막 결과에만 why 'relay' — 기다려도 안 생기니 15초 재시도 안 함).
+- 구글 사본 확인: 실행마다 `hjPzDriveIndex`(cloudApiListFiles('photo') — deep·2000개 상한) 한 번. `hjPzDriveHas` = 목록에 있으면 있음 · 목록이 다 왔는데 없으면 없음(서버에서 사라짐) ·
+  목록이 잘렸으면(truncated) 그 사진만 `cloudApiThumbnail`(ok·not-ready·too-large = 있음, not-found·forbidden = 없음, 그 밖·연결 오류 = **모름 → 이번엔 안 지움** `res.unknown`). 목록을 못 받으면 why 'drivelist'(아무것도 안 함).
+  없으면 `hjPzDriveUpload` = relayBuildUploadPayload + relayCall('upload')(relayUploadFiles 와 같은 사본·같은 _driveSize 셈) → 기록에 `_driveId`·`_driveMimeType`·`_driveSize`·`_relayLink` + markDirty(멈춰도 다시 안 올리게).
+  bad-request·too-large·형식 = 못 올림(그 사진은 PC 에 그대로 `res.noDrive`), 인증 오류면 그 실행의 나머지 올리기를 멈춘다. 목록에 없는 Drive ID(만물인테리어 폴더 밖·지워짐)는 새로 올려 ID 를 바꾼다.
+- 줄인 사진 `hjPzShrink`: jpg·png·webp·gif·bmp 만 그려(EXIF 방향 반영 `imageOrientation:'from-image'`, 흰 바탕) 긴 변 `HJ_PZ_SHRINK_PX`(2000) JPEG q0.85 → `hjPzExifJpeg` 가 캔버스 JPEG 의 JFIF(APP0)를 빼고 SOI 바로 뒤에
+  Exif(APP1) — IFD0 → Exif `DateTimeOriginal`(**한국 시각**) · GPS(위·경도, 0,0 이면 안 적음). 앱 판독기(EXIF.js·parseExifDate·dms)로 같은 값이 읽히는 것을 검사가 본다.
+  못 그리는 HEIC·TIFF 나 줄여도 안 작아지면 그 바이트 그대로. 같은 그림으로 긴 변 `HJ_PZ_THUMB_PX`(320) 미리보기를 만들어, 기록을 바꾼 뒤 IDB `thumb:<Drive ID>`(relayGetThumbnail 캐시)에 넣어 둔다 — PC 가 서버에 다시 안 묻는다.
+- ZIP: v611 과 같은 자리·같은 쓰기(STORE·UTF-8·`hjPzVerify`·`.작성중`), 이름 `촬영일/원래 이름`(줄여서 JPEG 가 되면 .jpg). 끝(EOCD) 주석 **`HJ_PZ_ZIP_TAG` = 'hj-photozip-v2'**(영문 — 압축 프로그램 글자판과 무관) = 줄인 사진 ZIP 표시.
+  표시가 있는 ZIP 에만 덧붙이고(`hjPzOpenPart`), 검사도 표시를 본다. csv v2 열(`HJ_PZ_CSV_HEAD`): …·원본 크기·보관 크기·줄임(예/원본 그대로)·구글 사본 ID·**원본 CRC32**·CRC32 — `hjPzCsvParse` 는 v611 의 '크기(바이트)'를 원본 크기로 읽는다.
+- 마무리 순서 `hjPzFinish`: ZIP 검사 → 읽은 뒤 그대로인지(`hjPzSame` 크기·수정 시각) → **기록을 구글 사본 기록으로 바꿔 저장**(`hjPzConvert` → `hjPzGoogleBacked`: handle·_file·_heicFile·thumb 없음,
+  `_virtual`, `_relayLink`, ocr 'pending' → 'na', 나머지 칸·id 그대로 — `guardedPersistMediaFiles` 원자 저장, 정리 표시·다시 불러오지 않기 없음) → **저장된 뒤에만** 원본 지우기(`hjPzDeleteSource` — 같은 파일·크기·수정 시각).
+  저장이 끝내 안 되면 원본을 지우지 않고 why 'commit'(ZIP 에는 있으니 다음 실행이 다시 안 담고 마무리). 원본을 못 지우면 기록은 이미 구글 사본 — 다음 폴더 읽기에서 PC 기록으로 다시 잡히면 다음 실행이 지운다.
+  **v611 의 순서(지우고 나서 목록 저장)로 되돌리지 마라** — 이번에 올린 사본 ID 가 저장되기 전에 원본이 사라지면, 앱을 다시 열 때 그 기록이 Drive ID 없이 폴더 읽기 prune 에 빠진다.
+- 이미 ZIP 에 든 사진(같은 원래 위치·원본 크기·**원본 CRC32**)은 다시 안 담고 기록만 바꾸고 원본을 지운다(later). 같은 자리·크기라도 내용이 다르면 새로 담는다(' (2)').
+  파일이 이미 없는 기록(heal)은 구글 사본이 확인되면 기록만 바꾸고, 없으면 그대로(`res.missing`).
+- 현장 요약 `p.photoArchive` 는 실행 끝(`hjPzProject` finally)에 그 현장 ZIP 들의 csv 로 다시 센다(`hjPzSummaryFrom`, 바뀌었을 때만 markDirty):
+  `{v:2(옛 원본 ZIP 이 남았으면 1), n, bytes(원본), zbytes(ZIP), zips, from, to, at, days?, labels?}`. 지금 있는 다른 현장 이름의 줄은 빼고, 지금 없는 현장 이름(바꾼 이름)의 줄은 센다.
+  `days/labels` 는 v611 때 앱에서 빠진 사진만 남는다(`hjPzArchivedEach` — 📑 내역서 사진 수). ZIP 찾기 `hjPzParts` = 이름 사슬(`<현장>_사진보관(_k).zip`, 덧붙이는 곳) + 요약 zips 에 적힌 ZIP(이름을 바꾼 현장).
+- **v611 옛 원본 ZIP(표시 없음) 바꾸기** `hjPzMigratePart` — 요약이 v!==2 이고 zips 가 있는 현장은 대상 사진이 없어도 돈다(`hjPzLegacyProjects`):
+  ① csv 줄마다 앱 기록을 되살린다 — 정리 표시의 Drive ID 가 서버에 있으면 그 ID, 없으면 ZIP 원본으로 지금 올림(못 올리는 형식은 ZIP 에 원본 그대로·앱엔 없음, 모름·일시 실패는 ② 를 미룸).
+  applyData 꼴 가상 기록(현장·공정·작업명·동·호수(라벨로 다시 찾음)·촬영일시·위치·주소) · 정리 표시 되살림(그 Drive ID 와 '' 의 열쇠, `hjTombUpdate` added) · 다시 불러오지 않기에서 뺌 ·
+  그 현장 days/labels 에서 뺌(`hjPzSummaryRestore`) — 20장씩 한 원자 저장(실패면 표시·요약 되돌림). ② ①이 다 됐으면 ZIP 을 `.작성중` 에 다시 쓴다(앱에 구글 사본 기록이 있는 사진만 줄이고, 나머지는 원본 그대로,
+  날짜는 옛 항목 그대로, 새 csv 하나) → 검사 → 원래 이름으로 옮겨 쓰기 → 검사. 깨진 항목이 든 옛 ZIP 은 그대로 두고(`res.badZip`) 다른 일은 이어서.
+- 실행 끝에 기록을 바꿨으면 `saveProject(true)`(폴더 `_현장.json` 을 지금 자료로) — 같은 세션에 [다시 스캔]하면 `loadProject` 가 폴더 저장본·처음 불러온 자료(`__lastData`)로 맞추는데,
+  거기엔 이번에 올린 구글 사본 ID 가 없어 PC 원본 없는 기록이 prune 으로 빠진다. **`__lastData` 는 저장으로 바뀌지 않는다** — PC 원본 없는 기록을 세션 중에 만드는 새 길도 이것을 보라.
+- 폴더 읽기 '⚠️ 스캔된 파일이 평소보다 적어요'(v100 안전장치) 기준 = `_savedFileCount − hjPzArchivedCount()`(v2 요약 n 합) — 빼지 않으면 보관 뒤 폴더를 읽을 때마다 거짓 경고 + 색인 정리 끔.
+- 화면: ⋯ 사진 도구 항목·창 글(줄인 사진·원본 화질 안 남김·구글 사본) · `[data-pz-nodrive]` 구글에 먼저 올릴 n장 · `[data-pz-legacy]` 예전 방식 현장 안내 · 현장 줄 '원본 X → ZIP Y'·`[data-pz-old]` ·
+  결과 글(올림·되살림·옛 ZIP·못 올림·모름·저장 못 함) · 도움말 줄. 바뀌지 않는 것: 동영상·현장 미지정·최근 한 달·구글 사본(지우지 않음)·원본 전송(_mediaOriginal) 기록·Web Lock·자동·[멈추기]·
+  안전판 1회·자동화 브라우저 예약 없음·`_사진보관` 스캔 안 함.
+- 검사 `tests/photozip-v612.e2e.js` 8/8 — **v611 검사(photozip-v611.e2e.js)는 지웠다**(옛 동작 — 원본 ZIP·목록에서 뺌 — 을 지키던 검사). OPFS + python3 zipfile + 페이지 안 가짜 중계(relayCall: listFiles·upload·thumbnail,
+  앱의 다른 서버 길은 끔) + EXIF.js 2.3.0 고정본: ① PLAN(+EXIF·막음) ② RUN(확인·올림·못 올림·줄임·EXIF·csv·표시·기록·저장본·미리보기·요약·내역서) ③ APPEND(덧붙임·later·CRC 가드·heal·missing·_2·멈춤)
+  ④ GUARD(깨짐 둘·안전판·바뀐 원본·저장 실패 → 다음 실행·서버 없음·목록 실패·잘린 목록+미리보기·막음·스캔 거부) ⑤ MIGRATE(**진짜 v611 2c8160d 페이지로** 원본 ZIP·정리 표시·removed_ids·days 를 만들고,
+  같은 기기 자료를 v612 로 열어 되살림·다시 씀·내역서 사진 수 두 번 안 셈·다시 열어도 그대로·두 번째는 할 일 없음) ⑥ AUTO(진짜 scanDir → 자동 → 다시 읽기: 기록 남음·평소보다 적어요 없음 · 서버 없으면 기록만)
+  ⑦ UI · ⑦-2 폰 390·핀·오류 0·바깥 쓰기 0. 기준선 2c8160d(v611)는 ① 실패. 변이 16종 모두 의도한 곳에서 실패: all-ages ① · no-drive-check·no-shrink·no-exif·remove-records ② · no-crc-guard·no-heal ③ ·
+  no-verify·no-tmp·delete-first ④ · no-restore·no-days·no-tomb-revive ⑤ · no-scan-guard·no-auto·no-scan-skip ⑥. 관련 32개(scandup·relayscan·folderguard·project-scan-order·casefolder·settings-safety·
+  photo-intake-safety·photo-no-recovery·gd-reingest·stmtphoto·unbilled·stmttab·healthline·photo-tools·mobile-more 둘·photodupsync·phototwins·drivetomb·photodupclean·placejudge·photoview·visitunit·worklabel·
+  chatphoto·photo-source·photo-delete 둘·photo-safety·relay-queue·relaysync·pcupload) 통과, 정적 *.check.js 전부.
+  전체 회귀(이 컨테이너, `LANG=C.UTF-8` · 동시 3 · 20분): 505개 중 504 통과 — 실패 1 = reviewfix-v387 R4(아래, main 에서도 같은 날 떨어짐), 재시도 통과 1(leakdetect-v420 — 병렬 부하).
+- 같이 고친 것: `tests/reviewfix-v387.e2e.js` R4 가 **11/19 부터 어느 가지에서나 떨어졌다** — 시험이 `localDate` 만 2026-11-05 로 고정하고, 앱 `staleProjectData` 는 실제 시계(`new Date()`)로 '14일 방치'를 세서
+  오늘(11/19)이 그날부터 14일째가 되자 '방금 받은 문의'가 방치 현장이 됐다. `page.clock.setFixedTime(2026-11-05 10:00 +09:00)`(다른 검사와 같은 꼴)로 시계도 고정 → 7/7. 앱 코드는 그대로.
+  **날짜를 고정하는 검사는 `localDate` 만 바꾸지 말고 시계(page.clock)도 같이** — v552 notefilter-v475 와 같은 종류.
+- 대표 확인 대기: ① 첫 실행은 구글 사본이 없는 사진을 올린다(한 장 2~3초 — 수백 장이면 수십 분, 진행 띠·[멈추기], 다음 실행이 이어서) ② PC 에 ☁️ 서버 연결이 돼 있어야 한다 ③ HEIC 은 줄이지 않는다(구글에도 HEIC 그대로)
+  ④ v611 이 이미 돌았다면 첫 v612 실행이 그 사진을 앱에 되살리고 ZIP 을 줄인다(못 올리는 형식은 ZIP 에만) ⑤ 줄인 ZIP 크기(2.9GB → 약 0.4GB)는 짐작 — 사진에 따라 다르다.
+- 안 한 것: 실제 Windows 탐색기·7-Zip 으로 연 확인 · 실제 Apps Script·실기기 확인(합성) · 원본 화질 보관(대표 선택으로 안 함) · 동영상 · 폰 전용 사진 · 잘린 목록의 미리보기 확인을 여러 개 동시에 · 올리기 동시에 여러 장.
+
 ## 2026-11-18 v611 🗜 한 달 지난 현장 사진 → 현장별 ZIP 보관 · 낱장 삭제 (PC 에서 폴더를 열면 자동)
+
+> **v612 에서 바뀜**(위) — 원본 ZIP·앱 목록에서 뺌 → 줄인 사진 ZIP·기록은 구글 사본으로 앱에 남음. v611 이 만든 원본 ZIP 은 v612 가 바꾼다. 아래는 v611 당시 기록이고, 검사 photozip-v611.e2e.js 는 v612 검사로 바뀌었다.
 
 대표 지시(11/18 "프로젝트에서 1달 넘어간 사진은 압축해서 보관해서 정리 될 수 있게해줘 원본은 압축본으로 보관 사진은 삭제 코드 수정 해줘").
 물음 두 개에 대표 답: 압축 방식 = **현장별 ZIP 으로 묶기**(원본 화질 그대로 · 용량은 거의 안 줄고 · 낱장은 앱 사진 목록에서 빠짐 — '사진마다 작게 줄이기'(긴 변 2000px)가 아님),
