@@ -12,7 +12,8 @@ function assertStaticOfficeContract() {
   const officeSource = fs.readFileSync(path.join(root, 'apps-script', 'OfficeIntake.gs'), 'utf8');
   const readme = fs.readFileSync(path.join(root, 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
   const install = fs.readFileSync(path.join(root, 'APPS_SCRIPT_설치방법.md'), 'utf8');
-  const required = new Set(['APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE']);
+  // 2026-11-19 관리사무소 접수 분리 스위치(항목 32) 속성 두 개 — 없으면 지금 그대로. tests/office-intake-server.unit.js 와 같은 목록.
+  const required = new Set(['APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE', 'OFFICE_INTAKE_MODE', 'OFFICE_INTAKE_STORE_ID']);
   const sectionBetween = (source, start, end) => {
     const begin = source.indexOf(start); assert(begin >= 0, 'missing section: ' + start);
     const finish = source.indexOf(end, begin + start.length); assert(finish >= 0, 'missing section end: ' + end);
