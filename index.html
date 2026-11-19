@@ -338,6 +338,17 @@
   .more-empty{padding:24px 10px;text-align:center;overflow-wrap:anywhere;font-size:14px}
   .more-ai-hint{width:100%;padding:14px;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:14px}
   .more-ai-hint small{display:block;font-size:12px;color:var(--muted);margin-top:6px}
+  /* v612 ⏸ 보류 묶음 — 더보기 맨 아래(접힘) */
+  #moreSheet .more-hold-note{margin:0 12px 8px}
+  #moreSheet .more-hold-h{margin:8px 12px 6px;font-size:13px;color:var(--ink)}
+  .more-hold-item{display:flex;flex-direction:column;gap:6px;min-width:0}
+  #moreSheet .more-hold-item .more-chip{flex:1 1 auto;text-decoration:none}
+  .more-hold-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  .more-hold-why{flex:1 1 110px;min-width:0;font-size:12px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere;word-break:keep-all}
+  #moreSheet .more-unhold{flex:0 0 auto;font-size:13px;padding:6px 10px}
+  .more-hold-resetrow{padding:0 8px 10px}
+  #moreSheet .more-hold-resetrow button{width:100%}
+  .more-hold-tag{display:inline-block;font-size:11px;line-height:1.5;border-radius:8px;padding:0 5px;background:var(--paper-2);color:var(--muted);border:1px solid var(--line-soft)}
   #moreSheet section{margin-bottom:14px}
   body.a11y-big1 #moreSheet .more-chip-label{font-size:15px}body.a11y-big2 #moreSheet .more-chip-label{font-size:17px}
   body.a11y-big1 #moreSheet .more-chip-description{font-size:13px}body.a11y-big2 #moreSheet .more-chip-description{font-size:15px}
@@ -10338,7 +10349,7 @@ const HJ_ACTIONS=[
   // 견적
   {i:'📦',n:'품목 세트',k:'품목 세트 템플릿 견적 자주쓰는',run:function(){hjGoTab('quotemaker');setTimeout(qsetView,200);}},
   {i:'📕',n:'단가장',k:'단가장 품목 단가 학습',run:function(){priceBookManage();}},
-  {i:'🧮',n:'새 견적서',k:'견적 작성 새 견적서 만들기',run:function(){hjGoTab('quotemaker');setTimeout(function(){const b=document.getElementById('qmNew');if(b)b.click();},250);}},
+  {i:'🧮',n:'새 견적서',k:'견적 작성 새 견적서 만들기',run:function(){hjQuoteNewOpen();}},   // v612 보류 중이면 Claude 견적 안내(hjQuoteNewHeldView)
   // 사진·고객
   {i:'⋯',n:'사진 도구',k:'사진 도구 위치 주소 복구 정리',run:function(){hjGoTab('photos');setTimeout(photoToolsView,250);}},
   {i:'🔗',n:'고객 페이지',k:'고객 페이지 공유 링크 포털',run:function(){portalListView();}},
@@ -12166,15 +12177,10 @@ function dashboardTodoHTML(){
     hjTeamDoneDocHtml()+   // v458 팀 완료 보고 → 완료보고서 초안
     hjInquiryBookedNoReplyHtml()+   // v450 방문은 잡았는데 답장 안 한 문의(아래 v386 줄 바로 뒤는 버튼 줄 — 계약 유지)
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
-    '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
-    '<button type="button" id="dashboardCaseOpen" class="ghost" onclick="casePackView()" style="min-height:44px">📰 사례 내보내기</button>'+
-    '<button type="button" id="dashboardSharedTodoOpen" class="blue" onclick="hjSharedTodoView()" style="min-height:44px">☁ 팀 공유 할일</button>'+
-    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
-    '<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button>'+
-    '<a id="dashboardCompanyTeam" class="btn ghost" href="./team.html" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px">직원 작업실 · 업무 배정·검수</a><button type="button" id="dashboardOperationsConnections" class="ghost" onclick="hjOperationsCenter()">운영 연결 점검</button></div>'+
-    '<p id="dashboardTeamSummary" style="margin:7px 0;font-size:14px">'+escapeHtml(hjTeamSummary())+'</p>'+
-    '<p class="hint" style="margin:7px 0 0">위 숫자는 이 기기의 기존 할일 집계이며 팀 공유 목록과 별도입니다. 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.</p></section>';
+    // v612 단추 줄 — ☁ 팀 공유 할일·팀 업무·인수인계·직원 작업실은 보류가 아닐 때만(dashboardTodoBtnsHTML · 18: 할 일은 현장웹 기본 할 일 하나)
+    dashboardTodoBtnsHTML()+
+    '<p id="dashboardTeamSummary" style="margin:7px 0;font-size:14px"'+(hjHeld('teamboard')?' hidden':'')+'>'+escapeHtml(hjTeamSummary())+'</p>'+
+    '<p class="hint" id="dashboardTodoHint" style="margin:7px 0 0">'+escapeHtml(dashboardTodoHintText())+'</p></section>';
 }
 function dashboardPrepLabel(s){
   if(!s)return '일정 변경됨 · 다시 확인';
@@ -17202,7 +17208,9 @@ function hjProjectActionValid(p,name,stage,max){
   if(p&&rows.length===1&&rows[0]===p&&!p.archived&&(p.stage||0)===stage&&stage<=max)return true;
   toast('현장 정보가 바뀌었어요. 다시 열어 주세요');return false;
 }
-function hjQuoteStartFor(name){
+function hjQuoteStartFor(name,pass){
+  // v612 앱 안 새 견적 작성은 보류(hjHeld('quotenew')) — 실제 견적서는 Claude 견적 만들기. [이번만 앱에서 쓰기]는 예전 그대로(단계도 그때 바꾼다)
+  if(!pass&&hjHeld('quotenew'))return hjQuoteNewHeldView(()=>hjQuoteStartFor(name,true),name);
   const q0=(state.projects||[]).find(x=>x&&x.name===name),stage=q0&&(q0.stage||0);
   if(!hjProjectActionValid(q0,name,stage,1))return;
   const start=()=>{
@@ -20600,7 +20608,8 @@ const HJ_HELP=[
   {k:'계약서 초안',d:'더보기 [📝 계약서 초안] — 현장에 배정된 견적을 고르면 계약금액·지급조건(계약금'+hjPayPct('down')+'/중도금'+hjPayPct('mid')+'/잔금'+hjPayPct('bal')+')·계좌·공종별 하자보수가 채워진 공사 계약서 초안이 만들어져요. 복사해서 공사기간·특약만 채우면 됩니다.',say:'계약서 초안 만들어줘'},
   {k:'견적 일괄 배정',d:'더보기 [🎯 견적 일괄 배정] — 파일명에 현장 이름이 들어 있으면 자동으로 찾아 한 번에 배정합니다(폴더 스캔 후 자동 제안). 또 \'파일명 | 현장 | 금액\' 형식의 목록을 붙여넣어 일괄 적용할 수 있어요(복구·Cowork 정리분 반영용). 배정한 현장이 없으면 자동 생성됩니다.',say:'견적 일괄 배정 열어줘'},
   {k:'백업 센터',d:'더보기 [💾 백업 센터] — 마지막 백업 시점과 클라우드 연결 상태를 보고, 한 번에 백업하거나 구글 드라이브를 연결합니다. 일주일 이상 백업 안 하면 홈에 알림이 뜨고, 드라이브를 연결하면 자료 저장 시 자동으로 클라우드에 백업돼 폰이 고장나도 안전해요.',say:'백업 센터 열어줘'},
-  {k:'클로드 명령어 모음',d:'더보기 [🧰 클로드 명령어] — 클로드에게 붙여 넣을 명령을 사진·견적·정산·현장웹 관리로 나눠 모아 둡니다. 받은 사진 정리·카톡 보고 대조·작업내역서 반영·협력사 입금·저장 확인·앱 개발 등 15개 기본 명령이 있고, [📋 명령 복사]해서 클로드에 붙여 넣으면 됩니다. 명령을 고치거나 새로 추가할 수 있어요.',say:'클로드 명령어 모음 열어줘'},
+  {k:'클로드 명령어 모음',d:'더보기 [🧰 클로드 명령어] — 클로드에게 붙여 넣을 명령을 견적·정산·현장웹 관리로 나눠 모아 둡니다. 작업내역서 반영·협력사 입금·청구 누락 찾기·캘린더 맞추기·저장 확인·앱 개발 등을 [📋 명령 복사]해서 클로드에 붙여 넣으면 됩니다. 사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요(옮긴 예전 명령은 맨 아래 접힌 칸에 그대로). 명령을 고치거나 새로 추가할 수 있어요.',say:'클로드 명령어 모음 열어줘'},
+  {k:'보류 묶음',d:'더보기 맨 아래 [⏸ 보류 n개 보기] — 서버 연결이 없어 못 쓰는 기능(카카오 문의·고객 페이지·영업·정기관리·팀 업무·직원 작업실·팀 공유 할일)과 안 쓰는 메뉴(자재 재고·자재 단가·거래처·만족도·매출 목표·현장 예산·납품 확인·광고 게시 기록 입력·새 견적서·AI 견적·사진 견적)를 접어 둔 곳이에요. 지운 것이 아니라 거기서 그대로 열 수 있고, [다시 보이기]를 누르면 원래 자리로 돌아가요(이 기기만). 서버를 연결하거나 자료가 생기면 저절로 다시 보여요. 실제 견적서는 Claude 견적 만들기(단가표 엑셀)로 만들어요.'},
   {k:'AI 자율 운영(오토파일럿)',d:'더보기 [🤖 AI 자율 운영] — 한 번 누르면 사업을 점검하고 안전한 조회·리포트는 AI가 자동 처리한 뒤, 문자·수금처럼 승인이 필요한 것만 모아 보여줍니다. 되돌리기 어려운 일은 항상 사장님 승인을 거쳐요.',say:'자율 운영 실행해줘'},
   {k:'AI 운영 브레인',d:'더보기 [🧠 AI 브레인] — 규칙 점검과 달리, AI가 진행 현장·일정·큐를 종합해 오늘 먼저 할 일 3가지를 이유와 함께 추론해 줍니다.',say:'AI 브레인 열어줘'},
   {k:'루프 성숙도 진단',d:'더보기 [🔁 루프 성숙도] — 운영 루프가 얼마나 잘 돌고 있는지 점수(0~100)로 자가진단합니다. 활성·성공률·큐관리·후속연결 4가지를 보고 등급을 매겨요.',say:'루프 성숙도 보여줘'},
@@ -30678,7 +30687,7 @@ function myWorkView(opts){
       '<button type="button" class="ghost" data-mw-matissue="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 문제 있음')+'">⚠ 문제 있음</button></div></article>').join(''):'')+
     '<div id="mwTodoBox">'+hjMyWorkTodoBoxHTML(todos)+'</div>'+
     (empty?'<div class="empty" id="mwEmpty" style="padding:14px;margin-top:10px"><b>오늘은 할 일이 없습니다</b>'+(ahead.length?'내일('+escapeHtml(tomorrow)+') 일정 '+ahead.length+'건:<ul style="text-align:left;margin:6px 0 0;padding-left:18px">'+ahead.slice(0,5).map(s=>'<li>'+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' · '+s.project:''))+'</li>').join('')+'</ul>':'내일 잡힌 일정도 없습니다.')+'</div>':'')+
-    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button></div>'+
+    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+(hjHeld('teamboard')?'':'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button>')+'</div>'+   // v612 팀 업무판은 보류가 아닐 때만
     '<h4>🏢 직원 작업실</h4><div id="mwTeam">'+hjMyWorkTeamHTML()+'</div></section>';
   openModal('📋 내 업무'+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length?' ('+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length)+')':''),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('myWork');
@@ -30710,7 +30719,7 @@ function hjMyWorkBind(root){
   root.querySelector('#mwLocal').onclick=()=>todoLocalView();
   const mc=root.querySelector('#mwClose');if(mc)mc.onclick=()=>hjDayCloseView();   // v359
   const sh=root.querySelector('#mwShared');if(sh)sh.onclick=()=>hjSharedTodoView();
-  root.querySelector('#mwBoard').onclick=()=>hjTeamBoard();
+  const mb=root.querySelector('#mwBoard');if(mb)mb.onclick=()=>hjTeamBoard();   // v612 보류면 없다
 }
 // 그 현장(·작업 이름)으로 미리 고른 사진 추가 — 갤러리에서 고르면 기존 사진 추가 확인 창(openPhotoIntake)이 그대로 연다
 function hjMyWorkPhoto(project,label){
@@ -32640,7 +32649,7 @@ const MORE_CATS=[
 // 최근 사용 기능 추적
 // 설명은 기능의 용도이며 외부 서비스 연결/실행 성공을 보장하지 않는다.
 const MORE_HELP={
-  delaycheck:'일정이 지났는데 사진·완료 보고가 없는 공정 찾기(시공 현장)',schshare:'오늘·이번 주 일정을 팀원에게 카톡·문자·캘린더 파일로 공유(담당별)',inquiry:'전화·방문 문의를 고객·연락처·지역·내용·문의 경로로 한 번에 등록하고 상담·실측 일정까지',crewweek:'이번 주·다음 주를 팀원 한 사람씩 — 일한 날·현장·빈 날·담당 겹침, 그 사람 일정 보내기',matdue:'발주한 자재가 언제 들어오는지·들어왔는지 — 오늘·지난 납품 입고 확인(현장별)',voicein:'음성으로 현장 기록 초안 만들기',cwsched:'PC Cowork 작업 예약 관리',cowork:'클로드에게 붙여 넣을 명령어 모음 — 사진 정리·카톡 대조·작업내역서 반영·입금·저장 확인·앱 개발',
+  delaycheck:'일정이 지났는데 사진·완료 보고가 없는 공정 찾기(시공 현장)',schshare:'오늘·이번 주 일정을 팀원에게 카톡·문자·캘린더 파일로 공유(담당별)',inquiry:'전화·방문 문의를 고객·연락처·지역·내용·문의 경로로 한 번에 등록하고 상담·실측 일정까지',crewweek:'이번 주·다음 주를 팀원 한 사람씩 — 일한 날·현장·빈 날·담당 겹침, 그 사람 일정 보내기',matdue:'발주한 자재가 언제 들어오는지·들어왔는지 — 오늘·지난 납품 입고 확인(현장별)',voicein:'음성으로 현장 기록 초안 만들기',cwsched:'PC Cowork 작업 예약 관리',cowork:'클로드에게 붙여 넣을 명령어 모음 — 작업내역서 반영·입금·청구 누락·캘린더 맞추기·저장 확인·앱 개발(사진·홍보는 카톡봇 관리 프로그램)',
   autopilot:'AI 작업 큐 점검과 안전 작업 실행',aiops:'AI 운영 현황과 승인 작업 확인',aibrain:'업무 요약을 AI로 분석',
   loopstatus:'자동화 진행 단계와 운영 상태 확인',ai:'기록에 관해 AI와 상담',activebrief:'오늘 할 일과 현장 요약',
   weekbrief:'이번 주 현장과 업무 요약',automode:'AI 자동 운영 범위 설정',aiquote:'공사 내용으로 견적 초안 작성',
@@ -32685,7 +32694,7 @@ const MORE_NAV_SHORTCUTS=[
   {id:'nav:mywork',tab:'__mywork',ic:'✅',label:'내 업무',description:'오늘 일정·할 일(예전 오늘 할일)'},
   {id:'nav:docs',tab:'docs',ic:'📁',label:'서류',description:'프로젝트별 문서와 파일 목록'},
   {id:'nav:estimates',tab:'estimates',ic:'🧾',label:'견적·정산',description:'견적서 검색과 프로젝트별 정산'},
-  {id:'nav:quotemaker',tab:'quotemaker',ic:'✍️',label:'견적 작성',description:'새 견적서 작성과 작성 중인 견적 이어 보기'},
+  {id:'nav:quotemaker',tab:'quotemaker',ic:'✍️',label:'견적 작성',description:'저장된 견적·작업내역서 보기·고치기와 작성 중인 견적 이어 보기'},   // v612 새 견적서는 보류(실제 견적서는 Claude 견적 만들기)
   {id:'nav:contacts',tab:'contacts',ic:'👤',label:'연락처',description:'고객과 거래처 전화번호 목록'},
   {id:'nav:project',tab:'project',ic:'🏗️',label:'현장별',description:'프로젝트별 사진과 공사 자료'},
   {id:'nav:aptmgmt',tab:'aptmgmt',ic:'🏢',label:'아파트 관리',description:'같은 단지끼리 묶어 보기와 동·호수 일괄 등록'}
@@ -32697,6 +32706,185 @@ const MORE_RUN_CONFIRM={
   fullxlsx:'현재 앱의 전체 장부를 엑셀 파일로 내려받습니다. 고객·공사·금액 정보가 포함되므로 보관과 공유에 주의하세요.',
   undo:'마지막 파일 이동 작업을 되돌립니다. 실행 전 현재 현장과 파일 이동 내역을 확인하세요.'
 };
+/* ═══ v612 ⏸ 보류 묶음 — 더보기 '쓰는 것만' (11/19 세 시스템 정리 23·14·18 · 분석 DA7·WA2·W5·D12·W15) ═══
+   기능 126개 가운데 자료가 쌓이는 것은 사진·내역서·수금·일정·동호수 정도다. 서버가 없어 못 쓰는 메뉴·안 쓰는 메뉴가 나란히 있어
+   대표가 같은 정보를 어디에 넣을지 헷갈렸다. 지우지 않고 '보류'로 접는다 — 더보기 분류·대시보드·견적 작성 탭·광고 탭에서 빠지고
+   더보기 맨 아래 [⏸ 보류 n개 보기]를 눌러야 보인다. 거기서 그대로 열 수 있고, [다시 보이기]를 누르면 원래 자리로 돌아간다.
+   ① 자동 보류(HJ_HOLD_AUTO) — 서버 주소·설정이 없어 쓸 수 없는 기능. 전자계약 버튼(contractFeatureAvailable)처럼 이 기기의 연결값으로 판정하고,
+      서버를 연결하면 저절로 다시 보인다. 이미 자료가 있으면(팀 업무·게시한 고객 페이지·받은 카카오 문의) 보류하지 않는다.
+      상업 승인은 따로 메뉴가 없다 — 🏢 영업·정기관리(OfficeOps) 안에 있고, 아파트 오더 안의 승인 단추는 연결 전엔 원래 잠겨 있다.
+   ② 처음 보류(HJ_HOLD_DEFAULT) — 대표가 안 쓰는 메뉴. 근거는 11/18 대표 자료(_현장.json)에서 그 기능이 쓰는 저장 칸이 0건인 것
+      (inventory·materials·suppliers/supplierMap·satisfaction·goals·adPosts 0, 현장 82곳의 budget·matOrders 0). 그 칸에 자료가 생기면 저절로 다시 보인다
+      — 자료가 있는 기능은 숨기지 않는다. 견적 셋(✍ 새 견적서·💸 AI 견적작성·📸 사진 견적)은 자료가 아니라 대표 결정(실제 견적서는 Claude 견적 만들기 ·
+      단가 정본 데이터\단가표\만물_단가표_견적기.xlsx)이라 늘 보류 — '✍ 견적 작성' 탭(저장된 견적·작업내역서 목록·편집)은 그대로다.
+   ③ 보류하지 않는 것(HJ_HOLD_NEVER) — 사진·일정·내역서/견적 목록·수금·AS·웹 업무 연결·관리사무소 접수함·아파트 관리·클로드 요청함·🧰·전자계약·AI 비서.
+      자동·처음 목록은 이 목록과 겹치지 않는다(hold-v612 검사). 계약 서버 연결(AI 키 중계 포함)은 건드리지 않는다.
+   설정은 이 기기 localStorage 'hj_more_hold' = {show:[다시 보이게 한 id]} — 즐겨찾기·최근 사용(hj_more_favorites·hj_more_recent)과 같은 자리.
+   새 최상위 저장 키를 만들지 않고(직렬화 키 그대로), 자동 판정이 기기마다 다른 연결값(IDB 의 서버 주소·토큰)을 보기 때문에 기기별이 맞다.
+   업무 자료·서버·고객 발송 변경 없음. 검색(더보기·PC 검색창)은 보류한 기능도 찾는다 — 숨긴 것이지 없앤 것이 아니다. */
+const HJ_HOLD_KEY='hj_more_hold';
+const HJ_HOLD_NEVER=Object.freeze(['photoaudit','photobundle','beforeafter','bagallery','photorep','photodefect','schshare','schedbrief','scheduleplan','delaycheck',
+  'payplan','payproof','settle','taxinv','ledgertab','vatc','asmanage','asintake','warranty','webbridge','aptorders','officework','claudeinbox','cowork',
+  'contractdraft','contractreview','ai','aiprovider','backupcenter','backups','gdrive','help']);
+// 더보기 칸이 아닌 보류 항목 — 대시보드·탭 안의 단추. open 은 보류 묶음에서 바로 여는 길(지운 것이 아니다)
+const HJ_HOLD_EXTRA=Object.freeze({
+  quotenew:{ic:'✍️',label:'새 견적서 작성',where:'✍ 견적 작성 탭 · 견적 안 쓴 현장의 [견적서 쓰기]',open:()=>hjQuoteNewDirect()},
+  teamboard:{ic:'👥',label:'팀 업무·인수인계',where:'대시보드 ✅ 오늘 현장 업무',open:()=>hjTeamBoard()},
+  teamroom:{ic:'🏢',label:'직원 작업실',where:'대시보드 ✅ 오늘 현장 업무',open:null},   // 링크(./team.html)로 그린다
+  sharedtodo:{ic:'☁',label:'팀 공유 할일',where:'대시보드 ✅ 오늘 현장 업무',open:()=>hjSharedTodoView()},
+  adpostlog:{ic:'📣',label:'광고 게시 기록 입력',where:'📣 광고 탭 [＋ 게시 기록]',open:()=>adPostAdd(((typeof AD_CH!=='undefined'&&AD_CH.find(c=>c.id===window.__adCh))||AD_CH[0]).id)}
+});
+const hjHoldNum=v=>Array.isArray(v)?v.length:(v&&typeof v==='object'?Object.keys(v).length:0);
+const hjHoldProjCount=fn=>(state.projects||[]).reduce((n,p)=>n+(p&&!p.archived?fn(p):0),0);
+// 처음 보류 — why: 보류 까닭(대표가 읽는 말), n: 그 기능의 자료 수(0 보다 크면 보류하지 않는다)
+const HJ_HOLD_DEFAULT=Object.freeze({
+  quotenew:{why:'실제 견적서는 Claude 견적 만들기(단가표 엑셀)로'},
+  aiquote:{why:'실제 견적서는 Claude 견적 만들기(단가표 엑셀)로'},
+  photoquote:{why:'실제 견적서는 Claude 견적 만들기(단가표 엑셀)로'},
+  inventory:{why:'안 쓰는 메뉴 — 자재 재고 0건',n:()=>hjHoldNum(state.inventory)},
+  materials:{why:'안 쓰는 메뉴 — 자재 단가 0건',n:()=>hjHoldNum(state.materials)},
+  matdue:{why:'안 쓰는 메뉴 — 자재 납품 기록 0건',n:()=>hjHoldProjCount(p=>hjHoldNum(p.matOrders))},
+  suppliers:{why:'안 쓰는 메뉴 — 거래처 0곳',n:()=>hjHoldNum(state.suppliers)+hjHoldNum(state.supplierMap)},
+  satisfaction:{why:'안 쓰는 메뉴 — 만족도 0건',n:()=>hjHoldNum(state.satisfaction)},
+  goal:{why:'안 쓰는 메뉴 — 매출 목표 없음',n:()=>{const g=state.goals||{};return (num(g.month)>0?1:0)+(num(g.year)>0?1:0);}},   // goals 의 salesBasis(v561 매출 기준)는 목표가 아니다
+  budget:{why:'안 쓰는 메뉴 — 현장 예산 0곳',n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)},
+  budgetalert:{why:'안 쓰는 메뉴 — 현장 예산 0곳',n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)},
+  adpostlog:{why:'게시 기록 0건 — 게시 기록은 PC 홍보_게시기록.md(카톡봇 홍보 명령)에',n:()=>hjHoldNum(state.adPosts)}
+});
+// 자동 보류 — '' 이면 쓸 수 있음(보이기), 아니면 보류 까닭
+function hjHoldPortalOn(){const c=state.portalCfg;return !!(c&&typeof c==='object'&&String(c.base||'').trim());}
+function hjHoldSharedOn(){return !!(relayReady()&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||'')));}
+function hjHoldTeamTasks(){try{return hjTeamList().filter(n=>hjTeamData(n).status!=='done').length;}catch(e){return 0;}}
+const HJ_HOLD_AUTO=Object.freeze({
+  kakaoin:()=>hjHoldPortalOn()||String(state.kakaoLastAt||'')?'':'카카오 문의 서버 주소가 없어요(☁️ 설정 › 고객 페이지)',
+  ptlist:()=>hjHoldPortalOn()||(state.projects||[]).some(p=>p&&p.portalUrl)?'':'고객 페이지 서버 주소가 없어요(☁️ 설정 › 고객 페이지)',
+  officeops:()=>__officeOps.url&&__officeOps.token?'':'OfficeOps 서버가 연결돼 있지 않아요(상업 승인 포함 · ☁️ 설정 › OfficeOps)',
+  teamboard:()=>hjHoldTeamState()==='on'||hjHoldTeamTasks()>0?'':'직원 작업실 서버가 비어 있고 팀 업무가 0건이에요',
+  teamroom:()=>hjHoldTeamState()==='on'?'':'직원 작업실 서버 주소가 비어 있어요(team-config.js)',
+  sharedtodo:()=>hjHoldSharedOn()?'':'팀 공유 할일 서버가 연결돼 있지 않아요 — 할 일은 ✅ 할 일 하나에'
+});
+const HJ_HOLD_IDS=Object.freeze([...new Set([...Object.keys(HJ_HOLD_AUTO),...Object.keys(HJ_HOLD_DEFAULT)])].filter(id=>!HJ_HOLD_NEVER.includes(id)));
+/* 직원 작업실 서버 — team-config.js 의 apiUrl(공개 주소만 · 대표 화면 hjMyWorkTeamCheck 와 같은 읽기). 처음 물을 때 한 번 읽고(같은 출처 GET),
+   'on' 이 되면 대시보드 단추 줄만 제자리에서 바꾼다(hjHoldDashRefresh). 읽기 전·실패는 보류(서버를 확인하지 못했다). */
+let __hjHoldTeam='',__hjHoldTeamP=null;
+function hjHoldTeamState(){if(!__hjHoldTeamP)hjHoldTeamCheck();return __hjHoldTeam;}
+function hjHoldTeamCheck(){
+  if(__hjHoldTeamP)return __hjHoldTeamP;
+  __hjHoldTeamP=(async()=>{
+    try{const r=await fetch('./team-config.js',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('http');
+      const m=/apiUrl\s*:\s*['"]([^'"]*)['"]/.exec(await r.text());__hjHoldTeam=m&&/^https:\/\//.test(m[1])?'on':'off';}
+    catch(e){__hjHoldTeam='error';}
+    try{hjHoldDashRefresh();}catch(e){}
+    return __hjHoldTeam;
+  })();
+  return __hjHoldTeamP;
+}
+function hjHoldPrefs(){
+  try{const v=JSON.parse(localStorage.getItem(HJ_HOLD_KEY)||'{}');
+    return {show:[...new Set((v&&Array.isArray(v.show)?v.show:[]).filter(id=>typeof id==='string'&&HJ_HOLD_IDS.includes(id)))]};}
+  catch(e){return {show:[]};}
+}
+function hjHoldWrite(p){try{localStorage.setItem(HJ_HOLD_KEY,JSON.stringify({show:p.show}));return true;}catch(e){toast('이 기기에 보류 설정을 저장하지 못했어요. 저장 공간을 확인하세요.');return false;}}
+// 보류 까닭 {why, auto} — why '' = 보류 아님. 자동이 먼저, 그다음 처음 보류(자료가 있으면 보류 아님)
+function hjHoldReason(id){
+  if(!HJ_HOLD_IDS.includes(id))return {why:'',auto:false};
+  const f=HJ_HOLD_AUTO[id];
+  if(f){let a='';try{a=f()||'';}catch(e){a='';}if(a)return {why:String(a),auto:true};}
+  const d=HJ_HOLD_DEFAULT[id];if(!d)return {why:'',auto:false};
+  let n=0;try{n=d.n?Number(d.n())||0:0;}catch(e){n=0;}
+  return {why:n>0?'':d.why,auto:false};
+}
+function hjHoldWhy(id){return hjHoldReason(id).why;}
+function hjHeld(id){try{return !!hjHoldWhy(id)&&!hjHoldPrefs().show.includes(id);}catch(e){return false;}}   // 부팅 중 상수가 아직이면 보류 아님(예전 화면 그대로)
+function hjHoldLabel(id){const x=HJ_HOLD_EXTRA[id];if(x)return x.label;const it=moreItemInfo(id);return it?it.label:id;}
+// 지금 보류 상태 한 번에 — rows: 보류 중인 것(자동 먼저, 같은 무리 안은 HJ_HOLD_IDS 차례), shown: 다시 보이게 한 id, held: 보류 중 id 집합
+function hjHoldState(){
+  const show=hjHoldPrefs().show,rows=[],shown=[];
+  HJ_HOLD_IDS.forEach(id=>{const r=hjHoldReason(id);if(!r.why)return;if(show.includes(id))shown.push(id);else rows.push({id,why:r.why,auto:r.auto,extra:!!HJ_HOLD_EXTRA[id]});});
+  rows.sort((a,b)=>Number(b.auto)-Number(a.auto));
+  return {rows,shown,held:new Set(rows.map(r=>r.id))};
+}
+function hjHoldShow(id){
+  if(!HJ_HOLD_IDS.includes(id))return false;
+  const p=hjHoldPrefs();if(!p.show.includes(id))p.show.push(id);
+  if(!hjHoldWrite(p))return false;
+  hjHoldAfterChange();return true;
+}
+function hjHoldReset(){try{localStorage.removeItem(HJ_HOLD_KEY);}catch(e){toast('이 기기에 보류 설정을 저장하지 못했어요.');return false;}hjHoldAfterChange();return true;}
+// 보류를 바꾼 뒤 — 대시보드 단추 줄은 제자리에서, 견적 작성·광고 탭은 다시 그린다
+function hjHoldAfterChange(){try{hjHoldDashRefresh();}catch(e){}try{if(state.tab==='quotemaker'||state.tab==='ads')scheduleRender();}catch(e){}}
+function hjHoldOpen(id){
+  const x=HJ_HOLD_EXTRA[id];
+  if(x){if(x.open)return x.open();return;}
+  if(moreItemInfo(id))return moreDispatch(id);
+}
+// 더보기 맨 아래 묶음 — chip 은 더보기 칸 단추를 그리는 함수(openMoreSheetV2 안)
+function moreHoldBlockHtml(st,chip,editing){
+  const rows=st.rows,shownN=st.shown.length;
+  if(!rows.length&&!shownN)return '';
+  const item=r=>{
+    const x=HJ_HOLD_EXTRA[r.id],label=hjHoldLabel(r.id);
+    let main;
+    if(!x)main=chip(moreItemInfo(r.id));
+    else{
+      const inner='<span class="more-chip-icon" aria-hidden="true">'+x.ic+'</span><span class="more-chip-copy"><span class="more-chip-label">'+escapeHtml(label)+'</span><span class="more-chip-description">'+escapeHtml(x.where)+'</span></span>';
+      main=r.id==='teamroom'?'<a class="more-chip more-hold-open" href="./team.html" data-hold-link="teamroom" aria-label="'+escapeAttr(label+' 열기')+'">'+inner+'</a>'
+        :'<button type="button" class="more-chip more-hold-open" data-hold-open="'+escapeAttr(r.id)+'" aria-label="'+escapeAttr(label+' 열기')+'"'+(editing?' disabled':'')+'>'+inner+'</button>';
+    }
+    return '<div class="more-hold-item" data-hold-row="'+escapeAttr(r.id)+'"'+(r.auto?' data-hold-auto':'')+'>'+main+
+      '<div class="more-hold-foot"><span class="more-hold-why">'+escapeHtml(r.why)+'</span><button type="button" class="ghost more-unhold" data-more-unhold="'+escapeAttr(r.id)+'" aria-label="'+escapeAttr(label+' 다시 보이기')+'"'+(editing?' disabled':'')+'>다시 보이기</button></div></div>';
+  };
+  const auto=rows.filter(r=>r.auto),off=rows.filter(r=>!r.auto);
+  return '<details class="more-cat-block more-hold" data-cat="hold" id="moreHold"'+(st.open?' open':'')+'><summary><span aria-hidden="true">⏸</span><span id="moreHoldTitle">보류 '+rows.length+'개 보기</span><span class="more-cat-count">이 기기</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary>'+
+    '<p class="more-note more-hold-note">지운 것이 아니라 접어 둔 기능이에요. 여기서 그대로 열 수 있고, [다시 보이기]를 누르면 원래 자리(분류·대시보드·탭)로 돌아가요. 서버를 연결하거나 자료가 생기면 저절로 다시 보여요.</p>'+
+    (auto.length?'<h5 class="more-hold-h">🔌 서버 연결이 없어 접어 둔 것 '+auto.length+'</h5><div class="more-cat-grid more-hold-grid">'+auto.map(item).join('')+'</div>':'')+
+    (off.length?'<h5 class="more-hold-h">💤 안 쓰는 메뉴 '+off.length+'</h5><div class="more-cat-grid more-hold-grid">'+off.map(item).join('')+'</div>':'')+
+    (shownN?'<div class="more-hold-resetrow"><button type="button" class="ghost" data-more-holdreset'+(editing?' disabled':'')+'>↺ 처음 보류로 되돌리기 (다시 보이게 한 '+shownN+'개)</button></div>':'')+
+  '</details>';
+}
+// 대시보드 ✅ 오늘 현장 업무의 단추 줄 — 팀 공유 할일·팀 업무·직원 작업실은 보류가 아닐 때만(18: 할 일은 현장웹 기본 할 일 하나)
+function hjHoldDashSig(){return ['sharedtodo','teamboard','teamroom'].map(id=>hjHeld(id)?'1':'0').join('');}
+function dashboardTodoBtnsHTML(){
+  const shared=!hjHeld('sharedtodo'),team=!hjHeld('teamboard'),room=!hjHeld('teamroom');
+  return '<div id="dashboardTodoBtns" data-hold-sig="'+hjHoldDashSig()+'" style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
+    '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">✅ 할 일 확인·추가</button>'+
+    '<button type="button" id="dashboardCaseOpen" class="ghost" onclick="casePackView()" style="min-height:44px">📰 사례 내보내기</button>'+
+    (shared?'<button type="button" id="dashboardSharedTodoOpen" class="blue" onclick="hjSharedTodoView()" style="min-height:44px">☁ 팀 공유 할일</button>':'')+
+    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
+    (team?'<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button>':'')+
+    (room?'<a id="dashboardCompanyTeam" class="btn ghost" href="./team.html" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px">직원 작업실 · 업무 배정·검수</a>':'')+
+    '<button type="button" id="dashboardOperationsConnections" class="ghost" onclick="hjOperationsCenter()">운영 연결 점검</button></div>';
+}
+function dashboardTodoHintText(){
+  return hjHeld('sharedtodo')?'할 일은 여기 ✅ 할 일 한 곳에 적어요(현장 자료와 함께 저장). 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.'
+    :'위 숫자는 이 기기의 기존 할일 집계이며 팀 공유 목록과 별도입니다. 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.';
+}
+function hjHoldDashRefresh(){
+  const row=document.getElementById('dashboardTodoBtns');if(!row)return false;
+  if(row.dataset.holdSig===hjHoldDashSig())return false;
+  const box=document.createElement('div');box.innerHTML=dashboardTodoBtnsHTML();row.replaceWith(box.firstElementChild);
+  const sum=document.getElementById('dashboardTeamSummary');if(sum)sum.hidden=hjHeld('teamboard');
+  const hint=document.getElementById('dashboardTodoHint');if(hint)hint.textContent=dashboardTodoHintText();
+  return true;
+}
+/* 14 ✍ 새 견적서 — 단가 정본은 데이터\단가표\만물_단가표_견적기.xlsx, 실제 견적서는 Claude 견적 만들기. 앱 안 새 견적 작성은 보류(지우지 않음).
+   보류 중에 [견적서 쓰기]·검색창 '새 견적서'를 누르면 이 안내 — [이번만 앱에서 쓰기]는 예전처럼 연다. */
+function hjQuoteNewHeldView(go,name){
+  openModal('✍ 새 견적 작성은 보류 중이에요',
+    '<div id="hjQuoteHeld" style="font-size:14px;line-height:1.65">'+(name?'<p style="margin:0 0 8px"><b>'+escapeHtml(name)+'</b> 견적서</p>':'')+
+    '<p style="margin:0 0 8px">실제 견적서는 <b>Claude 견적 만들기(단가표 엑셀)</b>로 만들어요.</p>'+
+    '<p class="hint" style="margin:0 0 6px">단가 정본: 데이터\\단가표\\만물_단가표_견적기.xlsx · 클로드에게 “견적서 만들어”라고 하면 엑셀 견적서가 나와요. 만물 폴더 견적서/ 에 두면 앱이 읽어 현장에 붙여요.</p>'+
+    '<p class="hint" style="margin:0">앱 안 견적 작성은 지우지 않고 더보기 맨 아래 ‘⏸ 보류’에 넣어 두었어요.</p></div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal},{label:'이번만 앱에서 쓰기',cls:'ghost',fn:()=>{closeModal();go();}}]);
+  return false;
+}
+// 견적 작성 탭의 새 견적 — 작성 중인 견적이 있으면 덮지 않고 그 견적으로(예전 [+ 새 견적서]는 목록 화면에만 있었다)
+function hjQuoteNewDirect(){
+  state.activeProject=null;
+  if(state.editingQuote){state.tab='quotemaker';render();toast('작성 중인 견적서가 열려 있어요 — 저장하거나 [목록으로] 뒤에 새로 만드세요');return;}
+  state.tab='quotemaker';startNewQuote();
+}
+function hjQuoteNewOpen(){if(hjHeld('quotenew'))return hjQuoteNewHeldView(hjQuoteNewDirect);return hjQuoteNewDirect();}
 function moreItemInfo(action){
   for(const c of MORE_CATS){const it=c.items.find(x=>x[0]===action);if(it)return {id:action,ic:it[1],label:it[2],description:MORE_HELP[action]||c.name,category:c.name};}
   return null;
@@ -32752,12 +32940,14 @@ function openMoreSheetV2(openerOverride){
   const sheet=document.createElement('div');sheet.className='more-sheet open';sheet.id='moreSheet';
   let editing=false;
   const count=MORE_CATS.reduce((n,c)=>n+c.items.length,0);
-  const chip=(it)=>{
+  let holdSt={rows:[],shown:[],held:new Set()};   // v612 보류 묶음 — 그릴 때마다 다시 읽는다(renderLists)
+  const chip=(it,opts)=>{
     const nav=!!it.tab,favorite=!nav&&moreGetFavorites().includes(it.id);
     const pending=it.id==='aptorders'?officeIntakePending():[],overdue=pending.filter(officeIntakeOverdue).length;
     const badge=it.id==='aptorders'?'<span data-office-intake-badge class="more-pending">신규 '+pending.length+'</span>':'';
-    const accessible=it.label+(it.id==='aptorders'?', 신규 '+pending.length+'건, 24시간 이상 미확인 '+overdue+'건':'')+(editing&&!nav?', 즐겨찾기 '+(favorite?'해제':'추가'):'');
-    return '<button type="button" class="more-chip'+(favorite?' is-favorite':'')+'" data-'+(nav?'more':'moreaction')+'="'+escapeAttr(nav?it.tab:it.id)+'" aria-label="'+escapeAttr(accessible)+'"'+(editing&&!nav?' aria-pressed="'+favorite+'"':'')+(editing&&nav?' disabled':'')+'><span class="more-chip-icon" aria-hidden="true">'+it.ic+'</span><span class="more-chip-copy"><span class="more-chip-label">'+escapeHtml(it.label)+badge+'</span><span class="more-chip-description">'+escapeHtml(it.description)+'</span></span>'+(!nav?'<span class="more-star" aria-hidden="true">'+(favorite?'★':editing?'☆':'')+'</span>':'')+'</button>';
+    const heldTag=!!(opts&&opts.tag&&!nav&&holdSt.held.has(it.id));   // 검색 결과의 보류 기능 — 찾을 수는 있다
+    const accessible=it.label+(it.id==='aptorders'?', 신규 '+pending.length+'건, 24시간 이상 미확인 '+overdue+'건':'')+(heldTag?', 보류 중':'')+(editing&&!nav?', 즐겨찾기 '+(favorite?'해제':'추가'):'');
+    return '<button type="button" class="more-chip'+(favorite?' is-favorite':'')+'" data-'+(nav?'more':'moreaction')+'="'+escapeAttr(nav?it.tab:it.id)+'" aria-label="'+escapeAttr(accessible)+'"'+(editing&&!nav?' aria-pressed="'+favorite+'"':'')+(editing&&nav?' disabled':'')+'><span class="more-chip-icon" aria-hidden="true">'+it.ic+'</span><span class="more-chip-copy"><span class="more-chip-label">'+escapeHtml(it.label)+badge+'</span><span class="more-chip-description">'+(heldTag?'<span class="more-hold-tag" data-hold-tag>⏸ 보류</span> ':'')+escapeHtml(it.description)+'</span></span>'+(!nav?'<span class="more-star" aria-hidden="true">'+(favorite?'★':editing?'☆':'')+'</span>':'')+'</button>';
   };
   sheet.innerHTML='<div class="more-sheet-head"><div class="more-sheet-title"><h4 id="moreSheetTitle">더보기 <small>기능 '+count+'개</small></h4><button type="button" class="ghost" id="moreSheetClose" aria-label="더보기 닫기">✕</button></div><div class="more-search-row"><input id="moreSearch" type="search" aria-label="더보기 기능 검색" placeholder="기능 찾기 · 사진, 서류, 백업" autocomplete="off"><button type="button" id="moreSearchClear" class="ghost" aria-label="검색어 지우기" hidden>지우기</button></div><div class="more-tools-row"><span id="moreResultCount" role="status" aria-live="polite">바로가기 '+MORE_NAV_SHORTCUTS.length+'개 · 기능 '+count+'개</span><button type="button" class="ghost" id="moreFavoriteEdit" aria-pressed="false">☆ 즐겨찾기 편집</button></div></div>'+
     '<p id="moreFavoriteHint" class="more-note" hidden>기능을 눌러 즐겨찾기 6개를 선택하세요. 편집 중에는 기능이 실행되지 않습니다.</p>'+
@@ -32770,11 +32960,16 @@ function openMoreSheetV2(openerOverride){
   const search=sheet.querySelector('#moreSearch'),clear=sheet.querySelector('#moreSearchClear'),edit=sheet.querySelector('#moreFavoriteEdit');
   const renderLists=()=>{
     const cats=sheet.querySelector('#moreCategories'),expanded=[...cats.querySelectorAll('details[open]')].map(d=>d.dataset.cat);
-    const favorites=moreGetFavorites(),recent=moreGetRecent();
+    try{holdSt=hjHoldState();}catch(e){holdSt={rows:[],shown:[],held:new Set()};}   // 보류를 못 읽으면 예전처럼 다 보인다
+    const held=holdSt.held;
+    const favorites=moreGetFavorites(),recent=moreGetRecent().filter(a=>!held.has(a));   // 즐겨찾기는 대표가 고른 것이라 그대로, 최근 사용은 보류 뺌
     sheet.querySelector('#moreNav').innerHTML=MORE_NAV_SHORTCUTS.map(chip).join('');
     sheet.querySelector('#moreFavoriteList').innerHTML=favorites.length?'<div class="more-tools-grid">'+favorites.map(a=>chip(moreItemInfo(a))).join('')+'</div>':'<p class="more-note">자주 쓰는 기능을 위의 ‘즐겨찾기 편집’으로 골라 두세요.</p>';
     sheet.querySelector('#moreRecent').innerHTML=recent.length?'<h4>최근 사용</h4><div class="more-tools-grid">'+recent.map(a=>chip(moreItemInfo(a))).join('')+'</div>':'';
-    cats.innerHTML=MORE_CATS.map(c=>'<details class="more-cat-block" data-cat="'+c.id+'"'+(expanded.includes(c.id)?' open':'')+'><summary><span>'+c.ic+'</span><span>'+c.name+'</span><span class="more-cat-count">'+c.items.length+'개</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary><div class="more-cat-grid">'+c.items.map(it=>chip(moreItemInfo(it[0]))).join('')+'</div></details>').join('');
+    // v612 분류에서는 보류한 기능을 빼고, 맨 아래 [⏸ 보류 n개 보기]에 모은다(지우지 않음 — 거기서 열고 [다시 보이기])
+    cats.innerHTML=MORE_CATS.map(c=>{const items=c.items.filter(it=>!held.has(it[0]));if(!items.length)return '';
+      return '<details class="more-cat-block" data-cat="'+c.id+'"'+(expanded.includes(c.id)?' open':'')+'><summary><span>'+c.ic+'</span><span>'+c.name+'</span><span class="more-cat-count">'+items.length+'개</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary><div class="more-cat-grid">'+items.map(it=>chip(moreItemInfo(it[0]))).join('')+'</div></details>';}).join('')+
+      moreHoldBlockHtml(Object.assign({},holdSt,{open:expanded.includes('hold')}),chip,editing);
     sheet.querySelector('#moreAiHint').disabled=editing;
   };
   const renderSearch=()=>{
@@ -32782,7 +32977,7 @@ function openMoreSheetV2(openerOverride){
     clear.hidden=!search.value;main.style.display=q?'none':'';res.style.display=q?'':'none';
     const hits=q?moreSearchItems(q):[];
     sheet.querySelector('#moreResultCount').textContent=q?'검색 결과 '+hits.length+'개':'바로가기 '+MORE_NAV_SHORTCUTS.length+'개 · 기능 '+count+'개';
-    res.innerHTML=q?(hits.length?'<div class="more-tools-grid">'+hits.map(chip).join('')+'</div>':'<div class="more-empty"><b>찾는 기능이 없어요</b><p>'+escapeHtml(q)+' 대신 사진, 백업, 견적처럼 짧게 검색해 보세요.</p><button type="button" data-more-clear>전체 기능 보기</button></div>'):'';
+    res.innerHTML=q?(hits.length?'<div class="more-tools-grid">'+hits.map(it=>chip(it,{tag:true})).join('')+'</div>':'<div class="more-empty"><b>찾는 기능이 없어요</b><p>'+escapeHtml(q)+' 대신 사진, 백업, 견적처럼 짧게 검색해 보세요.</p><button type="button" data-more-clear>전체 기능 보기</button></div>'):'';
   };
   const resetSearch=()=>{search.value='';renderSearch();search.focus();sheet.scrollTop=0;};
   sheet.querySelector('#moreSheetClose').onclick=()=>closeSheet();
@@ -32795,6 +32990,17 @@ function openMoreSheetV2(openerOverride){
   sheet.addEventListener('click',event=>{
     const el=event.target.closest('button');if(!el||!sheet.contains(el))return;
     if(el.hasAttribute('data-more-clear')){resetSearch();return;}
+    // v612 보류 묶음 — [다시 보이기]·[처음 보류로]·더보기 칸이 아닌 보류 항목 열기
+    if(el.hasAttribute('data-more-unhold')||el.hasAttribute('data-more-holdreset')){
+      if(editing)return;
+      const id=el.dataset.moreUnhold,scroll=sheet.scrollTop;
+      const ok=id?hjHoldShow(id):hjHoldReset();if(!ok)return;
+      renderLists();renderSearch();sheet.scrollTop=scroll;
+      const back=sheet.querySelector('#moreHold>summary')||sheet.querySelector('#moreSearch');if(back)back.focus({preventScroll:true});
+      toast(id?'‘'+hjHoldLabel(id)+'’ — 원래 자리로 돌렸어요':'보류를 처음 목록으로 되돌렸어요');
+      return;
+    }
+    if(el.hasAttribute('data-hold-open')){if(editing)return;const id=el.dataset.holdOpen;closeSheet(false);moreRestoreOpener(opener);try{hjHoldOpen(id);}catch(e){toast('기능을 열지 못했어요. 다시 시도하세요.');}return;}
     if(el.hasAttribute('data-moreaction')){
       const a=el.dataset.moreaction;
       if(editing){
@@ -33043,6 +33249,20 @@ const CW_META={
   cw_dev:{cat:'app',o:2,prep:'명령의 [고칠 것] 칸 적기 · 화면 캡처가 있으면 함께'},
   cw_bugtest:{cat:'app',o:3,prep:'현장웹 주소만 있으면 됨'}
 };
+/* v612 22 — 명령 카드가 두 벌(🧰 · 카톡봇 관리 프로그램 「클로드 명령」)이라 같은 '사진 정리'가 다른 문장으로 들어 있었다(분석 W17).
+   관리 프로그램 카드 목록(mm-kakaobot manager_ui/screens.js 의 CLAUDE — 자주 쓰는 3: 사진 정리·프로젝트 정리·일정 정리 · 홍보 4+4 ·
+   더 할 수 있는 일 10: 봇 점검·오늘 일정·이번 주 일정·일정 추가·후보 확인·확인필요 정리·사진 되돌리기·감시 방 추가·견적 정리·월간 정리)와 하나하나 대조해
+   같은 일이 그쪽에 있는 사진 명령만 🧰 목록에서 뺀다 — 지우지 않고(저장된 명령·기본값 복원·복사 그대로) 맨 아래 접힌 '옮긴 명령'에 둔다.
+   값 = 관리 프로그램에서 같은 일을 하는 카드. 남긴 것: cw_unbilled(청구 누락 — 관리 프로그램에 없음) · cw_dupe·cw_photo(같은 카드 없음) ·
+   cw_calsync(관리 프로그램 '일정 정리'는 감시 방 일정 → 구글 캘린더 — 현장웹 🔄 맞추기 창 반영은 여기) · cw_stmt('견적 정리'는 견적서 폴더 배정 — 작업내역서 반영은 여기) ·
+   cw_month('월간 정리'와 이름이 같지만 세무 자료(카드·세금계산서·통장) 정리라 남김 — 대표 확인 대기) · 세무·현장웹 관리 명령. */
+const CW_MOVED=Object.freeze({
+  cw_sitesort:'사진 정리 · 프로젝트 정리',   // 톡방 사진 → 현장사진/<현장> · 보고 글로 현장 짝짓기 · 없는 현장 목록
+  cw_photoin:'사진 정리 · 프로젝트 정리',    // 받은 카톡 사진 → 현장사진 · 현장 배정
+  cw_chatphoto:'사진 정리 · 프로젝트 정리',  // 감시 방 보고 글로 아직 저장 안 한(누락) 사진 · 현장 제안
+  cw_photoassign:'확인필요 정리 · 프로젝트 정리'   // 현장을 못 정한 사진 하나씩 현장 고르기
+});
+function cwMoved(t){return !!(t&&t.builtin&&Object.prototype.hasOwnProperty.call(CW_MOVED,t.id));}
 function cwCatOf(t){const m=t&&CW_META[t.id];return m?m.cat:(t&&t.builtin?'app':'mine');}
 // 분류 안 순서 — o 가 0 인 명령(맨 앞)을 '없음'(99)으로 읽지 않게. 예전 (o||99) 는 v569 cw_calsync(o:0)를 분류 맨 뒤로 보냈다.
 function cwOrderOf(t){const m=t&&CW_META[t.id];return m&&typeof m.o==='number'?m.o:99;}
@@ -33207,10 +33427,12 @@ function coworkCopyFallback(text,done){
 // 목록 화면 — v529 🧰 클로드 명령어 모음: 분류(CW_CATS)·준비물·찾기. 내가 만든 명령은 '✏️ 내 명령'.
 function coworkTasksManage(){
   const tasks=coworkTasksEnsure();const [c1,c2]=hjBrandGrad('#7c3aed','#0b4ea2');
+  const shown=tasks.filter(t=>!cwMoved(t)),moved=tasks.filter(cwMoved);   // v612 관리 프로그램이 맡는 사진 명령은 맨 아래 접힌 칸
   const row=t=>{
     const m=CW_META[t.id]||{},id=escapeAttr(t.id),q=escapeAttr([t.title,m.prep||''].join(' ').toLowerCase());   // 찾기는 이름·준비물만(분류 이름까지 넣으면 '입금'에 그 분류 전체가 걸린다)
-    return '<div class="cw-row" data-cw-row="'+id+'" data-cw-q="'+q+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
+    return '<div class="cw-row" data-cw-row="'+id+'" data-cw-q="'+q+'"'+(cwMoved(t)?' data-cw-moved':'')+' style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
       '<div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="font-size:20px" aria-hidden="true">'+escapeHtml(t.icon||'🖥')+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(t.title)+'</b>'+(t.builtin?'':'<span style="font-size:10.5px;background:#e0e7ff;color:#3730a3;padding:1px 7px;border-radius:8px;font-weight:700">내 명령</span>')+'</div>'+
+      (cwMoved(t)?'<div class="cw-moved-to" style="font-size:12px;margin:0 0 6px;line-height:1.5">관리 프로그램 카드: <b>'+escapeHtml(CW_MOVED[t.id])+'</b></div>':'')+
       (m.prep?'<div class="cw-prep" style="font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5">준비: '+escapeHtml(m.prep)+'</div>'
         :'<div class="cw-prep" style="font-size:11.5px;color:var(--muted);margin:0 0 8px;line-height:1.5;max-height:36px;overflow:hidden">'+escapeHtml(String(t.prompt||'').slice(0,90))+'…</div>')+
       '<div style="display:flex;gap:6px">'+
@@ -33221,16 +33443,21 @@ function coworkTasksManage(){
     '</div>';
   };
   const groups=CW_CATS.map(c=>{
-    const list=tasks.map((t,i)=>({t,i})).filter(x=>cwCatOf(x.t)===c.id).sort((a,b)=>(cwOrderOf(a.t)-cwOrderOf(b.t))||a.i-b.i).map(x=>x.t);
+    const list=shown.map((t,i)=>({t,i})).filter(x=>cwCatOf(x.t)===c.id).sort((a,b)=>(cwOrderOf(a.t)-cwOrderOf(b.t))||a.i-b.i).map(x=>x.t);
     if(!list.length)return '';
     return '<div class="cw-cat" data-cw-cat="'+c.id+'"><h4 style="margin:14px 0 6px;font-size:13.5px">'+c.ic+' '+escapeHtml(c.name)+' <small style="color:var(--muted);font-weight:400">'+list.length+'</small></h4>'+list.map(row).join('')+'</div>';
   }).join('');
+  // 옮긴 명령은 정해진 차례(분류 안 차례와 같은 o)로
+  const movedList=moved.map((t,i)=>({t,i})).sort((a,b)=>(cwOrderOf(a.t)-cwOrderOf(b.t))||a.i-b.i).map(x=>x.t);
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">클로드에게 붙여 넣을 명령</div><div style="font-size:18px;font-weight:800">🧰 클로드 명령어 모음</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+tasks.length+'개 · 복사해서 붙여넣기</div></div>'+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">클로드에게 붙여 넣을 명령</div><div style="font-size:18px;font-weight:800">🧰 클로드 명령어 모음</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+shown.length+'개 · 복사해서 붙여넣기</div></div>'+
+    '<div class="hint" id="cwKakaoBot" style="margin:0 0 8px;line-height:1.55;font-weight:700;color:var(--ink)">📸 사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요.</div>'+
     '<div class="hint" id="cwHow" style="margin:0 0 10px;line-height:1.55">💡 [📋 명령 복사] → 클로드 대화창(PC의 클로드 앱 또는 claude.ai)에 붙여 넣으면 클로드가 만물 폴더·현장웹을 직접 다룹니다. PC 폴더 일은 PC의 클로드 앱이 켜져 있고 만물 폴더가 연결돼 있어야 해요. 홈택스·은행·톡클라우드 로그인은 직접 하고, 받은 파일만 맡기세요.</div>'+
     '<input id="cwFilter" type="search" placeholder="🔍 명령 찾기 (예: 사진, 입금, 저장)" aria-label="명령 찾기" autocomplete="off" style="width:100%;min-height:44px;padding:10px 12px;font-size:16px;margin:0 0 2px">'+
     (groups||'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">명령이 없어요.<br>[+ 명령 추가]로 만들거나 [기본값 복원]을 누르세요.</div>')+
     '<div id="cwNone" hidden style="text-align:center;color:var(--muted);padding:14px;font-size:12.5px">찾는 명령이 없어요. 다른 말로 찾아보세요.</div>'+
+    (movedList.length?'<details class="cw-moved" id="cwMoved" style="margin:12px 0 0;border:1px dashed var(--line-soft);border-radius:12px;padding:0 10px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;font-weight:700">📦 카톡봇 관리 프로그램으로 옮긴 명령 '+movedList.length+'개</summary>'+
+      '<p class="hint" style="margin:0 0 8px;line-height:1.5">관리 프로그램 「클로드 명령」의 카드를 쓰세요(같은 일을 봇이 함께 해요). 여기 것은 지우지 않고 남겨 둔 예전 명령이에요.</p>'+movedList.map(row).join('')+'</details>':'')+
     '<div style="display:flex;gap:7px;margin-top:10px">'+
       '<button class="clay" id="cwAdd" style="flex:1;padding:12px;font-size:13.5px">+ 명령 추가</button>'+
       '<button class="ghost" id="cwReset" style="padding:12px 14px;font-size:12px">기본값 복원</button>'+
@@ -33244,10 +33471,12 @@ function coworkTasksManage(){
   root.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
   const fi=root.querySelector('#cwFilter');
   if(fi)fi.oninput=()=>{
-    const words=fi.value.trim().toLowerCase().split(/\s+/).filter(Boolean);let shown=0;
-    root.querySelectorAll('.cw-row').forEach(r=>{const ok=words.every(w=>String(r.dataset.cwQ||'').indexOf(w)>=0);r.hidden=!ok;if(ok)shown++;});
+    const words=fi.value.trim().toLowerCase().split(/\s+/).filter(Boolean);let hit=0,movedHit=0;
+    root.querySelectorAll('.cw-row').forEach(r=>{const ok=words.every(w=>String(r.dataset.cwQ||'').indexOf(w)>=0);r.hidden=!ok;if(ok){if(r.hasAttribute('data-cw-moved'))movedHit++;else hit++;}});
     root.querySelectorAll('.cw-cat').forEach(c=>{c.hidden=!c.querySelector('.cw-row:not([hidden])');});
-    const none=root.querySelector('#cwNone');if(none)none.hidden=shown>0||!tasks.length;
+    // v612 옮긴 명령만 걸리면 — 접힌 칸은 그대로 두고 관리 프로그램을 알린다
+    const none=root.querySelector('#cwNone');if(none){none.hidden=!words.length||hit>0||!shown.length&&!movedHit;
+      none.textContent=movedHit?'여기 명령에는 없어요 — 사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요(아래 옮긴 명령 '+movedHit+'개).':'찾는 명령이 없어요. 다른 말로 찾아보세요.';}
   };
   const addBtn=root.querySelector('#cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
   const resetBtn=root.querySelector('#cwReset');if(resetBtn)resetBtn.onclick=()=>{if(confirm('기본 명령 '+coworkDefaults().length+'개를 다시 불러올까요? (내가 추가한 명령은 유지됩니다)')){const custom=(state.coworkTasks||[]).filter(t=>!t.builtin);state.coworkTasks=coworkDefaults().concat(custom);markDirty();toast('기본값을 복원했어요');rebind();}};
@@ -35284,9 +35513,10 @@ function viewAds(){
   html+=hjAdCaseHtml();
   html+=hjLeakWebLinkHtml();   // v431 누수 접수 링크
   html+=hjLeadSrcHtml();   // v379
+  const postLog=!hjHeld('adpostlog');   // v612 게시 기록 손 입력은 보류(게시 기록은 PC 홍보_게시기록.md — 카톡봇 홍보 명령) · 자료가 생기면 다시 보인다
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
     '<button class="blue tiny" data-addraft="'+ch.id+'" style="padding:11px 16px;font-weight:700">✍️ 원고 만들기</button>'+
-    '<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:11px 16px">＋ 게시 기록</button>'+
+    (postLog?'<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:11px 16px">＋ 게시 기록</button>':'')+
     '<button class="moss tiny" data-season="1" style="padding:11px 16px;min-height:44px">🌦 계절 캠페인</button></div>';   // v448
   // 이번 달 채널 성과 요약: 게시 n건 · 문의 m건 (성과는 각 기록의 [📈]로 입력)
   const mPosts=(state.adPosts||[]).filter(function(p){return p.ch===ch.id&&String(p.date).slice(0,7)===ym;});
@@ -35301,7 +35531,8 @@ function viewAds(){
       (p.url?'<a class="ghost tiny hjAdLink" href="'+escapeAttr(p.url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:7px 9px">🔗</a>':'')+
       '<button class="ghost tiny" data-addel="'+escapeAttr(p.id)+'" style="padding:7px 9px;color:#b91c1c">🗑</button>'+
     '</div>';
-  }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.</span></div>';
+  }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">'+(postLog?'올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.'
+    :'올린 곳은 PC 홍보_게시기록.md 에 적어요 — 카톡봇 관리 프로그램 「클로드 명령」의 \'올렸어 당근 [현장]\'처럼.')+'</span></div>';
   html+='<div class="hint" style="margin-top:12px">💡 [✍️ 원고 만들기]가 현장 자료(지역·평수·공정·기간)로 초안을 바로 써줘요. 더 다듬으려면 Cowork <b>manmul-marketing</b> 스킬 — 전/후 카드는 더보기 [📸 전/후 비교 카드]로.</div>';
   return html;
 }
@@ -39829,12 +40060,18 @@ function viewQuoteMaker(){
   /* v410 고객과 자재·시공비를 함께 고르는 욕실 상담을 열어도 편집 중 견적은 유지한다. */
   const hjBathLink='<button type="button" class="ghost tiny" id="qmBathroom" style="min-height:44px">🛁 욕실 상담·견적</button>';
   if(!state.editingQuote){
+    /* v612 14 — 이 탭(저장된 견적·작업내역서 목록·편집)은 그대로, [+ 새 견적서]만 보류(hjHeld('quotenew') — 더보기 맨 아래 ⏸ 보류에서 열기·다시 보이기).
+       실제 견적서는 Claude 견적 만들기(단가표 엑셀 — 단가 정본 데이터\단가표\만물_단가표_견적기.xlsx). */
+    const qNew=!hjHeld('quotenew');
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="ghost tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서(작업 날짜·위치·작업명·작업비용) 엑셀을 읽어 현장마다 견적(수주) 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
-    html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
+      ${qNew?'<button class="clay tiny" id="qmNew">+ 새 견적서</button> ':''}<button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="ghost tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서(작업 날짜·위치·작업명·작업비용) 엑셀을 읽어 현장마다 견적(수주) 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
+    html+=`<p class="hint" id="qmClaudeLine" data-qm-claude style="margin:0 0 8px">📄 실제 견적서는 <b>Claude 견적 만들기(단가표 엑셀)</b>로 — 단가 정본 데이터\\단가표\\만물_단가표_견적기.xlsx · 만든 견적서는 만물 폴더 견적서/ 에 두면 앱이 읽어 현장에 붙여요.</p>`;
+    html+=qNew?`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`
+      :`<p class="hint" data-qm-held style="margin:0 0 14px">이 탭은 저장된 견적·작업내역서를 보고 고치는 곳이에요. 앱 안 새 견적 작성은 더보기 맨 아래 ‘⏸ 보류’에 있어요.</p>`;
     html+=hjStmtLedgerHTML();   // v527 📑 작업내역서 장부(협력사에서 받을 돈 · 💰 입금 · 폴더의 내역서 바로 반영)
     if(!state.quotes.length){
-      html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
+      html+=qNew?`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`
+        :`<div class="empty"><b>앱에서 쓴 견적서가 없습니다</b>견적서 폴더의 견적서는 🧾 견적·정산 탭에 보여요. 협력사 작업내역서는 [📑 작업내역서 반영]으로 넣어요.</div>`;
       return html;
     }
     html+=`<div class="grid">`;
@@ -55485,6 +55722,8 @@ function hjBuildTagApply(){
   // that choice is known before scheduling legacy boot seeders, which otherwise
   // add defaults back into an intentionally empty/null paid snapshot.
   try{await Promise.resolve(window.__hjRestoreDone);}catch(e){}
+  // v612 보류 묶음 — 직원 작업실 서버(team-config.js)를 부팅 때 한 번 읽고, 연결값(중계·팀)이 다 읽힌 뒤 대시보드 단추 줄만 제자리에서 맞춘다
+  try{Promise.all([window.__hjRelayConfigDone,hjHoldTeamCheck()]).then(()=>{try{hjHoldDashRefresh();}catch(e){}},()=>{});}catch(e){}
   const suppressPaidStateSeeders=window.__hjRestoreSource==='paid-generation';
   const runConfiguredPaidAiOps=!suppressPaidStateSeeders||aiOpsExistingStateReady();
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
