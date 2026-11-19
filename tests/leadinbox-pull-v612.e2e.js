@@ -1,13 +1,13 @@
 /* v612 📬 홈페이지 문의 접수함 당겨오기 — 진짜 화면(폰 390)·진짜 안전판·진짜 이 기기 저장, 접수함 서버만 가짜(route 로 script.google.com 응답). 합성 자료, 바깥 쓰기 0.
-   ① NOURL     주소가 없으면 [📬 접수함에서 가져오기]는 '설정에서 넣어 주세요' 안내만(요청 0·자료 그대로) → ⚙️ 설정 › ⭐ 기타 칸: 틀린 주소 거절 · 맞는 주소는 이 기기 IDB 에만
+   ① NOURL     주소가 없으면 큰 단추 없이 한 줄 안내 + 작은 [켜는 법](누르면 '설정에서 넣어 주세요' 안내만 — 요청 0·자료 그대로) → ⚙️ 설정 › ⭐ 기타 칸: 틀린 주소 거절 · 맞는 주소는 이 기기 IDB 에만
    ② PULL      로그인 창(type=password) → 틀린 비밀번호(칸 비움·안내) → 맞는 비밀번호 → 목록(폰 넘침 0·44px) → [📥 열어서 등록] → 미리보기(접수함 칸·메모) →
                [현장으로 등록] → 안전판·이 기기 저장 뒤 leadDecide '승인'(메모·requestId) · 현장 source lead-inbox·접수번호 · 등록한 문의는 '앱에 등록됨'
    ③ RETRY     승인 표시가 끊기면 등록은 그대로 + 안내 → 다시 열면 [✅ 접수함에 승인 표시] → 같은 requestId 로 승인 · 같은 문의를 메일로 붙여 넣어도 '이미 등록된 문의'
    ④ AS        A/S 문의 → 현장 고르기 → AS 관리 기록 · 승인 메모 '현장웹 AS 접수: 현장'
    ⑤ DECIDE    보류 문의 거절: 사유 없으면 요청 없음 → 사유 넣으면 거절·목록으로
-   ⑥ EXPIRED   서버 세션이 끝나면 [새로고침] → 로그인 창 '만료' · 이 기기 세션 지움
+   ⑥ EXPIRED   서버 세션이 끝나면 [새로고침] → 로그인 창 '만료' · 메모리 세션 지움
    ⑦ PRIVACY   관리 비밀번호는 leadLogin 요청 본문 한 곳에만 — localStorage·sessionStorage·IndexedDB 모든 값·직렬화 자료·화면 어디에도 없다 ·
-               세션 토큰은 IDB 'lead_inbox_session' 에만(직렬화 자료·localStorage 에 없음) · 바깥 쓰기는 가짜 접수함 주소뿐 · 페이지 오류 0
+               세션 토큰은 이 창 메모리에만 — IndexedDB·localStorage·sessionStorage·직렬화 자료에 없음(현장웹·만물웹이 같은 출처 — v612 검토) · 바깥 쓰기는 가짜 접수함 주소뿐 · 페이지 오류 0
    HJ_V612L_BASELINE=<commit> 은 ① 에서 실패해야 한다(기준선 5a87511 에는 접수함 버튼이 없다). */
 'use strict';
 const assert = require('node:assert/strict');
@@ -136,6 +136,7 @@ let browser, page, passed = 0;
     const before = await stored();
     await center();
     assert.equal(await page.locator('#webWorkLeadPanel').getAttribute('data-lead-inbox-panel'), 'off');
+    assert.equal(await page.locator('#webWorkLeadPull.blue').count(), 0, 'no big primary button before the inbox is set up');
     await tapOk('#webWorkLeadPull');
     await page.locator('#webWorkLeadPull').click();
     await page.waitForFunction(() => /접수함 주소를 설정에서 넣어 주세요/.test(document.getElementById('webWorkLeadStatus')?.textContent || ''));
@@ -160,8 +161,10 @@ let browser, page, passed = 0;
     await page.locator('#leadInboxCode').fill('WRONG-admin-e2e-1'); await footer('로그인').click();
     await page.waitForFunction(() => /관리 비밀번호가 맞지 않아요/.test(document.getElementById('leadInboxLoginIssue')?.textContent || ''));
     assert.equal(await page.locator('#leadInboxCode').inputValue(), '', 'field cleared');
+    assert.match(await page.locator('[data-lead-inbox-dest]').innerText(), /끝자리 …/, 'login shows where the password goes');
     await page.locator('#leadInboxCode').fill(PASS); await footer('로그인').click();
     await page.locator('[data-lead-inbox-list="3"]').waitFor();
+    assert.equal((await stored()).keys.includes('lead_inbox_session'), false, 'session kept in memory only');
     assert.equal(await page.locator('[data-lead-inbox-row]').count(), 3); assert.match(await page.locator('[data-lead-inbox-rows]').innerText(), /최인테[\s\S]*메일 미발송/);
     await tapOk('[data-lead-inbox-open]'); await tapOk('[data-lead-inbox-filter]'); await noOverflow('list');
     await page.locator('[data-lead-inbox-open="' + ID(1) + '"]').click();
@@ -243,7 +246,7 @@ let browser, page, passed = 0;
     assert.equal(server.bodies.filter(b => b.raw.includes(PASS)).length, 1, 'only one request carried the password');
     assert(server.bodies.filter(b => b.body.action === 'leadLogin').every(b => !('sessionToken' in b.body)));
     assert(server.bodies.every(b => /^text\/plain/.test(b.type)), 'simple text/plain requests');
-    assert.equal(/TESTE2ESESSION/.test(s.serialized + s.local + s.session + s.html), false, 'session token not in synced data or web storage');
+    assert.equal(/TESTE2ESESSION/.test(s.serialized + s.local + s.session + s.html + Object.values(s.idb).join('\n')), false, 'session token not in synced data, web storage or IndexedDB');
     assert.deepEqual(errors, [], 'page errors'); assert.deepEqual(network.writes, [], 'no other external writes');
     assert.deepEqual(await page.evaluate(() => __v612lCalls.external), []);
   });

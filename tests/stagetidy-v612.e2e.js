@@ -1,13 +1,16 @@
 /* v612 🧹 현장 단계 한 번에 정리 (분석 AD WA6) — 단계 0(상담)인 현장을 돈·작업 기록으로 살펴 제안하고, 체크한 것만 반영한다.
    ★ 파수꾼·보증·방치 현장은 stage 가 아니라 doneAt(준공일)을 본다 — 앱에서 '완료'를 누르면(setStage) doneAt 이 오늘이 되므로 이 창은 그 길을 안 쓰고
-     근거 날짜(마지막 입금일 → 마지막 작업일, 날짜 칸에서 고칠 수 있음)를 준공일로 적는다. 합성 자료, 시계 고정(11/19 목), PC 1280·폰 390, 바깥 쓰기 0.
-   ① 제안 — 진짜 projStats(내역서 견적·입금 기록): 완납 → 완료 체크(준공일 = 마지막 입금일) · 부분 입금 → 체크 끈 완료 · 앞으로 일정 → 체크 끔 ·
+     근거 날짜(마지막 작업일 → 작업 날짜가 없으면 마지막 입금일, 날짜 칸에서 고칠 수 있음)를 준공일로 적는다. 합성 자료, 시계 고정(11/19 목), PC 1280·폰 390, 바깥 쓰기 0.
+     (v612 검토: 협력사 일괄 입금일을 준공일로 쓰면 보증 기산일이 작업이 끝난 날보다 최대 71일 늦어진다 — 입금일은 근거 글로만.)
+   ① 제안 — 진짜 projStats(내역서 견적·입금 기록): 완납 → 완료 체크(준공일 = 마지막 작업일) · 부분 입금 → 체크 끈 완료 · 앞으로 일정 → 체크 끔 ·
       보관·이미 단계 있음 → 없음 · 근거 없음 → 뺀 목록 · 읽기만 (PLAN)
-   ② 창(PC) — 왼쪽 현장 목록 [🧹 단계 정리 n곳] · 표 머리(현장 | 지금 단계 | 제안 단계 | 완료일과 근거 | 반영) · 미리 체크한 것 = 완납만 · 체크 수 · 창을 열고 골라도 자료 불변 (VIEW)
+   ② 창(PC) — 왼쪽 현장 목록 [🧹 단계 정리 n곳] · 표 머리(현장 | 지금 단계 | 제안 단계 | 완료일과 근거 | 반영) · 미리 체크한 것 = 완납만 · 체크 수 ·
+      날짜를 고쳐도 체크는 저절로 켜지지 않고 '체크해야 바뀌어요' 안내 · 창을 열고 골라도 자료 불변 (VIEW)
    ③ 반영 — 체크한 것만 · 준공일 = 근거 날짜·고친 날짜(오늘 아님) · 보증 시작일 = 그 날 · 일반 저장(markDirty) · 안전판 1회 · 결과 창 · 단추 수 줄어듦 (APPLY)
    ④ 되돌리기 — 결과 창 [↩ 되돌리기] = 그 뒤로 안 바뀐 현장만 원래대로(준공일 칸까지) · 안전판 한 번 더 (UNDO)
    ⑤ 가드 — 오늘 뒤 날짜·빈 날짜는 안전판 전에 멈춤 · 안전판 실패 · 오래된 창 · 창을 연 뒤 단계가 바뀐 현장은 그대로 · 직원 모드 (GUARD)
-   ⑥ 폰 390·입구 — 현장 선택 시트 [🧹 단계 정리] → 창 · 넘침 0·44px·16px · 💤 방치 현장 창 단추와 ‹ 뒤로 · 핀 3곳 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
+   ⑥ 폰 390·입구 — 현장 선택 시트 [🧹 단계 정리] → 창 · 넘침 0·44px·16px · 💤 방치 현장 창 단추와 ‹ 뒤로 · 체크해 둘 줄이 0 이 돼도(한 번 반영한 뒤)
+      💤 방치 현장 창·기능 찾기 '현장 단계 정리'로 남은 제안을 다시 연다 · 핀 3곳 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
    HJ_V612_STAGE_BASELINE=<commit> 은 ① 에서 실패해야 한다. HJ_V612_STAGE_E2E_MUTATION=via-setstage 는 ③, undo-all 은 ④, no-date-guard·no-recheck 는 ⑤ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -96,13 +99,13 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
   try {
     const { context, page } = await open({ width: 1280, height: 900 });
 
-    await test('① 제안 — 완납 → 완료 체크(준공일 = 마지막 입금일) · 부분 입금·앞으로 일정은 체크 끔 · 보관·단계 있음 제외 · 읽기만 (PLAN)', async () => {
+    await test('① 제안 — 완납 → 완료 체크(준공일 = 마지막 작업일) · 부분 입금·앞으로 일정은 체크 끔 · 보관·단계 있음 제외 · 읽기만 (PLAN)', async () => {
       await seed(page);
       const before = await snapSig(page);
       const p = await page.evaluate(() => { const r = hjStageTidyPlan(); return { today: r.today, on: r.on, skip: r.skip, rows: r.rows.map(x => [x.name, x.kind, x.to, x.on, x.doneAt]), left: r.left.map(x => [x.name, x.kind]) }; });
       assert.equal(p.today, '2026-11-19');
-      assert.deepEqual(p.rows, [['가온아파트', 'paid', 3, true, '2026-11-10'], ['나래빌라', 'paid', 3, true, '2026-11-03'], ['별빛상가', 'paid', 3, false, '2026-11-06'], ['다온타운', 'partial', 3, false, '2026-10-15']],
-        '제안 · 차례(체크한 것 먼저) ' + JSON.stringify(p.rows));
+      assert.deepEqual(p.rows, [['가온아파트', 'paid', 3, true, '2026-10-22'], ['나래빌라', 'paid', 3, true, '2026-10-01'], ['별빛상가', 'paid', 3, false, '2026-10-05'], ['다온타운', 'partial', 3, false, '2026-10-15']],
+        '제안 · 차례(체크한 것 먼저) · 준공일 = 마지막 작업일(입금 11/03~11/10 아님) ' + JSON.stringify(p.rows));
       assert.deepEqual([p.on, p.skip, p.left], [2, { archived: 1, staged: 1, dup: 0 }, [['빈현장', 'none']]], JSON.stringify([p.on, p.skip, p.left]));
       assert.equal(await snapSig(page), before, '읽기만 — 자료 불변');
     });
@@ -123,7 +126,7 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
           skip: (root.querySelector('[data-stage-tidy-skip]') || {}).textContent || '', max: root.querySelector('.stdDate').max };
       });
       assert.deepEqual(v.head, ['현장', '지금 단계', '제안 단계', '완료일과 근거', '반영'], '표 머리 ' + JSON.stringify(v.head));
-      assert.deepEqual(v.rows, [['가온아파트', ['상담', '완료'], '2026-11-10', true], ['나래빌라', ['상담', '완료'], '2026-11-03', true], ['별빛상가', ['상담', '완료'], '2026-11-06', false], ['다온타운', ['상담', '완료'], '2026-10-15', false]],
+      assert.deepEqual(v.rows, [['가온아파트', ['상담', '완료'], '2026-10-22', true], ['나래빌라', ['상담', '완료'], '2026-10-01', true], ['별빛상가', ['상담', '완료'], '2026-10-05', false], ['다온타운', ['상담', '완료'], '2026-10-15', false]],
         '줄·준공일·미리 체크(완납만) ' + JSON.stringify(v.rows));
       assert.equal(v.count, '체크 2곳 / 4곳');
       assert.ok(v.btn.includes('🧹 체크한 2곳 반영') && v.btn.includes('닫기'), JSON.stringify(v.btn));
@@ -137,7 +140,13 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
       await page.click('#stdPickDefault');
       assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#hjStageTidy .stdChk')].map(c => c.checked)), [true, true, false, false], '제안대로 체크');
       await page.fill(row('다온타운') + ' .stdDate', '2026-10-16');
-      assert.equal(await page.evaluate(() => document.querySelector('#hjStageTidy tr[data-stage-tidy-row="다온타운"] .stdChk').checked), true, '날짜를 고치면 그 줄 체크');
+      const dh = () => page.evaluate(() => { const tr = document.querySelector('#hjStageTidy tr[data-stage-tidy-row="다온타운"]'), h = tr.querySelector('[data-stage-tidy-datehint]'); return [tr.querySelector('.stdChk').checked, h ? h.textContent : '']; });
+      const d1 = await dh();
+      assert.equal(d1[0], false, '날짜를 고쳐도 체크는 저절로 켜지지 않는다(체크한 것만 바뀐다)');
+      assert.match(d1[1], /체크해야 바뀌어요/, '체크 안내 ' + JSON.stringify(d1));
+      await page.check(row('다온타운') + ' .stdChk');
+      assert.deepEqual(await dh(), [true, ''], '체크하면 안내가 사라진다');
+      await page.uncheck(row('다온타운') + ' .stdChk');
       assert.equal(await snapSig(page), before, '창을 열고 골라도 자료 불변');
       await page.evaluate(() => closeModal());
     });
@@ -148,6 +157,7 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
       await openView(page);
       await page.uncheck(row('나래빌라') + ' .stdChk');
       await page.fill(row('다온타운') + ' .stdDate', '2026-10-16');
+      await page.check(row('다온타운') + ' .stdChk');   // 날짜를 고친 줄도 체크해야 바뀐다
       await page.evaluate(() => { window.__md = 0; });
       await applyBtn(page);
       await page.waitForSelector('#hjStageTidyDone');
@@ -157,15 +167,15 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
           warranty: w && w.startedAt, md: window.__md,
           done: [...document.querySelectorAll('#hjStageTidyDone [data-stage-tidy-done]')].map(li => li.textContent.trim()), foot: [...document.querySelectorAll('#modalRoot .mfoot button')].map(b => b.textContent.trim()) };
       });
-      assert.deepEqual(r.gaon, [3, '2026-11-10'], '완납 — 준공일 = 마지막 입금일 ' + JSON.stringify(r.gaon));
+      assert.deepEqual(r.gaon, [3, '2026-10-22'], '완납 — 준공일 = 마지막 작업일(입금일 11/10 아님) ' + JSON.stringify(r.gaon));
       assert.deepEqual(r.daon, [3, '2026-10-16'], '고친 날짜 ' + JSON.stringify(r.daon));
       assert.deepEqual(r.narae, [0, false], '체크 안 한 줄 그대로 ' + JSON.stringify(r.narae));
       assert.notEqual(r.gaon[1], TODAY); assert.notEqual(r.daon[1], TODAY);
-      assert.equal(r.warranty, '2026-11-10', '보증 시작일 = 준공일(오늘 아님)');
+      assert.equal(r.warranty, '2026-10-22', '보증 시작일 = 준공일(작업이 끝난 날 — 오늘·입금일 아님)');
       assert.ok(r.md >= 1, '일반 저장(markDirty) ' + r.md);
       for (const n of Object.keys(keep)) assert.deepEqual(await pj(page, n), keep[n], n + ' 그대로');
       assert.equal(await snapCount(page, '현장 단계 정리 전') - snaps0, 1, '안전판 1회');
-      assert.deepEqual(r.done, ['가온아파트 — 완료 · 준공일 2026-11-10', '다온타운 — 완료 · 준공일 2026-10-16'], JSON.stringify(r.done));
+      assert.deepEqual(r.done, ['가온아파트 — 완료 · 준공일 2026-10-22', '다온타운 — 완료 · 준공일 2026-10-16'], JSON.stringify(r.done));
       assert.deepEqual(r.foot, ['↩ 되돌리기', '닫기'], JSON.stringify(r.foot));
       assert.match(await lastToast(page), /현장 2곳의 단계를 정리했어요/);
       await page.evaluate(() => closeModal());
@@ -201,7 +211,7 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
       await applyBtn(page);
       assert.equal(await page.evaluate(() => window.__snapCalls), 0, '빈 날짜 — 안전판 전에 멈춤');
       assert.equal(await snapSig(page), before, '날짜 틀림 — 자료 불변');
-      await page.fill(row('가온아파트') + ' .stdDate', '2026-11-10');
+      await page.fill(row('가온아파트') + ' .stdDate', '2026-10-22');
       // 안전판 실패
       await page.evaluate(() => { hjSnapshot = async () => { window.__snapCalls++; return false; }; });
       await applyBtn(page);
@@ -221,7 +231,7 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
       await applyBtn(page);
       await page.waitForSelector('#hjStageTidyDone');
       assert.deepEqual(await pj(page, '가온아파트'), [1, '-', '-'], '그 사이 바뀐 현장 그대로');
-      assert.deepEqual(await pj(page, '나래빌라'), [3, '2026-11-03', '-'], '나머지는 반영');
+      assert.deepEqual(await pj(page, '나래빌라'), [3, '2026-10-01', '-'], '나머지는 반영');
       assert.match(await lastToast(page), /그 사이 바뀐 현장 1곳은 그대로/);
       await page.evaluate(() => closeModal());
       // 직원 모드 — 창도 단추도 없다
@@ -264,6 +274,17 @@ async function applyBtn(page) { await page.click('#modalRoot .mfoot button:has-t
       await m.page.waitForSelector('#hjStageTidy');
       await m.page.click('#modalRoot .mfoot button:has-text("뒤로")');
       await m.page.waitForSelector('#stpStageTidy');
+      await m.page.evaluate(() => closeModal());
+      // 한 번 반영해 체크해 둘 줄이 0 이 돼도(가온·나래 완료) 남은 제안(체크 끈 2곳)으로 돌아오는 길 — 💤 방치 현장 창 · 기능 찾기
+      await m.page.evaluate(() => { ['가온아파트', '나래빌라'].forEach(n => { const p = state.projects.find(x => x.name === n); p.stage = 3; p.doneAt = '2026-10-20'; }); render(); });
+      assert.deepEqual(await m.page.evaluate(() => [hjStageTidyBtnN(), hjStageTidyCounts().rows]), [0, 2], '체크해 둘 줄 0 · 남은 제안 2');
+      await m.page.evaluate(() => staleProjects());
+      await m.page.waitForSelector('#stpStageTidy');
+      assert.match(await m.page.textContent('#stpStageTidy'), /확인할 제안 2곳/);
+      await m.page.evaluate(() => closeModal());
+      await m.page.evaluate(() => HJ_ACTIONS.find(a => a.n === '현장 단계 정리').run());
+      await m.page.waitForSelector('#hjStageTidy');
+      assert.equal(await m.page.locator('#hjStageTidy tr[data-stage-tidy-row]').count(), 2, '기능 찾기로 남은 제안 2곳');
       await m.page.evaluate(() => closeModal());
       if (!html) {
         const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), vs = fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8');

@@ -1,9 +1,10 @@
 /* v612 📬 홈페이지 문의 접수함 당겨오기(대표 정리 항목 28) — 만물웹 apps-script-lead-inbox 서버에서 문의를 당겨 📥 웹 업무 연결의 같은 미리보기·등록 흐름으로.
    실제 앱 코드(index.html 의 웹 업무 연결 구역 + '📬 문의 접수함 당겨오기' 구역 통째)를 vm 에서 돌린다 — 가짜 접수함 서버(fetch)·가짜 IndexedDB·작은 가짜 화면,
    합성 자료만, 브라우저·바깥 요청 없음. 서버 문의 줄의 message 는 만물웹 97c4d0b js/lead-transport.js buildLeadText → LeadInboxPure.gs 정규화를 실제로 돌려 얻은 그대로.
-   ① GUARD     주소가 없으면 [📬 접수함에서 가져오기]는 '설정에서 넣어 주세요' 안내만(요청·창 0) · 주소 검사(script.google.com /exec 만) · 주소를 바꾸면 옛 세션을 버린다
-   ② LOGIN     관리 비밀번호는 leadLogin 요청 본문 한 곳에만 — 이 기기 저장소(IndexedDB)·state·직렬화 자료 어디에도 없다 · 세션 {token,expiresAt}만 IDB · 형식 틀리면 요청 없음 ·
-               이상한 응답(짧은 토큰·9시간 넘는 만료)은 저장하지 않음 · 부팅 때 만료된 세션은 지운다
+   ① GUARD     주소가 없으면 큰 단추 대신 한 줄 안내와 작은 [켜는 법](누르면 '설정에서 넣어 주세요' 안내만 — 요청·창 0) · 주소 검사(script.google.com /exec 만) · 주소를 바꾸면 옛 세션을 버린다
+   ② LOGIN     관리 비밀번호는 leadLogin 요청 본문 한 곳에만 — 이 기기 저장소(IndexedDB)·state·직렬화 자료 어디에도 없다 · 세션 {token,expiresAt}은 이 창 메모리에만
+               (현장웹·만물웹이 같은 출처라 IDB·웹 저장소는 만물웹 페이지도 읽는다 — v612 검토) · 형식 틀리면 요청 없음 ·
+               이상한 응답(짧은 토큰·9시간 넘는 만료)은 받지 않음 · 부팅 때 세션을 이어 쓰지 않고 예전 개발판의 IDB 세션은 지운다 · 로그인 창에 보낼 곳(배포 ID 끝 6자리)
    ③ LIST      leadList 요청 꼴(POST text/plain · credentials omit · sessionToken) · 문의 줄 정리(잘못된 ID 버림) · 본문 = message + '접수번호' 줄
                (만물웹 접수함 '앱에 붙여넣을 본문 복사'와 같은 글) → 메일 붙여넣기와 같은 중복 ID · 인테리어·누수·관리사무소·A/S 본문이 모두 읽힌다
    ④ REGISTER  화면 흐름: 버튼 → 로그인 창 → 틀린 비밀번호(칸 비움) → 목록 → [📥 열어서 등록] → 미리보기(접수함 칸·메모) → [현장으로 등록] →
@@ -13,8 +14,8 @@
    ⑥ DECIDE    보류는 그 자리 · 거절은 사유 메모 없으면 요청 없음 → 메모 넣으면 거절 후 목록으로 · 거절한 문의는 등록 버튼 없음 → [↩ 보류로 되돌리기] 뒤 등록 버튼
    ⑦ AS        A/S 문의 → 현장 고르기 → AS 관리 기록(sourceReceiptNo) + '승인'(현장웹 AS 접수: 현장) · 누수 현장은 원인 확인 창에 via 를 넘긴다
    ⑧ EXPIRED   서버가 session-expired → 이 기기 세션 지움 + 로그인 창 '다시 로그인' · 이 기기에서 이미 만료된 세션은 요청 없이 로그인 창 · 등록 뒤 승인 때 만료면 안내
-   ⑨ STATIC    웹 업무 연결 구역에는 여전히 fetch·IndexedDB·localStorage 가 없다(붙여넣기 길은 바깥을 안 읽는다) · 접수함 구역의 저장 키는 두 개뿐 · 직렬화·설정·훅
-   HJ_V612L_MUTATION=store-password ①(이 기기 저장 키가 셋이 된다 — ② 에서도 잡힌다) · no-approve ④ · new-request-id ⑤ · register-rejected ⑥ · keep-expired ⑧ 에서 실패해야 한다.
+   ⑨ STATIC    웹 업무 연결 구역에는 여전히 fetch·IndexedDB·localStorage 가 없다(붙여넣기 길은 바깥을 안 읽는다) · 접수함 구역의 저장 키는 주소 하나뿐(세션은 저장 안 함) · 직렬화·설정·훅
+   HJ_V612L_MUTATION=store-password ①(이 기기 저장 키가 둘이 된다 — ② 에서도 잡힌다) · store-session ① · no-approve ④ · new-request-id ⑤ · register-rejected ⑥ · keep-expired ⑧ 에서 실패해야 한다.
    HJ_V612L_BASELINE=<commit>(그 커밋의 index.html — 5a87511 = 입구 갈래) 은 ① 에서 실패해야 한다(접수함 구역이 없다).
    HJ_MANMOOL_ROOT=<만물웹 사본 폴더> 를 주면 ③ 이 고정 본문을 만물웹 buildLeadText·LeadInboxPure 로 다시 만들어 대조하고, 서버 계약(액션·전이·오류 코드)도 대조한다. */
 'use strict';
@@ -32,6 +33,7 @@ const MUT = {
   'no-approve': ["    try{if(draft.via&&typeof leadInboxAfterRegister==='function')leadInboxAfterRegister(draft.via,projectName,'site');}catch(e){}   // v612 저장이 끝난 뒤에만 접수함에 '승인'\n", ''],
   'new-request-id': ["if(!LEAD_INBOX_UUID_RE.test(String(requestId||''))){requestId=leadInboxUuid();__leadInbox.req[key]=requestId;}", "{requestId=leadInboxUuid();__leadInbox.req[key]=requestId;}"],
   'register-rejected': ["function leadInboxRegisterAllowed(via){const status=leadInboxStatusOf(via);return status==='신규'||status==='보류'||status==='승인';}", 'function leadInboxRegisterAllowed(via){return true;}'],
+  'store-session': ["  __leadInbox.session=session;__leadInbox.statusById={};", "  __leadInbox.session=session;__leadInbox.statusById={};await idbSet('lead_inbox_session',{token:session.token,expiresAt:session.expiresAt});"],
   'keep-expired': ["    if(code==='session-expired')await leadInboxForgetSession();\n", '']
 };
 const mutation = process.env.HJ_V612L_MUTATION || '';
@@ -200,6 +202,8 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS leadinbo
     run(ctx, 'webWorkCenterOpen()');
     assert(ctx.__modal.body.includes('id="webWorkLeadPull"'), 'center shows the pull button'); assert.equal(ctx.__modal.body.indexOf('id="webWorkConnectionPanel"') < ctx.__modal.body.indexOf('id="webWorkLeadPull"'), true, 'office panel stays first');
     assert.match(ctx.__modal.body, /data-lead-inbox-panel="off"/);
+    assert.equal(/class="blue" id="webWorkLeadPull"/.test(ctx.__modal.body), false, 'no big primary button before the inbox is set up');
+    assert.match(ctx.__modal.body, /홈페이지 문의 접수함을 켜면 메일 붙여넣기 없이 가져올 수 있어요 — ⚙️ 설정 › ⭐ 기타/);
     const title = ctx.__modal.title; ctx.__modal.ids.get('webWorkLeadPull').onclick();
     assert.match(ctx.__modal.ids.get('webWorkLeadStatus').textContent, /접수함 주소를 설정에서 넣어 주세요/);
     assert.equal(ctx.__modal.title, title, 'stays on the center'); assert.equal(ctx.__server.calls.length, 0, 'no request before an address exists');
@@ -211,7 +215,8 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS leadinbo
     assert.deepEqual(Array.from(bad), Array(9).fill(false));
     await assert.rejects(run(ctx, `leadInboxSaveUrl('https://evil.example/exec')`), e => e.code === 'bad-url'); assert.equal(ctx.__idb.size, 0, 'bad address not stored');
     await loggedIn(ctx);
-    assert.deepEqual([...ctx.__idb.keys()].sort(), ['lead_inbox_session', 'lead_inbox_url']);
+    assert.deepEqual([...ctx.__idb.keys()].sort(), ['lead_inbox_url'], 'only the address is stored on this device — the session stays in memory');
+    assert.equal(run(ctx, 'leadInboxLive()'), true, 'logged in (memory)');
     await run(ctx, `leadInboxSaveUrl('https://script.google.com/macros/s/OTHER_server/exec')`);
     assert.equal(ctx.__idb.has('lead_inbox_session'), false, 'changing the address drops the old session'); assert.equal(run(ctx, '__leadInbox.session'), null);
     await run(ctx, 'leadInboxClearAll()'); assert.equal(ctx.__idb.size, 0, 'clear removes both device keys');
@@ -227,7 +232,8 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS leadinbo
     const login = ctx.__server.calls.filter(c => c.body.action === 'leadLogin');
     assert.equal(login.length, 2); assert.deepEqual(Object.keys(login[1].body).sort(), ['action', 'payload', 'ts']); assert.deepEqual(Object.keys(login[1].body.payload), ['adminCode']);
     assert.equal(login[1].init.method, 'POST'); assert.equal(login[1].init.headers['Content-Type'], 'text/plain;charset=utf-8'); assert.equal(login[1].init.credentials, 'omit'); assert.equal(login[1].init.redirect, 'follow');
-    const session = ctx.__idb.get('lead_inbox_session');
+    assert.equal(ctx.__idb.has('lead_inbox_session'), false, 'session not in IndexedDB (same origin as the public manmool pages)');
+    const session = JSON.parse(run(ctx, 'JSON.stringify(__leadInbox.session)'));
     assert.deepEqual(Object.keys(session).sort(), ['expiresAt', 'token']); assert.match(session.token, /^TESTSESSION/);
     assert.equal(allStored(ctx).includes(PASS), false, 'password is not stored anywhere');
     await run(ctx, 'leadInboxFetchList("신규")');
@@ -237,13 +243,17 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS leadinbo
       const c2 = makeContext(); await run(c2, `leadInboxSaveUrl(${JSON.stringify(URL_OK)})`);
       c2.__server.fail = b => b.action === 'leadLogin' ? { ok: true, status: 200, text: async () => JSON.stringify(Object.assign({ ok: true }, odd)) } : null;
       await assert.rejects(run(c2, `leadInboxLogin(${JSON.stringify(PASS)})`), e => e.code === 'invalid-response');
-      assert.equal(c2.__idb.has('lead_inbox_session'), false);
+      assert.equal(c2.__idb.has('lead_inbox_session'), false); assert.equal(run(c2, '__leadInbox.session'), null);
     }
-    // 부팅: 만료된 세션은 지우고, 살아 있는 세션은 이어 쓴다
-    const c3 = makeContext(); c3.__idb.set('lead_inbox_url', URL_OK); c3.__idb.set('lead_inbox_session', { token: 'T'.repeat(80), expiresAt: Date.now() - 1000 });
-    await run(c3, 'leadInboxBoot()'); assert.equal(c3.__idb.has('lead_inbox_session'), false); assert.equal(run(c3, '__leadInbox.session'), null);
-    c3.__idb.set('lead_inbox_session', { token: 'T'.repeat(80), expiresAt: Date.now() + 3600e3 });
-    await run(c3, 'leadInboxBoot()'); assert.equal(run(c3, 'leadInboxLive()'), true);
+    // 부팅: 세션을 이어 쓰지 않는다(새로 열면 다시 로그인) — 예전 개발판이 IDB 에 남긴 세션은 살아 있어도 지운다
+    const c3 = makeContext(); c3.__idb.set('lead_inbox_url', URL_OK); c3.__idb.set('lead_inbox_session', { token: 'T'.repeat(80), expiresAt: Date.now() + 3600e3 });
+    await run(c3, 'leadInboxBoot()');
+    assert.equal(c3.__idb.has('lead_inbox_session'), false, 'old IDB session removed'); assert.equal(run(c3, 'leadInboxLive()'), false, 'not resumed'); assert.equal(run(c3, '__leadInbox.url'), URL_OK);
+    // 로그인 창 — 비밀번호를 보낼 곳(배포 ID 끝 6자리)
+    assert.equal(run(c3, `leadInboxUrlTail(${JSON.stringify(URL_OK)})`), '2_fake'); assert.equal(run(c3, `leadInboxUrlTail('https://evil.example/x')`), '');
+    run(c3, 'leadInboxLoginView("")');
+    assert.match(c3.__modal.body, /data-lead-inbox-dest[^>]*>비밀번호를 보낼 곳: 설정에 넣은 접수함 주소\(끝자리 <b>…2_fake<\/b>\)/);
+    assert.equal(c3.__modal.body.includes('IndexedDB') || c3.__modal.body.includes('세션'), false, 'plain words in the login note');
   });
 
   await test('③ LIST: request shape · rows cleaned · body = message + receipt line (same id as the pasted mail) · all four kinds parse', async () => {
@@ -422,9 +432,10 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS leadinbo
     for (const bad of ['fetch(', 'idbSet(', 'idbGet(', 'localStorage', 'sessionStorage', 'location', 'navigator.clipboard']) assert.equal(BRIDGE.includes(bad), false, 'bridge must not use ' + bad);
     for (const bad of ['localStorage', 'sessionStorage', 'navigator.clipboard', 'location.']) assert.equal(LEAD.includes(bad), false, 'lead region must not use ' + bad);
     const keys = [...LEAD.matchAll(/idbSet\('([^']+)'/g)].map(m => m[1]).sort();
-    assert.deepEqual([...new Set(keys)], ['lead_inbox_session', 'lead_inbox_url']);
+    assert.deepEqual([...new Set(keys)], ['lead_inbox_url'], 'the only device key is the address');
     assert.equal((LEAD.match(/adminCode:/g) || []).length, 1, 'adminCode is sent only in the login payload');
-    assert.match(LEAD, /idbSet\('lead_inbox_session',\{token:session\.token,expiresAt:session\.expiresAt\}\)/);
+    assert.equal(/idbSet\('lead_inbox_session'/.test(LEAD), false, 'the session token is never written to IndexedDB');
+    assert.equal(/IndexedDB|Apps Script|세션/.test(run(makeContext(), 'leadInboxSettingsHtml()')), false, 'settings text uses plain words');
     const serialize = extract('serializeData');
     assert.equal(/lead_inbox|__leadInbox/.test(serialize), false, 'not part of the synced data');
     assert.equal(/lead_inbox|__leadInbox/.test(extract('hjSnapshot')), false, 'not part of the safety snapshot');

@@ -2,13 +2,15 @@
    브라우저·네트워크·실제 자료 없음(team-config.js 읽기는 가짜 fetch). 화면 쪽(더보기 묶음·견적 작성 탭·광고 탭·🧰)은 hold-v612.e2e.js.
    ① 목록 — 자동·처음 보류 id 가 모두 더보기 칸이거나 따로 그리는 항목 · 보류하지 않는 목록(사진·일정·수금·AS·웹 업무·접수함·🧰·전자계약·AI 비서)과 겹치지 않음 ·
       11/18 대표 자료 꼴(서버 없음·저장 칸 0)이면 18개 모두 보류 (LIST)
-   ② 자동 — 고객 페이지 주소·OfficeOps 주소+토큰·중계(Apps Script)·직원 작업실 apiUrl 이 있으면 보이고, 받은 카카오 문의·게시한 고객 페이지·열린 팀 업무가 있으면 보인다 (AUTO)
-   ③ 자료 — 그 칸에 자료가 생기면 다시 보인다 · 목표 칸의 매출 기준(salesBasis)은 목표가 아니다 · 보관 현장의 예산은 안 센다 · 견적 셋은 자료와 상관없이 보류 (DATA)
+   ② 자동 — 고객 페이지 주소·OfficeOps 주소+토큰·직원 작업실 apiUrl 이 있으면 보이고, 받은 카카오 문의·게시한 고객 페이지·열린 팀 업무가 있으면 보인다 ·
+      ☁ 팀 공유 할일은 중계(Apps Script)가 연결돼 있어도 처음 보류(18 할 일 하나 — v612 검토) · 내 업무가 읽어 온 남은 공유 할일이 있으면 보임 · 까닭 글은 실제 자리·쉬운 말 (AUTO)
+   ③ 자료 — 그 칸에 자료가 생기면 다시 보인다 · 목표 칸의 매출 기준(salesBasis)은 목표가 아니다 · 보관 현장의 예산은 안 센다 · 견적 셋은 자료와 상관없이 보류 ·
+      예산 경고는 예산이 없어도 견적의 70%를 넘는 지출이 있으면 보임(budgetAlertData 의 실제 입력) (DATA)
    ④ 이 기기 설정 — [다시 보이기]는 그 id 만 · 모르는 id·보류 아닌 것은 안 적음 · 깨진 값은 빈 설정 · 처음으로 되돌리기 · 자동 먼저 차례 (PREFS)
    ⑤ 더보기 묶음 HTML — '보류 n개 보기' · 줄마다 까닭·[다시 보이기] · 직원 작업실은 ./team.html 링크 · 되돌리기 단추는 다시 보이게 한 것이 있을 때만 · 편집 중 잠김 (BLOCK)
    ⑥ 대시보드 단추 줄 — 기본은 ✅ 할 일 하나(☁ 팀 공유 할일·팀 업무·직원 작업실 없음) · 다시 보이면 제자리 · 서명(sig)이 바뀐다 (DASH)
    ⑦ 🧰 옮긴 명령 — 관리 프로그램과 같은 일인 사진 명령 넷만 · 청구 누락(cw_unbilled)·캘린더 맞추기·작업내역서 반영은 남김 · 내가 만든 명령은 안 옮김 (COWORK)
-   HJ_V612_MUTATION=no-auto 는 ①②, no-data·goal-basis 는 ③, show-ignored 는 ④, dash-always 는 ⑥, move-unbilled 는 ⑦ 에서 실패해야 한다. */
+   HJ_V612_MUTATION=no-auto 는 ①②, shared-when-relay 는 ②, no-data 는 ②③, goal-basis·alert-budget-only 는 ③, show-ignored 는 ④, dash-always 는 ⑥, move-unbilled 는 ⑦ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -18,6 +20,8 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const MUT = {
   'no-auto': ["  if(f){let a='';try{a=f()||'';}catch(e){a='';}if(a)return {why:String(a),auto:true};}\n", '\n'],
   'no-data': ["  return {why:n>0?'':d.why,auto:false};", '  return {why:d.why,auto:false};'],
+  'shared-when-relay': ["  sharedtodo:{why:'할 일은 ✅ 할 일 한 곳에 — 팀 공유 할일은 직원이 생기면 다시 보이기',", "  sharedtodo:{why:'',"],
+  'alert-budget-only': ["n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)+(typeof budgetAlertData==='function'?budgetAlertData().length:0)}", "n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)}"],
   'goal-basis': ["n:()=>{const g=state.goals||{};return (num(g.month)>0?1:0)+(num(g.year)>0?1:0);}}", 'n:()=>Object.keys(state.goals||{}).length}'],
   'show-ignored': ["function hjHeld(id){try{return !!hjHoldWhy(id)&&!hjHoldPrefs().show.includes(id);}", 'function hjHeld(id){try{return !!hjHoldWhy(id);}'],
   'dash-always': ["const shared=!hjHeld('sharedtodo'),team=!hjHeld('teamboard'),room=!hjHeld('teamroom');", 'const shared=true,team=true,room=true;'],
@@ -34,7 +38,8 @@ const code = [
   cut('const MORE_CATS=[', 'const MORE_NAV_SHORTCUTS='),
   cut('const HJ_HOLD_KEY=', 'function moreItemInfo(action){'),
   cut('function moreItemInfo(action){', 'function moreReadActions('),
-  cut('const CW_SAFE=', 'const CW_FILL_RE=')
+  cut('const CW_SAFE=', 'const CW_FILL_RE='),
+  cut('function budgetAlertData(){', 'function budgetAlert(){')
 ].join('\n') + '\n;globalThis.__hold={HJ_HOLD_IDS,HJ_HOLD_NEVER,HJ_HOLD_EXTRA,HJ_HOLD_AUTO,HJ_HOLD_DEFAULT,HJ_HOLD_KEY,MORE_CATS,CW_MOVED};';
 
 function env(opts = {}) {
@@ -51,6 +56,7 @@ function env(opts = {}) {
     toasts: [], toast: m => ctx.toasts.push(String(m)), renders: 0, scheduleRender: () => { ctx.renders++; },
     document: { getElementById: () => null, createElement: () => ({ innerHTML: '', firstElementChild: null }) },
     fetches: 0, fetch: async () => { ctx.fetches++; if (opts.teamFail) throw new Error('offline'); return { ok: true, text: async () => "window.HJ_TEAM_CONFIG = Object.freeze({ apiUrl: '" + (opts.team || '') + "' });" }; },
+    projStats: n => Object.assign({ costTotal: 0, est: 0 }, (opts.stats || {})[n]),   // 예산 경고(budgetAlertData)가 보는 지출·견적만
     window: {}, AD_CH: [{ id: 'threads' }], COMPANY: { name: '시험회사' }, moreDispatch: a => a, hjQuoteNewDirect() {}, hjTeamBoard() {}, hjSharedTodoView() {}, adPostAdd() {}
   };
   ctx.globalThis = ctx; vm.createContext(ctx); vm.runInContext(code, ctx);
@@ -85,7 +91,28 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v61
     const on = env({ state: { portalCfg: { base: 'https://example.invalid/portal' } }, office: { url: 'https://example.invalid/office', token: 'TEST_TOKEN' },
       relay: { url: 'https://script.google.com/macros/s/TEST_DEPLOY_ID/exec', token: 'TEST_TOKEN' }, team: 'https://example.invalid/team' });
     on.ctx.hjHoldTeamState(); await settle();
-    for (const id of ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom', 'sharedtodo']) assert.equal(on.ctx.hjHeld(id), false, '연결됨 → 보임 ' + id);
+    for (const id of ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom']) assert.equal(on.ctx.hjHeld(id), false, '연결됨 → 보임 ' + id);
+    // 18 할 일 하나 — 중계가 연결된 기기(대표 PC·폰)에서도 ☁ 팀 공유 할일은 처음엔 접는다(자동이 아니라 처음 보류 — 까닭은 '할 일은 한 곳에')
+    const shared = on.ctx.hjHoldReason('sharedtodo');
+    assert.deepEqual([on.ctx.hjHeld('sharedtodo'), shared.auto], [true, false], '중계 연결 → 공유 할일은 처음 보류 ' + JSON.stringify(shared));
+    assert.match(shared.why, /할 일은 ✅ 할 일 한 곳에/);
+    assert.equal(on.ctx.dashboardTodoBtnsHTML().includes('dashboardSharedTodoOpen'), false, '대시보드 할 일 단추는 하나');
+    assert.match(on.ctx.dashboardTodoHintText(), /✅ 할 일 한 곳에/);
+    on.ctx.__hjMyWork = { sharedState: 'ready', shared: [{ id: 's1', done: true }] };
+    assert.equal(on.ctx.hjHeld('sharedtodo'), true, '끝난 공유 할일만 있으면 그대로 보류');
+    on.ctx.__hjMyWork = { sharedState: 'ready', shared: [{ id: 's1', done: false }] };
+    assert.equal(on.ctx.hjHeld('sharedtodo'), false, '내 업무가 읽어 온 남은 공유 할일이 있으면 보인다(자료가 있으면 숨기지 않는다)');
+    on.ctx.__hjMyWork = { sharedState: 'error', shared: [{ id: 's1', done: false }] };
+    assert.equal(on.ctx.hjHeld('sharedtodo'), true, '읽기에 실패한 목록은 세지 않는다');
+    assert.equal(env().ctx.hjHoldReason('sharedtodo').auto, true, '중계가 없으면 자동 보류(서버 없음)가 먼저');
+    // 까닭 글 — 실제로 고치는 자리 · 개발 말(파일 이름) 없음 · 읽기 실패는 '확인하지 못했어요'
+    const plain = env();
+    assert.match(plain.ctx.hjHoldWhy('kakaoin'), /현장 화면 \[🔗 고객 페이지\] › ⚙️ 서버 설정/);
+    assert.match(plain.ctx.hjHoldWhy('ptlist'), /현장 화면 \[🔗 고객 페이지\] › ⚙️ 서버 설정/);
+    assert.match(plain.ctx.hjHoldWhy('officeops'), /^영업·정기관리 서버가/);
+    plain.ctx.hjHoldTeamState(); await settle();
+    assert.equal(plain.ctx.hjHoldWhy('teamroom'), '직원 작업실 서버가 아직 없어요');
+    for (const id of plain.H.HJ_HOLD_IDS) assert.ok(!/team-config|\.js\b|\.md\b/.test(plain.ctx.hjHoldWhy(id)), id + ' 까닭에 파일 이름 ' + plain.ctx.hjHoldWhy(id));
     // 중계가 Apps Script 주소가 아니면(공유 할일 서버 계약이 없음) 보류 그대로
     const other = env({ relay: { url: 'https://example.invalid/relay', token: 'TEST_TOKEN' } });
     assert.equal(other.ctx.hjHeld('sharedtodo'), true, 'Apps Script 가 아닌 중계 → 공유 할일 보류');
@@ -101,6 +128,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v61
     assert.equal(env({ office: { url: 'https://example.invalid/office' } }).ctx.hjHeld('officeops'), true);
     const fail = env({ teamFail: true }); fail.ctx.hjHoldTeamState(); await settle();
     assert.deepEqual([fail.ctx.hjHoldTeamState(), fail.ctx.hjHeld('teamroom')], ['error', true]);
+    assert.match(fail.ctx.hjHoldWhy('teamroom'), /확인하지 못했어요/, '읽기 실패는 서버가 없다고 하지 않는다');
     assert.match(env().ctx.hjHoldWhy('officeops'), /OfficeOps/);
   });
 
@@ -115,6 +143,10 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v61
     assert.equal(env({ state: { goals: { salesBasis: 'stmt', month: 10000000 } } }).ctx.hjHeld('goal'), false, '월 목표 → 보임');
     assert.deepEqual([true, true].map((_, i) => env({ state: { projects: [{ name: 'A', archived: i === 0, budget: 5000000 }] } }).ctx.hjHeld('budget')), [true, false], '보관 현장의 예산은 안 센다');
     assert.equal(env({ state: { projects: [{ name: 'A', budget: '3,000,000' }] } }).ctx.hjHeld('budgetalert'), false);
+    // 예산 경고는 예산이 없어도 견적의 70%(지출 목표)와 지출을 견준다 — 경고가 생기면 보류하지 않는다(예산 메뉴는 그대로 보류)
+    const spend = env({ state: { projects: [{ name: 'A' }] }, stats: { A: { est: 1000000, costTotal: 800000 } } }).ctx;
+    assert.deepEqual([spend.hjHeld('budgetalert'), spend.hjHeld('budget')], [false, true], '예산 없이 지출 114% → 예산 경고 보임');
+    assert.equal(env({ state: { projects: [{ name: 'A' }] }, stats: { A: { est: 1000000, costTotal: 300000 } } }).ctx.hjHeld('budgetalert'), true, '지출 43% → 경고 없음 → 보류');
     assert.equal(env({ state: { projects: [{ name: 'A', matOrders: [{ id: 'o1' }] }] } }).ctx.hjHeld('matdue'), false, '납품 기록 → 보임');
     const many = env({ state: { quotes: Array.from({ length: 40 }, (_, i) => ({ id: 'q' + i })), inventory: [{ id: 'i' }] } }).ctx;
     assert.deepEqual(['quotenew', 'aiquote', 'photoquote'].map(id => many.hjHeld(id)), [true, true, true], '견적 셋은 견적 수와 상관없이 보류(대표 결정)');

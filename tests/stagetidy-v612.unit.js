@@ -1,13 +1,14 @@
 /* v612 🧹 현장 단계 한 번에 정리 — 제안 계산(hjStageTidyPlan·hjStageTidyRule) 단위 검사 (분석 AD WA6)
    11/18 실자료: 현장 82곳 중 77곳이 단계 0(상담) — 🛡 파수꾼·보증·방치 현장은 stage 가 아니라 doneAt(준공일)을 보는데, 앱에서 '완료'를 누르면
-   doneAt 이 오늘이 된다(setStage). 이 창은 받을 돈을 다 받은 현장을 '완료'로 제안하고 준공일을 근거 날짜(마지막 입금일 → 마지막 작업일)로 적는다.
+   doneAt 이 오늘이 된다(setStage). 이 창은 받을 돈을 다 받은 현장을 '완료'로 제안하고 준공일을 근거 날짜(마지막 작업일 → 작업 날짜가 없으면 마지막 입금일)로 적는다.
+   (v612 검토: 협력사 일괄 입금일을 준공일로 쓰면 작업이 끝난 날보다 최대 71일 늦어져 보증 기산일이 밀린다 — 입금일은 근거 글로만.)
    브라우저 없이 돈다: index.html 의 앱 스크립트를 통째로 VM 에 올려(화면·저장소·네트워크는 빈 껍데기) **진짜 projStats(청구·받은 돈·due)** 와 함께 센다.
    합성 자료만 — 실제 고객·금액·서버 없음, 쓰기 없음.
-   ① 완납 → 완료 체크, 준공일 = 마지막 입금일(오늘 아님) ② 부분 입금·입금 없음·돈 없이 작업만 → 체크 끈 완료(준공일 = 마지막 작업일), 앞으로 일정이면 시공
+   ① 완납 → 완료 체크, 준공일 = 마지막 작업일(오늘·입금일 아님) · 마지막 입금일은 근거 글에 ② 부분 입금·입금 없음·돈 없이 작업만 → 체크 끈 완료(준공일 = 마지막 작업일), 앞으로 일정이면 시공
    ③ 보관·이미 단계 있음·이름 겹침 → 건드리지 않음 ④ 근거 없음(입금 날짜·작업일 없는 완납 · 상담 일정만 · 💰 일정만) → 뺌 ⑤ 앞으로 일정·입금 뒤 작업 → 체크 끔 ·
    예전 준공일 먼저 · 차례 ⑥ 읽기만(자료 불변) · 근거 글에 금액 없음 ⑦ hjStageTidyRule 순수 경계.
    앱 스크립트가 VM 에 안 올라가면(새 최상위 코드가 브라우저 API 를 부름) 아래 any()/ctx 에 그 이름을 더하라 — 검사를 끄지 마라.
-   HJ_V612_STAGE_MUTATION=paid-any-due·today-done·keep-archived·no-next-off·money-text 는 각각 의도한 단언에서 실패해야 한다. */
+   HJ_V612_STAGE_MUTATION=paid-any-due·today-done·pay-first·keep-archived·no-next-off·money-text 는 각각 의도한 단언에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,7 +18,8 @@ const ROOT = path.resolve(__dirname, '..');
 let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'paid-any-due': ['  const paid=owed>0&&recv>0&&due<=0;\n', '  const paid=owed>0&&recv>0;\n'],
-  'today-done': ["    const at=prev||lastPay||lastWork,src=prev?'prev':lastPay?'pay':lastWork?'work':'';", "    const at=localDate(),src='pay';"],
+  'today-done': ["    const at=prev||lastWork||lastPay,src=prev?'prev':lastWork?'work':lastPay?'pay':'';", "    const at=localDate(),src='pay';"],
+  'pay-first': ["    const at=prev||lastWork||lastPay,src=prev?'prev':lastWork?'work':lastPay?'pay':'';", "    const at=prev||lastPay||lastWork,src=prev?'prev':lastPay?'pay':lastWork?'work':'';"],
   'keep-archived': ['    if(p.archived){out.skip.archived++;return;}\n    if((Number(p.stage)||0)!==0){out.skip.staged++;return;}', '    if((Number(p.stage)||0)!==0){out.skip.staged++;return;}'],
   'no-next-off': ['on:!next&&!after,why:join([', 'on:true,why:join(['],
   'money-text': ["      '받을 돈을 다 받았어요'+(payN?'(입금 '+payN+'건)':''),", "      '받을 돈을 다 받았어요('+won(recv)+')',"]
@@ -153,14 +155,16 @@ test('⓪ 진짜 projStats — 내역서 견적의 청구·받은 돈·due 를 �
   assert.equal(out.stats['입금없음'].recv, 0, '입금 없음');
 });
 
-test('① 완납 → 완료 체크 · 준공일 = 마지막 입금일(오늘 아님)', () => {
+test('① 완납 → 완료 체크 · 준공일 = 마지막 작업일(오늘·입금일 아님) · 입금일은 근거 글에', () => {
   const r = row('완납현장');
   assert.ok(r, '완납현장 줄');
-  assert.deepEqual([r.kind, r.to, r.on, r.doneAt, r.src], ['paid', 3, true, '2026-11-10', 'pay'], JSON.stringify(r));
+  assert.deepEqual([r.kind, r.to, r.on, r.doneAt, r.src], ['paid', 3, true, '2026-10-22', 'work'], '작업 10/20·10/22 · 입금 11/05·11/10 → 준공일은 작업이 끝난 10/22 ' + JSON.stringify(r));
   assert.notEqual(r.doneAt, TODAY, '준공일이 오늘이 아님');
+  assert.notEqual(r.doneAt, r.lastPay, '준공일이 입금일이 아님(보증 기산일이 밀리지 않게)');
   assert.match(r.why, /받을 돈을 다 받았어요\(입금 2건\)/, r.why);
-  assert.match(r.why, /완료일 = 마지막 입금일/, r.why);
+  assert.match(r.why, /완료일 = 마지막 작업일/, r.why);
   assert.match(r.why, /마지막 작업 10\/22\(목\)\(작업내역서\)/, r.why);
+  assert.match(r.why, /마지막 입금 11\/10\(화\)/, '입금일은 근거 글로 ' + r.why);
 });
 
 test('② 부분 입금·입금 없음·돈 없이 작업만 → 체크 끈 완료(준공일 = 마지막 작업일) · 앞으로 일정이면 시공', () => {
@@ -188,9 +192,9 @@ test('④ 근거 없음 → 뺌(이름과 까닭만)', () => {
 
 test('⑤ 앞으로 일정·입금 뒤 작업 → 체크 끔 · 예전 준공일 먼저 · 차례', () => {
   const n = row('이어짐'), a = row('입금뒤작업'), v = row('예전준공');
-  assert.deepEqual([n.kind, n.to, n.on, n.doneAt, n.next], ['paid', 3, false, '2026-11-04', '2026-11-25'], '앞으로 일정 ' + JSON.stringify(n));
+  assert.deepEqual([n.kind, n.to, n.on, n.doneAt, n.next], ['paid', 3, false, '2026-10-05', '2026-11-25'], '앞으로 일정 ' + JSON.stringify(n));
   assert.match(n.why, /이어지는 공사면 체크하지 마세요/, n.why);
-  assert.deepEqual([a.kind, a.on, a.doneAt, a.lastWork], ['paid', false, '2026-11-05', '2026-11-15'], '입금 뒤 작업 ' + JSON.stringify(a));
+  assert.deepEqual([a.kind, a.on, a.doneAt, a.lastWork, a.lastPay], ['paid', false, '2026-11-15', '2026-11-15', '2026-11-05'], '입금 뒤 작업 — 준공일 칸은 마지막 작업일, 체크는 끔 ' + JSON.stringify(a));
   assert.match(a.why, /마지막 입금 뒤에도 작업 기록이 있어요/, a.why);
   assert.deepEqual([v.kind, v.on, v.doneAt, v.src], ['paid', true, '2026-08-01', 'prev'], '예전 준공일 ' + JSON.stringify(v));
   assert.deepEqual(plan.rows.map(r => r.name), ['예전준공', '완납현장', '이어짐', '입금뒤작업', '부분입금', '입금없음', '받기만', '사진만', '하는중'], '체크한 줄 먼저 → 완납·부분·없음·입금만·작업만 → 완료 먼저 → 가나다 ' + JSON.stringify(plan.rows.map(r => r.name)));
@@ -210,10 +214,14 @@ test('⑦ hjStageTidyRule 순수 경계', () => {
   const rule = f => JSON.parse(run('JSON.stringify(hjStageTidyRule(__IN__))', f));
   assert.deepEqual(rule({}), { kind: 'none', to: null, why: '돈·작업 기록이 없어요' });
   const over = rule({ owed: 100, recv: 150, due: 0, payN: 2, lastPay: '2026-11-01' });
-  assert.deepEqual([over.kind, over.to, over.on, over.doneAt], ['paid', 3, true, '2026-11-01'], '더 받아도 완납 ' + JSON.stringify(over));
+  assert.deepEqual([over.kind, over.to, over.on, over.doneAt, over.src], ['paid', 3, true, '2026-11-01', 'pay'], '더 받아도 완납 · 작업 날짜가 없으면 마지막 입금일 ' + JSON.stringify(over));
+  assert.match(over.why, /완료일 = 마지막 입금일\(작업 날짜 기록 없음\)/, over.why);
   const nopay = rule({ owed: 100, recv: 100, due: 0, lastWork: '2026-10-01', workSrc: '일정' });
   assert.deepEqual([nopay.to, nopay.on, nopay.doneAt, nopay.src], [3, true, '2026-10-01', 'work'], '입금 날짜 없으면 마지막 작업일 ' + JSON.stringify(nopay));
-  assert.match(nopay.why, /입금 날짜 기록 없음/);
+  assert.match(nopay.why, /완료일 = 마지막 작업일/);
+  const both = rule({ owed: 100, recv: 100, due: 0, payN: 1, lastPay: '2026-11-11', lastWork: '2026-09-01', workSrc: '작업내역서' });
+  assert.deepEqual([both.on, both.doneAt, both.src], [true, '2026-09-01', 'work'], '작업 9/1 · 입금 11/11(71일 뒤) → 준공일 9/1 ' + JSON.stringify(both));
+  assert.match(both.why, /마지막 작업 9\/1\([^)]+\)\(작업내역서\) · 마지막 입금 11\/11/, both.why);
   const owedZero = rule({ owed: 0, recv: 0, due: 0, prev: '2026-05-05' });
   assert.deepEqual([owedZero.kind, owedZero.to, owedZero.doneAt, owedZero.on], ['work', 3, '2026-05-05', false], '예전 준공일만 ' + JSON.stringify(owedZero));
   const bad = rule({ owed: 100, recv: 100, due: 0, lastPay: '11/5', lastWork: 'x' });

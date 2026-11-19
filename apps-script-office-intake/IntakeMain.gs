@@ -4,8 +4,7 @@
  * ------------------------------------------------------------
  * 만물웹 office-request.html 이 부르는 공개 관리사무소 action 만 받는다:
  *   officeLogin · officeList · officeGet · officeCreate · officeUpdate · officeCancel · officeUpload · officePhoto
- * 현장 전체 자료(현장데이터.json load·save)·사진 중계·원본 내려받기·현장웹 내부 action 은 이 프로젝트에 없다.
- * 그래서 이 주소가 아무리 많이 불려도 현장 중계의 잠금·실행 시간과 따로 돈다.
+ * 현장 자료 저장·사진 중계·원본 내려받기·현장웹 내부 action 코드는 이 프로젝트에 없다 — 잠금·실행 시간을 현장 중계와 따로 쓴다.
  *
  * 같은 프로젝트에 넣는 파일(모두 이 폴더에 있다):
  *   IntakeMain.gs(이 파일) · OfficeIntake.gs · OfficeIntakePure.gs · appsscript.json
@@ -37,8 +36,7 @@ function subFolder_(root, name) {
   return it.hasNext() ? it.next() : root.createFolder(name);
 }
 
-// 중계 코드가 같은 프로젝트에 들어와 있으면(잘못 붙여넣음) 아무것도 받지 않는다 —
-// 공개 주소가 현장 전체 자료 코드와 한 프로젝트에서 도는 것을 막는 것이 이 프로젝트의 목적이다.
+// 중계 코드가 같은 프로젝트에 들어와 있으면(잘못 붙여넣음) 아무것도 받지 않는다 — 이 프로젝트에는 접수 코드만 둔다.
 function oiIntakeRelayCodePresent_() {
   return typeof loadData_ === 'function' || typeof saveData_ === 'function' ||
     typeof downloadFile_ === 'function' || typeof checkToken_ === 'function';

@@ -10,16 +10,19 @@
 `claude/v612-tidy` 에서 차례로 `--no-ff` 병합(네 번 모두 자동 병합 — 충돌 없음) → 판 한 번. 분석 근거는 갈래마다 OV D6·D7 · AD DA5·DA6·DA7·DA18·WA2·WA3·WA5·WA6·WA20 · W5·W15·W17·D12.
 **핀** `hyeonjang-v612-tidy`(index.html `APP_BUILD` · sw.js `C` · tests/version-sync.check.js `TARGET_BUILD`).
 **저장**: 새 최상위 저장 키 없음(직렬화 42개 그대로 — serialized-keys). 기록 안 칸만 — AS 기록 `sourceInquiryId`·`sourceReceiptNo`, 현장 `source:'lead-inbox'` 값, 현장 `stage`·`doneAt`·`doneAtPrev`(있던 칸).
-**이 기기에만**(state·serializeData·안전판·동기화 밖): IDB `lead_inbox_url`·`lead_inbox_session` · localStorage `hj_more_hold`.
+**이 기기에만**(state·serializeData·안전판·동기화 밖): IDB `lead_inbox_url` · localStorage `hj_more_hold` · 접수함 세션은 **창 메모리에만**(`__leadInbox.session`, 검토 뒤 — 아래 접수함 갈래).
 AI_TOOLS·SAFE_AUTO·MORE_CATS(126칸) 무변경, 고객 발송 없음. 바깥 요청은 대표가 [📬 접수함에서 가져오기]를 누를 때 만물웹 접수함(Apps Script)으로만, 부팅 때 같은 출처 `./team-config.js` 한 번(GET).
 apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스위치 — 속성이 없으면 중계는 예전과 한 글자도 다르지 않다) + 새 source-only `apps-script-office-intake/`. Code.gs 무변경.
 
 **배포 순서(바꾸지 마라)**
 1. 현장웹 v612(이 판) Pages 배포가 먼저. 대표가 붙여 넣거나 바꿀 서버 설정은 없다.
-2. **만물웹 상담 폼 '공간 유형' A/S 선택지는 현장웹 v612 배포가 끝난 뒤** — 반대로 나가면 A/S 메일 붙여넣기가 '공간 첫 항목' 오류.
+2. **만물웹 상담 폼 '공간 유형' A/S 선택지는 현장웹 v612 배포가 끝나고, 대표 PC·폰 앱의 판 번호가 `v612-tidy` 로 바뀐 것을 확인한 뒤**(⚙️ 설정의 판 번호 —
+   새로고침해야 바뀐다) — 반대로 나가면 v611 이 남은 기기에서 A/S 메일 붙여넣기가 '공간 첫 항목' 오류.
 3. 📬 접수함 당겨오기는 만물웹 접수함(apps-script-lead-inbox)을 대표가 배포하고 ⚙️ 설정 › ⭐ 기타에 /exec 주소를 기기마다 넣기 전까지 안내만 보인다(요청 0).
 4. **관리사무소 접수 분리는 대표가 새 Apps Script 프로젝트를 만들고 중계에 `OFFICE_INTAKE_MODE`·`OFFICE_INTAKE_STORE_ID` 속성을 넣기 전까지 아무것도 바뀌지 않는다**(중계 OfficeIntake.gs 를 새 판으로 바꿔 넣어도 동작 같음). 순서·되돌리기는 `docs/office-intake-split-20261119.md`(값 없음). 만물웹 office-api.json 주소 교체는 대표가 새 /exec 주소를 준 뒤 manmool PR.
-5. 배포 뒤 PC 앱 왼쪽 현장 목록의 [🧹 단계 정리 n곳]은 대표가 직접 보고 반영한다 — 자동 반영 없음.
+   **보호 서버 파일 변경**: 이 판은 보호 경로 `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md` 를 바꾸고 격리 검사(`office-ops-server-isolation.check.js`)에 승인 지문(SHA-256)을 같은 갈래에서 넣었다 —
+   근거는 11/19 번호 목록 항목 32뿐이다. **PR 설명에 따로 드러내고 대표의 명시 승인을 받은 뒤 병합하라. 승인 전에는 운영 중계에 붙여 넣지 않는다**(docs '준비' 앞에 한 줄).
+5. 배포 뒤 PC 앱 왼쪽 현장 목록의 [🧹 단계 정리 n곳]은 대표가 직접 보고 반영한다 — 자동 반영 없음. 반영 전에 `scratchpad/out/stage_preview_v612fix.md`(검토 뒤 규칙의 실자료 표)를 대표에게 보여 준다.
 
 **입구 갈래(11·12) — 🔧 웹 업무 연결 A/S·하자 → 고른 현장 AS 관리 · 📣 누수 접수 링크를 만물웹으로 · 공개 페이지 noindex**
 - A/S 약속(현장웹·만물웹 공통, 바꾸지 마라): 만물웹 `<option value="A/S">A/S·하자 (시공했던 집)</option>` — 값에 '·' 가 없어 메일 '공간' 줄 첫 칸이 정확히 'A/S'(webWorkClassify 가 ' · ' 로 나눔).
@@ -39,11 +42,16 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
 **접수함 갈래(28) — 📬 웹 업무 연결에서 홈페이지 문의 접수함 가져오기 · 등록 뒤 '승인' 회신**
 - 서버 계약(만물웹 97c4d0b apps-script-lead-inbox): POST text/plain JSON `{action,ts,payload[,sessionToken]}` → `{ok,…}`. leadLogin → `{sessionToken,expiresAt}`(8시간) · leadList `{status}` → `{leads,counts}`(상태별 200건) ·
   leadDecide `{leadId,decision,memo(거절 필수),requestId(UUID v4 멱등)}` · leadLogout. 전이 신규→승인·보류·거절 / 보류→승인·거절 / 거절→보류 / 승인 끝(`LEAD_INBOX_NEXT`). 오류 코드 → 쉬운 문구 `LEAD_INBOX_MESSAGES`.
-- **저장 위치(바꾸지 마라)**: 접수함 주소 IDB `lead_inbox_url`(`leadInboxUrlOk` — script.google.com 의 /exec 꼴만) · 서버 세션 IDB `lead_inbox_session` `{token,expiresAt}` — 이 기기에만.
-  관리 비밀번호는 입력 칸에서 읽자마자 비우고 로그인 요청 한 번에만 쓴다(어디에도 저장 안 함). 받은 목록(`__leadInbox.leads`)은 메모리에만 — 창을 닫거나 등록하면 버린다. 세션이 끝나면 `leadInboxForgetSession` 이 IDB 세션을 지우고 로그인 창.
+- **저장 위치(바꾸지 마라)**: 접수함 주소 IDB `lead_inbox_url`(`leadInboxUrlOk` — script.google.com 의 /exec 꼴만) — 이 기기에만. 서버 세션 `{token,expiresAt}`(8시간)은 **창 메모리 `__leadInbox.session` 에만**
+  (v612 검토: 현장웹 `01023978629.github.io/hyeonjang/` 과 만물웹 공개 사이트 `…/manmool/` 은 **같은 출처**라 IDB·localStorage 를 만물웹 쪽 페이지 스크립트도 읽을 수 있다 —
+  만물웹 lead-inbox.html 과 같은 규칙). 앱을 닫거나 새로고침하면 다시 로그인. `leadInboxBoot` 는 세션을 이어 쓰지 않고 예전 개발판이 남긴 IDB `lead_inbox_session` 을 지운다.
+  로그인 창 `[data-lead-inbox-dest]` 에 비밀번호를 보낼 접수함 주소의 배포 ID 끝 6자리(`leadInboxUrlTail`) — 같은 출처 스크립트가 주소를 바꿔 두었는지 대표가 알아보게.
+  관리 비밀번호는 입력 칸에서 읽자마자 비우고 로그인 요청 한 번에만 쓴다(어디에도 저장 안 함). 받은 목록(`__leadInbox.leads`)은 메모리에만 — 창을 닫거나 등록하면 버린다. 세션이 끝나면 `leadInboxForgetSession` 이 메모리 세션을 버리고 로그인 창.
+  **보안 메모(같은 출처)**: 중계 APP_TOKEN·AI 키 등 기존 IDB 값도 만물웹 페이지와 같은 출처에 있다(기존 위험 — 이 판에서 바꾸지 않음). 만물웹에 제3자 스크립트를 더할 때 이 점을 같이 보라.
 - 구역: `/* ═══ 📬 홈페이지 문의 접수함 당겨오기 … ═══ */` — **웹 업무 연결 구역(붙여넣기 길) 밖, 바로 뒤**. 붙여넣기 구역은 여전히 fetch·IndexedDB·localStorage·location 을 쓰지 않는다(web-work-bridge 단언 그대로).
   붙여넣기 구역에는 훅만: `webWorkDraftFromText(text,via)` 의 `via`(`{kind:'lead-inbox',leadId,receiptNo,status,receivedAt}`) · `webWorkPreviewOpen` 의 `leadInboxPreviewHtml`·`leadInboxRegisterAllowed`·[← 접수함 목록] ·
   `webWorkNote` '접수경로' 줄 · 현장 `source:'lead-inbox'` · 저장 성공 뒤 `leadInboxAfterRegister(via,현장,'site'|'as')`(webWorkRegister·webWorkAsRegister·누수 `hjLeakAsView` 성공 분기 — `context.web.via`).
+- 📥 웹 업무 연결 칸: 주소를 넣기 전(만물웹 접수함 배포 전)에는 큰 단추 없이 한 줄 안내 + 작은 [켜는 법](`#webWorkLeadPull.ghost` — 누르면 설정 자리 안내만, 요청 0). 주소가 있으면 큰 [📬 접수함에서 가져오기].
 - 흐름: 📥 웹 업무 연결 `#webWorkLeadPanel`/`#webWorkLeadPull` → 로그인 창 `[data-lead-inbox-login]` → 목록 `[data-lead-inbox-list]`(칩 신규·보류·전체, 카드 `[data-lead-inbox-row]`, `leadInboxKnown` = 현장·AS 기록 sourceReceiptNo) →
   미리보기는 붙여넣기와 **같은** `webWorkPreviewOpen`(본문 = 서버 message + '접수번호: LD-…' — 같은 중복 ID·접수번호 중복 막기) + 접수함 칸 `[data-lead-inbox-box]`(`#leadInboxMemo`·`[data-lead-inbox-decide]`).
   거절한 문의는 등록 버튼 없음. 등록은 안전판 → 이 기기 저장 → **그 뒤** leadDecide '승인'. 승인이 실패해도 등록은 그대로 — `__leadInbox.req[leadId|결정]` 의 같은 requestId 로 다시 보낸다(서버 멱등).
@@ -55,30 +63,52 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
 - 모듈(더보기 MORE_RUN_CONFIRM 바로 뒤): `HJ_HOLD_AUTO`(서버 주소·설정이 없으면 보류) · `HJ_HOLD_DEFAULT`(처음 보류 — `why` + 자료 수 `n()`: **자료가 1건이라도 있으면 보류하지 않는다**) ·
   `HJ_HOLD_EXTRA`(더보기 칸이 아닌 항목: quotenew·teamboard·teamroom·sharedtodo·adpostlog, `open`) · `HJ_HOLD_NEVER`(사진·일정·내역서/견적 목록·수금·AS·웹 업무 연결·관리사무소 접수함(aptorders)·officework·클로드 요청함·🧰·계약·AI 비서·백업) ·
   `hjHoldReason/hjHoldWhy/hjHeld/hjHoldState/hjHoldShow/hjHoldReset`. **새로 접을 기능은 이 표에만 더하라 — 화면마다 따로 숨기지 마라. 처음 보류에는 꼭 `n()`(그 기능의 저장 칸)을 달아라.**
-  - 자동 6: kakaoin·ptlist(`state.portalCfg.base` 없고 받은 문의·게시한 주소도 없음) · officeops(`__officeOps.url&&token`) · teamboard(team-config apiUrl 없고 열린 팀 업무 0) · teamroom(apiUrl 없음 — `hjHoldTeamCheck`, 읽기 전·실패도 보류) · sharedtodo(`relayReady()` + exec 주소).
-  - 처음 12: quotenew·aiquote·photoquote(대표 결정 — 늘 보류) · inventory·materials·matdue·suppliers·satisfaction·goal(goals.month/year 만 — **salesBasis 는 목표가 아님**)·budget·budgetalert·adpostlog. 근거: 11/18 `_현장.json` 에서 모두 0.
+  - 자동 6: kakaoin·ptlist(`state.portalCfg.base` 없고 받은 문의·게시한 주소도 없음 — 주소는 현장 화면 [🔗 고객 페이지] › ⚙️ 서버 설정) · officeops(`__officeOps.url&&token`) · teamboard(team-config apiUrl 없고 열린 팀 업무 0) ·
+    teamroom(apiUrl 없음 — `hjHoldTeamCheck`, 읽기 전·실패도 보류, 까닭 글은 없음/확인 중/확인 못 함을 나눔) · sharedtodo(`relayReady()` + exec 주소가 없으면).
+  - 처음 13: quotenew·aiquote·photoquote(대표 결정 — 늘 보류) · inventory·materials·matdue·suppliers·satisfaction·goal(goals.month/year 만 — **salesBasis 는 목표가 아님**)·budget·
+    budgetalert(**예산 현장 수 + `budgetAlertData().length`** — 예산이 없어도 견적 70% 대비 지출 경고가 생기면 보임)·adpostlog · **sharedtodo**(중계가 연결돼 있어도 처음 보류 — 18 '할 일 하나'.
+    n = 📋 내 업무가 읽어 온 남은 공유 할일 수 `__hjMyWork.shared`(읽기 성공 때만) — 남은 공유 할일이 있으면 보임). 근거: 11/18 `_현장.json` 에서 모두 0.
+  - 까닭 글은 대표가 읽는 말 — 파일 이름(team-config.js·.md)·'OfficeOps' 단독 말을 쓰지 않는다(설정 탭 이름은 '⚙️ 설정 › 🏢 OfficeOps 탭'처럼 자리로만). hold-v612.unit ② 가 지킨다.
 - 설정 = 이 기기 localStorage `hj_more_hold` = `{show:[다시 보이게 한 id]}`(즐겨찾기·최근 사용과 같은 자리 — 새 최상위 키를 만들지 않고, 자동 판정이 기기마다 다른 연결값을 보기 때문).
 - 더보기(`openMoreSheetV2`): 분류에서 보류를 빼고(분류 6개·칸 126개 그대로) 맨 아래 `details.more-cat-block.more-hold#moreHold`(접힘) '보류 n개 보기' — 줄 `[data-hold-row]`(자동 `[data-hold-auto]`)·까닭·`[data-more-unhold]` [다시 보이기]·`[data-more-holdreset]` [처음 보류로].
   더보기 칸은 그 칸 단추 그대로 열고, 따로 항목은 `[data-hold-open]`. 검색 결과에는 `[data-hold-tag]` '⏸ 보류'. 최근 사용은 보류 뺌, 즐겨찾기는 그대로.
-- 대시보드 ✅ 오늘 현장 업무: `dashboardTodoBtnsHTML`(`#dashboardTodoBtns[data-hold-sig]`) — 팀 공유 할일·팀 업무·인수인계·직원 작업실은 보류가 아닐 때만, '✅ 할 일 확인·추가'. 바뀌면 `hjHoldDashRefresh` 가 **그 줄만 제자리에서**. 내 업무 창 `#mwBoard` 도 같은 규칙.
+- 대시보드 ✅ 오늘 현장 업무: `dashboardTodoBtnsHTML`(`#dashboardTodoBtns[data-hold-sig]`) — 팀 공유 할일·팀 업무·인수인계·직원 작업실은 보류가 아닐 때만, '✅ 할 일 확인·추가'. 바뀌면 `hjHoldDashRefresh` 가 **그 줄만 제자리에서**.
+  **할 일 하나(18, 검토 뒤)**: 할 일은 ✅ 할 일(현장 자료와 함께 저장) 한 곳 — 대표 PC·폰처럼 중계가 연결된 기기에서도 대시보드 할 일 단추는 하나, 안내 글도 '한 곳에'(분석 D12 — 주인은 기본 할 일).
+  내 업무 창: `#mwBoard`·`#mwShared`(공유 할일 보류면 없음)·'🏢 직원 작업실' 줄(`hjMyWorkTeamShown` — teamroom 보류가 아니거나 이 창이 서버를 확인했을 때만, `[data-mw-teamh]`).
+  ☁ 팀 공유 할일 창: 직원 작업실 링크·'직원 포털 이전 초안' 단추는 teamroom 보류면 없음. 남은 공유 할일은 내 업무 목록에 그대로 섞여 보인다(숨기지 않음).
+- 📖 사용설명서: `hjHelpHoldNote(it,rows)` — 보류 중인 기능의 설명(예 '더보기 [📸 사진 견적]')에 `[data-help-hold]` '⏸ 지금 보류 중 — 더보기 맨 아래 [⏸ 보류]에서 열 수 있어요'(광고 관리 = adpostlog, `HJ_HELP_HOLD`).
+- 📑 매출 기준 칸(#goalSalesStmt)은 📊 매출 목표 안에 있다 — goal 이 보류면 [📑 작업내역서만 세기] 알림이 '더보기 맨 아래 ⏸ 보류 › 📊 매출 목표'를 가리킨다.
 - 14 견적: '✍ 견적 작성' 탭 목록·편집·작업내역서 반영은 그대로, `#qmNew` 만 보류 · `[data-qm-claude]` '실제 견적서는 Claude 견적 만들기(단가표 엑셀)로' · `hjQuoteStartFor` · 검색 '새 견적서'(`hjQuoteNewOpen`)는 보류면 `hjQuoteNewHeldView`
   ([이번만 앱에서 쓰기] = 예전 길). 보류 칸의 '새 견적서 작성'은 `hjQuoteNewDirect`. AI 비서 도구(create_quote_draft·ai_quote·photo_quote)는 그대로.
-- 광고 탭 `[data-adadd]` [＋ 게시 기록]은 adpostlog 보류면 없음. 22 🧰: 맨 위 `#cwKakaoBot` 안내 · `CW_MOVED`(cw_sitesort·cw_photoin·cw_chatphoto·cw_photoassign — 카톡봇 관리 프로그램 「클로드 명령」과 겹침)는 맨 아래 접힌 `#cwMoved`(저장·복사 그대로).
+- 광고 탭 `[data-adadd]` [＋ 게시 기록]은 adpostlog 보류면 없음(안내는 카톡봇 '홍보' 명령 → PC 홍보 게시 기록 — 파일 이름 없이). 22 🧰: 맨 위 `#cwKakaoBot` 안내 · `CW_MOVED`(cw_sitesort·cw_photoin·cw_chatphoto·cw_photoassign — 카톡봇 관리 프로그램 「클로드 명령」과 겹침)는 맨 아래 접힌 `#cwMoved`(저장·복사 그대로).
+  관리 프로그램 screens.js 대조(검토 뒤 바로잡음): 「일정 정리」(m3)는 감시 방 일정 → 구글 캘린더 **와** '구글 캘린더에만 있는 공사 일정을 현장 앱에 넣을 수 있게 정리'까지 해서 cw_calsync 와 일부 겹친다 ·
+  「월간 정리」(e10 '현장별 매출·지출·미수금 리포트')는 cw_month(📊 월간 자료 종합 정리 — 카드·세금계산서·통장 + 현장별 수입·지출·이익)와 현장별 손익이 겹친다.
+  둘 다 남기고 `#cwKakaoBot` 아래 `[data-cw-diff]` 한 줄로 차이(여기 = 현장웹 맞추기 창·엑셀 보고서 / 관리 프로그램 = 봇)를 적었다. cw_month 는 활성 Cowork 예약이 있어 대표 확인 대기(⑦).
 - **크로미움의 접힌 `<details>` 안 요소는 getClientRects 가 상자를 준다 — 접힌 칸 안이 보이는지는 `checkVisibility()` 로 보라**(claudecmds-v529 ④).
 
 **단계 갈래(24) — 🧹 받을 돈을 다 받은 '상담' 현장을 근거 날짜로 '완료'**
 - 문제: 11/18 실자료 현장 82곳 중 77곳이 단계 0(상담)이라 🛡 파수꾼 '멈춘 현장'·보증 만료·진행률이 뜻이 없었다. **파수꾼(`hjWatchScan`)·보증(`hjWarranty`)·방치 현장은 stage 가 아니라 doneAt 을 본다.**
   `setStage` 로 '완료'를 누르면 doneAt 이 오늘이 되므로 이 창은 setStage 를 쓰지 않고 근거 날짜를 doneAt 에 바로 적는다(v381 '한꺼번에 완료'와 같은 꼴). **여러 현장을 한꺼번에 완료로 바꾸는 새 길도 setStage 를 쓰지 마라.**
 - 대상·근거 `hjStageTidyPlan({today,stats})`(읽기만): 보관 안 한 단계 0 현장 중 이름이 하나뿐인 것. 돈은 `projStats` 그대로, 마지막 입금일(payLog 금액>0·오늘까지), 마지막 작업일(작업내역서 줄 `d`/`stmt.date` · 그 현장 일정(상담|실측|견적 제목·💰·루틴 빼고, 여러 날은 끝날) ·
-  작업 공정 사진 `hjPhotoWorkPhases`·v611 `hjPzArchivedEach`), 앞으로 일정. 규칙 `hjStageTidyRule(f)`(순수): 완납 → '완료' 체크(준공일 = 마지막 입금일, 없으면 마지막 작업일) · 일부/미입금/금액 없는 입금/작업만은 체크 끈 '완료'(앞으로 일정 있으면 '시공') · 나머지 `left`.
+  작업 공정 사진 `hjPhotoWorkPhases`·v611 `hjPzArchivedEach`), 앞으로 일정. 규칙 `hjStageTidyRule(f)`(순수): 완납 → '완료' 체크(**준공일 = 마지막 작업일**, 작업 날짜 기록이 없을 때만 마지막 입금일 ·
+  마지막 입금일은 근거 글 '마지막 입금 M/D'로만) · 일부/미입금/금액 없는 입금/작업만은 체크 끈 '완료'(앞으로 일정 있으면 '시공') · 나머지 `left`.
+  **검토 뒤 바뀜(11/19)**: 처음엔 '마지막 입금일 먼저'였는데, 실자료 미리 체크 19곳의 준공일이 모두 협력사 일괄 입금일 11/5·11/11 에 몰려 실제 작업 끝(9/1~11/11)보다 최대 71일 늦었다 —
+  보증서 '작업완료일'·`hjWarranty` 만료·파수꾼·AS 보증 판정이 doneAt 을 그대로 쓰므로, setStage 가 doneAt 을 오늘로 미는 것을 막으려던 이 창의 목적과 같은 방향의 왜곡이었다. 입금일로 되돌리려면 대표 결정을 받아 이 줄과 화면 글을 같이 고쳐라.
   **남은 돈 금액·'미수' 글자는 보이지 않는다**(receivable-removed).
-- 창 `hjStageTidyView({back})` `#hjStageTidy`(표 `.std-table` · 날짜 `.stdDate` max 오늘 · `.stdChk` · `#stdPickDefault`·`#stdPickNone` · 폰 ≤640px 카드). 반영 `hjStageTidyApply(plan)`: 직원 모드·오래된 창 거부 → 빈/미래 날짜면 안전판 전에 멈춤 →
+- 창 `hjStageTidyView({back})` `#hjStageTidy`(표 `.std-table` · 날짜 `.stdDate` max 오늘 · `.stdChk` · `#stdPickDefault`·`#stdPickNone` · 폰 ≤640px 카드).
+  **날짜를 고쳐도 체크는 저절로 켜지지 않는다**('체크한 것만') — 체크가 꺼진 줄의 날짜를 고치면 그 칸 아래 `[data-stage-tidy-datehint]` '체크해야 바뀌어요'. 반영 `hjStageTidyApply(plan)`: 직원 모드·오래된 창 거부 → 빈/미래 날짜면 안전판 전에 멈춤 →
   안전판 '현장 단계 정리 전' 1회 → 줄마다 다시 보고 그 사이 바뀐 현장은 그대로 → stage·doneAt 만(완료가 아니면 doneAt 을 doneAtPrev 로) → `portalAutoSync` → `markDirty`. [↩ 되돌리기] `hjStageTidyUndo`(안전판 '…되돌리기 전', 그 뒤 안 바뀐 현장만).
-- 입구: 왼쪽 현장 목록 `#sideStageTidy`(render 뒤 `HJ_STAGE_TIDY_SIDE_MS` 600ms 에 한 번 세어 그 단추만 고침 — 실자료 한 번 20~25ms) · 폰 현장 시트 `#psStageTidy` · 💤 방치 현장 창 `#stpStageTidy`. 체크해 둘 제안이 있을 때만 보이고 직원 모드·데모는 0.
-- 실자료(11/18 사본, 읽기만): 단계 0 진행 현장 67곳 → 미리 체크 19곳(준공일 11/5·11/11) · 체크 끈 제안 25곳 · 뺀 현장 23곳.
+- 입구: 왼쪽 현장 목록 `#sideStageTidy`(render 뒤 `HJ_STAGE_TIDY_SIDE_MS` 600ms 에 한 번 세어 그 단추만 고침 — 실자료 한 번 20~25ms. **폰(`__mobileMode`)이거나 목록이 화면에 없으면 다시 세지 않는다**) ·
+  폰 현장 시트 `#psStageTidy` — 이 둘은 체크해 둘 제안(on)이 있을 때만. 💤 방치 현장 창 `#stpStageTidy`(`hjStageTidyCounts` — **제안이 하나라도 있으면**, '2곳 (+확인 2곳)'·'— 확인할 제안 n곳') ·
+  기능 찾기 `HJ_ACTIONS` '현장 단계 정리' — 한 번 반영해 on 이 0 이 된 뒤에도 남은 제안으로 돌아오는 길. 직원 모드·데모는 0. (방치 현장이 0곳이면 그 창에는 입구가 없다 — 기능 찾기로.)
+- 실자료(11/18 사본, 읽기만, 검토 뒤 규칙): 단계 0 진행 현장 67곳 → 미리 체크 19곳(준공일 = 마지막 작업일, 13개 날짜 9/1~11/11 · 예전 규칙이면 입금일까지 0~71일 늦음) · 체크 끈 제안 25곳 · 뺀 현장 23곳.
+  체크 끈 25곳에는 일부 입금·미입금·작업만 현장이 들어 있다(분석 WA6 '입금까지 끝난 현장'보다 넓다 — 체크는 꺼 둠). 표: 저장소 밖 `scratchpad/out/stage_preview_v612fix.md`.
 
-**관리사무소 갈래(32·17) — 공개 관리사무소 접수를 현장 전체 자료 중계에서 떼어 낼 스위치 · 포털 소스 옛 판 표시**
-- 공개 관리사무소 action(officeLogin·officeList·officeGet·officeCreate·officeUpdate·officeCancel·officeUpload·officePhoto)이 현장 전체 자료(load·save·download)를 가진 중계와 같은 배포·잠금·실행 시간 안에서 돌던 것을 떼어 낼 수 있게 했다. 앱(index.html) 무변경.
+**관리사무소 갈래(32·17) — 관리사무소 접수를 별도 Apps Script 프로젝트로 나눌 스위치 · 포털 소스 옛 판 표시**
+- 관리사무소 접수(공개 action officeLogin·officeList·officeGet·officeCreate·officeUpdate·officeCancel·officeUpload·officePhoto)를 별도 Apps Script 프로젝트로 나눌 수 있게 했다(배포·잠금·실행 시간 분리). 앱(index.html) 무변경.
+  **공개 저장소 — 왜 나누는지는 저장소에 적지 않는다**(항목 17과 같은 방식, 검토 뒤): docs·apps-script-office-intake README·IntakeMain.gs 는 '무엇을 나누는지(잠금·실행 시간)'만 쓴다.
+  보호 경로의 `apps-script/OfficeIntake.gs` 주석(1029줄 근처)·`README_APPS_SCRIPT.md` '관리사무소 접수 분리 스위치' 첫 줄에는 아직 이유 문장이 남아 있다 —
+  고치면 격리 검사 승인 지문을 다시 넣어야 해서(사람 승인 필요) 이 판에서 두었다. 대표 승인 때 같이 고친다(접수 프로젝트의 OfficeIntake.gs 도 글자 하나까지 같게 복사).
 - `apps-script-office-intake/`: 별도 Apps Script 프로젝트(source-only — 자체 Script Properties·수동 deployment, `APP_TOKEN` 을 공유하지 않으며 Pages merge 로 배포되지 않는다). 붙여넣을 파일 넷(IntakeMain.gs·OfficeIntake.gs·OfficeIntakePure.gs·appsscript.json).
   **OfficeIntake.gs·OfficeIntakePure.gs 는 apps-script/ 와 글자 하나까지 같아야 한다 — apps-script 쪽을 고치고 복사**(검사가 지킨다). 공개 action 만 받고 내부·현장 자료 action 은 bad-request. `setupOfficeIntake`(편집기 1회)가 접수 폴더·공개 저장 파일을 만들고 ID 를 자기 속성에 적는다.
 - 중계 스위치(`OfficeIntake.gs` 의 `oiRole_`): `OFFICE_INTAKE_MODE` 가 정확히 `external` + `OFFICE_INTAKE_STORE_ID` → 공개 action 은 잠금·Drive 전에 `office-intake-moved`, 내부 action 은 그대로 APP_TOKEN 뒤에서 바깥 저장소를 읽어 예전 모양으로 돌려준다.
@@ -86,15 +116,24 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
   상태가 부딪히면 현장 쪽 결정이 이긴다(두 기록 남음). 단지 목록은 중계 속성에만 두고 내부 파일에 사본, 접수 쪽은 30초 기억. 사진 폴더는 만물인테리어 안(현장웹이 중계로 관리사무소 사진을 본다).
 - `tests/office-ops-server-isolation.check.js` 에 승인 본문 SHA-256(apps-script/OfficeIntake.gs·README_APPS_SCRIPT.md, 줄끝 LF) — **두 파일을 고치면 핀도 같은 커밋에서**. 속성 계약(office-intake-server)에 OFFICE_INTAKE_MODE·OFFICE_INTAKE_STORE_ID.
 - 항목 17(11/19 바뀜): 현장웹 `apps-script-office-portal/` 은 옛 판 — **지금 정본은 대표 PC 의 외부 작업본**(문서\New project\manmool-sites-portal\apps-script-office-portal). **만물웹 저장소로 옮기는 일은 보안 검토가 끝날 때까지 미뤘다(2026-11-19).**
-  README 맨 위 안내만 고치고 파일은 남김(기존 office-portal-*.unit.js 용 — office-intake-split ⑫ 가 안내·파일을 지킨다). 이 폴더를 고치지 마라.
+  README 맨 위 안내와 붙여 넣는 파일 `Code.gs`·`PortalPure.gs` 맨 위 주석 두 줄(옛 판·고치지 마세요·정본 위치)만 고치고 파일은 남김(기존 office-portal-*.unit.js 용 — office-intake-split ⑫ 가 안내·파일을 지킨다). 그 밖에는 이 폴더를 고치지 마라.
 
 **통합에서 더한 것(이 판)**
 - 도움말 두 줄: '홈페이지 문의 가져오기'(📥 웹 업무 연결 붙여넣기·📬 접수함·설정 자리 — 'AS 관리' 다음) · '현장 단계 한 번에 정리'('방치 현장 알림' 다음). 갈래가 더한 줄('AS 관리' 한 줄·'클로드 명령어 모음' 고침·'보류 묶음')은 그대로.
-- `tests/mobile-field-flow.e2e.js` ③ 접힌 더보기 높이 기준 1150 → 1250 — 맨 아래 접힌 ⏸ 보류 묶음 한 줄(약 +58px)과 '견적 작성' 바로가기 설명 한 줄(약 +35px). 폰 390 로컬 실측 v611 1070 · v612 1163 · 다 펼치면 약 7,000px 라 '접힘'만 통과한다(v550 과 같은 방식).
+- `tests/mobile-field-flow.e2e.js` ③ 접힌 더보기 높이 — **기준 1150 그대로**(검토 뒤): 맨 아래 접힌 ⏸ 보류 줄은 따로 재서(`holdBlock` = 앞 분류 아래 끝 → 보류 줄 아래 끝, < 90px) 빼고 본다.
+  '견적 작성' 바로가기 설명은 '저장된 견적·내역서 보기·고치기'(두 줄 안)로 줄였다. 폰 390 로컬 실측: 전체 1128 · 보류 줄 58 → 1070(= v611 과 같음, 여유 80px).
 - `tests/office-intake-split.unit.js` ⑫ 포털 README 단언을 11/19 안내(옛 판·고치지 마세요·외부 작업본·보안 검토 뒤로 미룸, 만물웹을 정본이라 하지 않음)로 — 옛 안내로 되돌리면 실패 확인.
 
 **검사**
 - 새 검사: `webwork-as-v612.unit`(7)·`.e2e`(5) · `leadinbox-pull-v612.unit`(9)·`.e2e`(7) · `hold-v612.unit`(7)·`.e2e`(8) · `stagetidy-v612.unit`(8)·`.e2e`(6) · `office-intake-split.unit`(13구간·변이 15종). 단위 검사의 변이는 갈래마다 의도한 곳에서 실패 확인(기준선 2c8160d·5a87511 은 webwork-as·leadinbox-pull ①).
+- 검토 반영(11/19 뒤) 검사: stagetidy unit ①⑤⑦(준공일 = 마지막 작업일·입금일은 근거 글 · 새 변이 `pay-first` → ① 실패) · e2e ①②③⑤⑥(날짜를 고쳐도 체크 안 켜짐·안내 · 반영 뒤 방치 창·기능 찾기 입구) ·
+  hold unit ②③(중계 연결에도 공유 할일 처음 보류·남은 공유 할일이면 보임·까닭 글 · 예산 없이 지출 경고 → 예산 경고 보임 · 새 변이 `shared-when-relay` ② · `alert-budget-only` ③) · e2e ③④⑥(대시보드 할 일 하나·보류 15개 · 내 업무 직원 작업실 줄·공유 할일 창 링크 없음 · 도움말 ⏸ 줄 · 광고 안내 글) ·
+  leadinbox unit ①②⑨(IDB 키는 주소 하나 · 세션 메모리 · 부팅 때 옛 IDB 세션 지움 · 로그인 창 보낼 곳 · 새 변이 `store-session` ①) · e2e ①②⑦ · my-work ⑦(미설정이면 직원 작업실 줄 없음) ·
+  shared-todo(시작 때 `hj_more_hold={show:['sharedtodo']}` — 공유 할일 기능 자체를 본다) · mobile-field-flow ③(1150 유지·보류 줄 따로).
+  로컬(Windows · VS Code Electron node · CDP 대역): *.check+*.unit 57개 중 54 통과(실패 3 = 위와 같은 환경 문제 — office-ops-server-isolation 은 얕은 클론의 기준 커밋 없음, 보호 파일 두 개의 LF SHA-256 은 지금 핀과 같음) ·
+  대역 e2e: stagetidy 6/6 · hold 8/8 · leadinbox-pull 7/7 · webwork-as 5/5 · mobile-field-flow ②③★(①은 대역 탓) · web-work-bridge · claudecmds-v529 · action-search · darkfix-v399 · operations-review · donemany-v381 · donedate-v380 ·
+  menu-integrity · mobile-more-tools · mobile-more-sweep · mobile-list · sitecmd-v604 · leakintakeweb-v431 · ownertodo-v460 · todo-list · mobile-todo-nav · app-version 통과.
+  shared-todo·my-work 는 대역에서 기준선(90a2141)도 같은 곳(새로고침 뒤 상태 대기·filechooser)에서 멈춘다 — CI 에서 본다.
   e2e 의 변이·기준선은 hold-v612 만 로컬 대역으로 확인했다 — webwork-as·leadinbox-pull·stagetidy e2e 의 변이 표는 CI(playwright)에서 처음 돈다.
   `HJ_MANMOOL_ROOT=<만물웹 사본>` 이면 webwork-as·leadinbox-pull 이 만물웹 leak.html·buildLeadText·접수함 전이·오류 코드까지 대조한다.
 - 의도를 지키며 고친 옛 검사: leakintakeweb-v431 · pages-artifact · demofix-v554 ⑤ · web-work-bridge(카드 4) · claudecmds-v529 · sitecmd-v604 · mobile-field-flow · darkfix-v399 · operations-review ·
@@ -103,11 +142,18 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
   office-ops-server-isolation 의 새 SHA-256 핀 두 개는 LF 본문 해시로 따로 맞춰 봤다. e2e 는 설치된 Chrome 을 CDP 로 모는 임시 대역(저장소 밖)으로: 새 e2e 4개 26/26 · web-work-bridge · leakintakeweb-v431 · claudecmds-v529 · sitecmd-v604 · pages-artifact ·
   operations-review · darkfix-v399 · consultquote-v384 · mobile-more-tools · menu-integrity · action-search · mobile-more-sweep · donemany-v381 · donedate-v380 · app-version · mobile-list 통과, mobile-field-flow ②③★ 통과.
   대역에서만 떨어지는 것(v611 기준선에서도 똑같음 — 대역 탓): mobile-field-flow ①(카메라 시트) · demofix-v554 ②(대역 크롬의 스크롤바 15px). **진짜 판정은 PR 뒤 CI 전체 회귀**.
-- 대표 확인 대기: ① A/S 접수일 = 붙여 넣은 날(보증 판정 기준) ② 웹 A/S 는 현장 고객 칸(전화)을 채우지 않음 ③ 누수 '다른 원인'이면 그 메일은 접수되지 않고 새 현장 제안으로 ④ 접수함 승인 메모에 현장 이름 ⑤ 접수함 세션(8시간)을 이 기기 IDB 에 둔다(공용 PC 는 [로그아웃])
-  ⑥ 처음 보류 12개 목록·보류 설정은 기기별 ⑦ cw_calsync·cw_stmt·cw_month 는 남기고 cw_photoassign ↔ '확인필요 정리' 판정 ⑧ 상담 끝 [견적서 쓰기]도 보류 안내를 거친다 ⑨ 단계 정리 완료일 = 마지막 입금일(실제 작업은 9~10월 — 보증 시작이 1~2달 늦다, 날짜 칸에서 고칠 수 있음)
-  ⑩ 관리사무소 접수 30초 반영 지연 ⑪ 스위치 사이 짧은 공백(만물웹 주소 바꾼 뒤 중계 스위치까지 관리사무소 로그인 안 됨 — 지금 단지 0곳) ⑫ 되돌리면 새 프로젝트로 들어온 접수는 옮겨야 보임.
+- 대표 확인 대기: ① A/S 접수일 = 붙여 넣은 날(보증 판정 기준) ② 웹 A/S 는 현장 고객 칸(전화)을 채우지 않음 ③ 누수 '다른 원인'이면 그 메일은 접수되지 않고 새 현장 제안으로 ④ 접수함 승인 메모에 현장 이름
+  ⑤ 접수함 로그인은 창 메모리에만(검토 뒤 — 같은 출처 만물웹 페이지가 IDB 를 읽을 수 있어서) → 앱을 새로 열 때마다 관리 비밀번호로 다시 로그인
+  ⑥ 처음 보류 13개 목록(☁ 팀 공유 할일 포함)·보류 설정은 기기별 ⑦ cw_calsync·cw_stmt·cw_month 는 남기고 cw_photoassign ↔ '확인필요 정리' 판정 · cw_month 와 관리 프로그램 「월간 정리」 중 어느 쪽을 쓸지(현장별 손익이 겹침, cw_month 예약이 켜져 있음)
+  ⑧ 상담 끝·대시보드 '견적 안 쓴 현장'·서류 만들기의 [🧾 견적서 쓰기]도 보류 안내를 거친다 — **안내를 닫으면 예전과 달리 단계가 상담 → 실측으로 바뀌지 않는다**([이번만 앱에서 쓰기]에서만). 이 단추들을 보류 때 숨길지·'단계만 실측으로'를 둘지 대표 결정
+  ⑨ 단계 정리 완료일 = **마지막 작업일**(검토 뒤 바뀜 — 입금일이면 보증 시작이 최대 71일 늦다. 실자료 표를 보여 주고 확인받는다)
+  ⑩ 관리사무소 접수 30초 반영 지연 ⑪ 스위치 사이 짧은 공백(만물웹 주소 바꾼 뒤 중계 스위치까지 관리사무소 로그인 안 됨 — 지금 단지 0곳) ⑫ 되돌리면 새 프로젝트로 들어온 접수는 옮겨야 보임
+  ⑬ 보호 서버 파일(apps-script/OfficeIntake.gs·README_APPS_SCRIPT.md) 변경과 격리 검사 승인 지문 — 명시 승인 뒤 병합(위 배포 순서 4).
+  ⑭ 더 접을 메뉴: 11/18 실자료에서 expenses·trips·quoteSets·priceBook·contacts·workLogs 도 0건이다 — 간편 장부·경비 분류·영수증 스캔·차량 운행일지·품목 세트·단가장·연락처·음성 현장일지 등은 아직 보인다.
+     품목 세트·단가장은 앱 안 견적 편집기(보류)만 쓴다. 대표가 고르면 `HJ_HOLD_DEFAULT` 에 n() 과 함께 더한다(지금 목록은 처음 13개뿐).
 - 안 한 것(다음 판 후보): 메일 수신 시각으로 A/S 접수일 적기 · AS 이력 엑셀에 웹 접수 표시 · 실제 배포된 접수함 서버와 붙여 보기 · 자동 당겨오기·새 문의 알림 · 웹 업무 연결 안내 aside → div ·
-  단계 1~2 현장 완료 제안·더보기/기능 찾기 항목 · 아무 기능이나 접는 편집(지금은 [처음 보류로]만) · 일정 ⋯ 📋 작업지시·#lead= 수신부·📱 진행 공유·💬 셀프 견적은 보류 안 함 · 옛 관리사무소접수.json 옮기기(지금 0건).
+  단계 1~2 현장 완료 제안·더보기 칸(기능 찾기 '현장 단계 정리'는 더함) · 아무 기능이나 접는 편집(지금은 [처음 보류로]만) · 일정 ⋯ 📋 작업지시·#lead= 수신부·📱 진행 공유·💬 셀프 견적은 보류 안 함(분석 DA7 이름 — 대표 확인 ⑭) ·
+  옛 관리사무소접수.json 옮기기(지금 0건) · 보호 서버 파일의 이유 문장 중립화(승인 지문 필요 — ⑬) · 방치 현장 0곳일 때 그 창의 단계 정리 입구.
 
 ## 2026-11-18 v611 🗜 한 달 지난 현장 사진 → 현장별 ZIP 보관 · 낱장 삭제 (PC 에서 폴더를 열면 자동)
 

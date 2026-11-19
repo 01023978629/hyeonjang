@@ -3,11 +3,12 @@
    ① 더보기 — 분류 6개에서 보류 기능이 빠지고 맨 아래 접힌 [⏸ 보류 18개 보기] · 칸 126개는 그대로(분류 113 + 보류 13) · 보류 칸에서 바로 연다 ·
       검색은 보류 기능도 찾고 '⏸ 보류' 표시 · 둘러보기만으로 자료·이 기기 설정 불변 (MORE)
    ② 다시 보이기 — [다시 보이기] 누르면 그 기능이 원래 분류로·묶음 수 줄어듦·설정 {show:[id]} · [처음 보류로 되돌리기] · 대시보드 단추 줄은 제자리에서 바뀜 (UNHOLD)
-   ③ 자동 — 고객 페이지 주소·OfficeOps 주소+토큰·중계(Apps Script)가 있으면 그 기능이 분류·대시보드로 돌아온다 (AUTO)
-   ④ 할 일 하나 — 대시보드는 ✅ 할 일만(☁ 팀 공유 할일·팀 업무·직원 작업실 없음, 팀 업무 줄 숨김) · 열린 팀 업무가 있으면 팀 업무 단추 · 내 업무 창 팀 업무판도 같은 규칙 (TODO)
+   ③ 자동 — 고객 페이지 주소·OfficeOps 주소+토큰이 있으면 그 기능이 분류로 돌아온다 · 중계(Apps Script)가 있어도 ☁ 팀 공유 할일은 접힌 채(할 일 하나 — v612 검토) (AUTO)
+   ④ 할 일 하나 — 대시보드는 ✅ 할 일만(☁ 팀 공유 할일·팀 업무·직원 작업실 없음, 팀 업무 줄 숨김) · 열린 팀 업무가 있으면 팀 업무 단추 ·
+      내 업무 창 팀 업무판·🏢 직원 작업실 줄, 팀 공유 할일 창의 직원 작업실 링크·포털 이전 단추도 같은 규칙 · 📖 사용설명서는 보류 기능에 '⏸ 보류' 한 줄 (TODO)
    ⑤ 견적 — '✍ 견적 작성' 탭 목록·편집·작업내역서 반영은 그대로, [+ 새 견적서]만 없음 · Claude 견적 만들기 한 줄 · [견적 쓰기]·검색창 '새 견적서'는
       보류 안내([닫기]는 아무것도 안 바꿈 · [이번만 앱에서 쓰기]는 예전 그대로) · 💸 AI 견적작성·📸 사진 견적은 보류 칸에 (QUOTE)
-   ⑥ 광고 — [＋ 게시 기록]은 기록 0건이면 보류(홍보_게시기록.md 안내), 기록이 있으면 그대로 (ADS)
+   ⑥ 광고 — [＋ 게시 기록]은 기록 0건이면 보류(카톡봇 '홍보' 명령 → PC 홍보 게시 기록 안내, 파일 이름 없이), 기록이 있으면 그대로 (ADS)
    ⑦ 🧰 — 맨 위 '사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요' · 사진 명령 넷은 접힌 '옮긴 명령' · 청구 누락은 남음 (COWORK)
    ⑧ 폰 390 큰 글씨 2단계 — 보류 묶음을 펼쳐도 가로 넘침 0·단추 44px · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
    HJ_V612_BASELINE=<commit> 은 ① 에서, HJ_V612_MUTATION=cats-all 은 ①, no-unhold 는 ②, qmnew-shown·no-gate 는 ⑤, ads-shown 은 ⑥, cw-all 은 ⑦ 에서 실패해야 한다. */
@@ -158,11 +159,12 @@ const moreInfo = page => page.evaluate(() => {
       await seed(page);
       await page.evaluate(() => { state.portalCfg = { base: 'https://example.invalid/portal' }; __officeOps.url = 'https://example.invalid/office'; __officeOps.token = 'TEST_TOKEN';
         __relay.url = 'https://script.google.com/macros/s/TEST_DEPLOY/exec'; __relay.token = 'TEST_TOKEN'; relayReady = () => true; render(); });
-      assert.equal(await page.locator('#dashboardSharedTodoOpen').count(), 1, '중계(Apps Script)가 있으면 ☁ 팀 공유 할일');
-      assert.match(await page.locator('#dashboardTodoHint').innerText(), /팀 공유 목록과 별도/);
+      assert.equal(await page.locator('#dashboardSharedTodoOpen').count(), 0, '중계(Apps Script)가 있어도 대시보드 할 일 단추는 하나(☁ 팀 공유 할일은 보류)');
+      assert.match(await page.locator('#dashboardTodoHint').innerText(), /✅ 할 일 한 곳에/);
       await openMore(page);
       const m = await moreInfo(page);
-      assert.ok(['kakaoin', 'ptlist', 'officeops'].every(id => m.catIds.includes(id)) && /보류 14개 보기/.test(m.title), '연결된 셋은 분류로 ' + m.title);
+      assert.ok(['kakaoin', 'ptlist', 'officeops'].every(id => m.catIds.includes(id)) && /보류 15개 보기/.test(m.title), '연결된 셋은 분류로 ' + m.title);
+      assert.ok(m.rows.includes('sharedtodo'), '☁ 팀 공유 할일은 보류 묶음에 남는다 ' + JSON.stringify(m.rows));
       assert.deepEqual(m.auto, ['teamboard', 'teamroom'], '직원 작업실은 team-config.js 주소가 빈 채로 보류');
       await page.evaluate(() => { document.getElementById('moreSheetClose').click(); relayReady = () => false; __relay.url = ''; __relay.token = ''; __officeOps.url = ''; __officeOps.token = ''; });
     });
@@ -179,6 +181,17 @@ const moreInfo = page => page.evaluate(() => {
       await page.evaluate(() => { myWorkView(); });
       await page.waitForSelector('#myWork');
       assert.equal(await page.locator('#myWork #mwBoard').count(), 0, '내 업무 창 팀 업무판도 보류');
+      await page.waitForFunction(() => __hjMyWork.team === 'off');
+      assert.equal(await page.locator('#myWork [data-mw-teamh]').count() + await page.locator('#myWork #mwTeam').count(), 0, '내 업무 창 🏢 직원 작업실 줄도 보류');
+      await page.evaluate(() => closeModal(true));
+      await page.evaluate(() => { hjSharedTodoView(); });
+      await page.waitForSelector('#sharedTodoView');
+      assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#sharedTodoView .st-actions a, #sharedTodoView .st-actions button')].map(e => e.textContent.trim()).filter(t => /직원/.test(t))), [], '팀 공유 할일 창에도 직원 작업실 링크·포털 이전 단추 없음');
+      await page.evaluate(() => closeModal(true));
+      // 📖 사용설명서 — 보류 기능 설명에 '⏸ 보류' 한 줄(예전 자리 '더보기 [📸 사진 견적]'만 보고 헤매지 않게)
+      await page.evaluate(() => helpGuide('사진 견적'));
+      await page.waitForSelector('#hgBody [data-help-hold]');
+      assert.match(await page.locator('#hgBody').innerText(), /더보기 \[📸 사진 견적\][\s\S]*⏸ 지금 보류 중 — 더보기 맨 아래 \[⏸ 보류\]/);
       await page.evaluate(() => closeModal(true));
       await page.evaluate(() => { state.notes.push({ id: 'tt1', text: '[팀 업무]', todo: true, done: false, project: '가온아파트', teamTask: { schema: 1, title: '가상 업무', assignee: '가상담당', status: 'doing', due: '', handoff: '', recorder: '가상', updatedAt: '2026-11-18T00:00:00.000Z', revision: 1 } }); render(); });
       assert.equal(await page.locator('#dashboardTeamOpen').count(), 1, '열린 팀 업무 → 팀 업무 단추');
@@ -231,7 +244,7 @@ const moreInfo = page => page.evaluate(() => {
       await seed(page);
       await page.evaluate(() => { state.tab = 'ads'; render(); });
       const a = await page.evaluate(() => ({ add: document.querySelectorAll('[data-adadd]').length, draft: document.querySelectorAll('[data-addraft]').length, text: document.getElementById('view').textContent }));
-      assert.ok(a.add === 0 && a.draft === 1 && /홍보_게시기록\.md/.test(a.text), '게시 기록 손 입력 보류 · 원고 만들기 그대로 ' + JSON.stringify({ add: a.add, draft: a.draft }));
+      assert.ok(a.add === 0 && a.draft === 1 && /올렸어 당근 \[현장\][\s\S]*PC 홍보 게시 기록/.test(a.text) && !/홍보_게시기록\.md/.test(a.text), '게시 기록 손 입력 보류 · 원고 만들기 그대로 ' + JSON.stringify({ add: a.add, draft: a.draft }));
       await page.evaluate(() => { state.adPosts = [{ id: 'a1', ch: AD_CH[0].id, date: '2026-11-01', title: '가상 게시', url: '' }]; render(); });
       assert.equal(await page.locator('[data-adadd]').count(), 1, '기록이 있으면 그대로');
       await page.evaluate(() => { state.adPosts = []; state.tab = 'dashboard'; render(); });
