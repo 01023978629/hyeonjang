@@ -49932,6 +49932,9 @@ function hjRetAnonProject(name,reason){
     const base=name.split(custName).join('고객').trim()||'고객 현장';let nv=base,i=2;while((state.projects||[]).some(x=>x!==p&&x.name===nv)){nv=base+' '+i;i++;}
     hjRenameProjectRefs(name,nv);n.renamed=nv;
   }
+  // v614: 정리한 현장에는 옛 이름(formerNames)을 남기지 않는다 — 옛 이름에 고객 이름이 들어 있다(바로 위 이름 바꾸기도
+  // hjRenameProjectRefs 가 옛 이름을 남긴다 · 예전에 손으로 바꾼 이름도 마찬가지). tests/retention-v447 ② 'customer name is gone everywhere'.
+  if(Object.prototype.hasOwnProperty.call(p,'formerNames'))delete p.formerNames;
   return n;
 }
 /* 정리 실행 — 안전판(강제) → 익명화 → 변경 기록. 안전판을 못 찍으면 아무것도 바꾸지 않는다. */

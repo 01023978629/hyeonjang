@@ -14,6 +14,7 @@
 - **읽는 곳(현장웹 안)**: 사진 폴더 이름 단서 `hjPhotoNewHint` 만 — 지금 그 이름을 쓰는 현장(보관 포함)이 없을 때 옛 이름 폴더의 사진을 바뀐 현장 '참고'로(`out.former`,
   🧭 창 글 '…이 현장의 옛 이름과 같아요', 체크 안 함) · 옛 이름을 '＋ 새 현장'으로 제안하지 않음 · 같은 옛 이름을 가진 진행 현장이 둘이면 고르지 않음.
   자동 배정·현장 만들기(`recoverOrganizedMetadata`·`ensureProjectExists`)는 이 칸을 **보지 않는다**(옛 이름으로 새 현장을 일부러 다시 만드는 경우를 자동으로 덮지 않게).
+- **개인정보 정리(3년)와 함께**: 정리(`hjRetAnonymize` 꼴 — 고객 이름이 든 현장 이름을 '고객'으로 바꿈)도 `hjRenameProjectRefs` 를 지나므로 옛 이름에 고객 이름이 남았다(PR #224 첫 CI `tests/retention-v447` ② 'customer name is gone everywhere'). 정리한 현장은 `formerNames` 칸을 지운다(예전에 손으로 바꾼 옛 이름까지) — 카톡봇도 그 현장의 옛 이름을 더는 모른다.
 - 그 밖에 바뀐 것 없음: AI 도구·클로드 요청 도구·CLAUDE_REQ_DENY·apps-script/ 무변경, 화면 단추 없음, 바깥 요청 없음. 핀 `hyeonjang-v614-formernames`.
 - 검사: `tests/formernames-v614.unit.js`(앱 스크립트 VM — 변이 7개·`HJ_V614_BASELINE` 은 ①에서 실패) · `tests/project-rename.e2e.js` ②③ 에 formerNames 단언.
 
