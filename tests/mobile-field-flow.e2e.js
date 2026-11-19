@@ -179,7 +179,9 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(out.open === 0, '처음에는 모든 카테고리가 접혀 있어야 함: ' + out.open);
     assert(out.holdLast, '보류 묶음은 맨 아래에 접힌 채로 있어야 함');
     // v550 하단에서 빠진 대시보드·내 업무가 바로가기 맨 앞에 들어와(6→8개) 바로가기가 한 줄 늘었다(약 +90px). 다 펼치면 수천 px 라 이 기준은 여전히 '접힘'을 가른다.
-    assert(out.scrollHeight < 1150, '처음부터 전체 108개가 펼쳐져 너무 김: ' + out.scrollHeight + 'px');
+    // v612 맨 아래 접힌 ⏸ 보류 묶음 한 줄(약 +58px)과 '견적 작성' 바로가기 설명 한 줄(약 +35px)이 늘었다 — 1150 → 1250.
+    // 폰 390 실측(로컬 크로미움): v611 접힘 1070 · v612 접힘 1163 · 분류를 다 펼치면 약 7,000px 라 1250 도 '접힘'만 통과한다.
+    assert(out.scrollHeight < 1250, '처음부터 전체 108개가 펼쳐져 너무 김: ' + out.scrollHeight + 'px');
     assert(out.summarySmall === 0 && out.searchH >= 44, '카테고리·검색도 44px 터치 높이를 지켜야 함');
 
     await page.locator('details[data-cat="site"] summary').click();
