@@ -23,7 +23,7 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
 4. **관리사무소 접수 분리는 대표가 새 Apps Script 프로젝트를 만들고 중계에 `OFFICE_INTAKE_MODE`·`OFFICE_INTAKE_STORE_ID` 속성을 넣기 전까지 아무것도 바뀌지 않는다**(중계 OfficeIntake.gs 를 새 판으로 바꿔 넣어도 동작 같음). 순서·되돌리기는 `docs/office-intake-split-20261119.md`(값 없음). 만물웹 office-api.json 주소 교체는 대표가 새 /exec 주소를 준 뒤 manmool PR.
    **보호 서버 파일 변경**: 이 판은 보호 경로 `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md` 를 바꾸고 격리 검사(`office-ops-server-isolation.check.js`)에 승인 지문(SHA-256)을 같은 갈래에서 넣었다 —
    근거는 11/19 번호 목록 항목 32뿐이다. **PR 설명에 따로 드러내고 대표의 명시 승인을 받은 뒤 병합하라. 승인 전에는 운영 중계에 붙여 넣지 않는다**(docs '준비' 앞에 한 줄).
-5. 배포 뒤 PC 앱 왼쪽 현장 목록의 [🧹 단계 정리 n곳]은 대표가 직접 보고 반영한다 — 자동 반영 없음. 반영 전에 `scratchpad/out/stage_preview_v612fix.md`(검토 뒤 규칙의 실자료 표)를 대표에게 보여 준다.
+5. 배포 뒤 PC 앱 왼쪽 현장 목록의 [🧹 단계 정리 n곳]은 대표가 직접 보고 반영한다 — 자동 반영 없음. 반영 전에 `scratchpad/out/stage_preview_v613.md`(검토 뒤 규칙의 실자료 표 — v613 병합 트리로 다시 계산, v612fix 표와 같음)를 대표에게 보여 준다.
 
 **입구 갈래(11·12) — 🔧 웹 업무 연결 A/S·하자 → 고른 현장 AS 관리 · 📣 누수 접수 링크를 만물웹으로 · 공개 페이지 noindex**
 - A/S 약속(현장웹·만물웹 공통, 바꾸지 마라): 만물웹 `<option value="A/S">A/S·하자 (시공했던 집)</option>` — 값에 '·' 가 없어 메일 '공간' 줄 첫 칸이 정확히 'A/S'(webWorkClassify 가 ' · ' 로 나눔).
@@ -103,7 +103,8 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
   폰 현장 시트 `#psStageTidy` — 이 둘은 체크해 둘 제안(on)이 있을 때만. 💤 방치 현장 창 `#stpStageTidy`(`hjStageTidyCounts` — **제안이 하나라도 있으면**, '2곳 (+확인 2곳)'·'— 확인할 제안 n곳') ·
   기능 찾기 `HJ_ACTIONS` '현장 단계 정리' — 한 번 반영해 on 이 0 이 된 뒤에도 남은 제안으로 돌아오는 길. 직원 모드·데모는 0. (방치 현장이 0곳이면 그 창에는 입구가 없다 — 기능 찾기로.)
 - 실자료(11/18 사본, 읽기만, 검토 뒤 규칙): 단계 0 진행 현장 67곳 → 미리 체크 19곳(준공일 = 마지막 작업일, 13개 날짜 9/1~11/11 · 예전 규칙이면 입금일까지 0~71일 늦음) · 체크 끈 제안 25곳 · 뺀 현장 23곳.
-  체크 끈 25곳에는 일부 입금·미입금·작업만 현장이 들어 있다(분석 WA6 '입금까지 끝난 현장'보다 넓다 — 체크는 꺼 둠). 표: 저장소 밖 `scratchpad/out/stage_preview_v612fix.md`.
+  체크 끈 25곳에는 일부 입금·미입금·작업만 현장이 들어 있다(분석 WA6 '입금까지 끝난 현장'보다 넓다 — 체크는 꺼 둠). 표: 저장소 밖 `scratchpad/out/stage_preview_v613.md`.
+  **v613(사진 ZIP v612 병합 뒤)**: v612 가 보관한 사진은 앱 기록(구글 사본 기록 — 종류·촬영일시·현장·작업명 그대로)으로 남아 위 '작업 공정 사진'으로 그대로 잡힌다. `hjPzArchivedEach`(v611 요약 days/labels)는 v612 가 옛 원본 ZIP 을 되살리기 전까지만 남는다(되살리는 같은 저장에서 days 를 뺀다 — 두 번 안 셈). 실자료 사본(현장 요약 photoArchive 0곳)으로 다시 계산 = 같은 결과(19·25·23, 제안 JSON 똑같음). 합성으로 그 사본의 '작업 사진' 근거 현장 22곳 사진 737장을 v612 보관 꼴로 바꿔도 제안이 똑같다.
 
 **관리사무소 갈래(32·17) — 관리사무소 접수를 별도 Apps Script 프로젝트로 나눌 스위치 · 포털 소스 옛 판 표시**
 - 관리사무소 접수(공개 action officeLogin·officeList·officeGet·officeCreate·officeUpdate·officeCancel·officeUpload·officePhoto)를 별도 Apps Script 프로젝트로 나눌 수 있게 했다(배포·잠금·실행 시간 분리). 앱(index.html) 무변경.
@@ -143,6 +144,9 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
   office-ops-server-isolation 의 새 SHA-256 핀 두 개는 LF 본문 해시로 따로 맞춰 봤다. e2e 는 설치된 Chrome 을 CDP 로 모는 임시 대역(저장소 밖)으로: 새 e2e 4개 26/26 · web-work-bridge · leakintakeweb-v431 · claudecmds-v529 · sitecmd-v604 · pages-artifact ·
   operations-review · darkfix-v399 · consultquote-v384 · mobile-more-tools · menu-integrity · action-search · mobile-more-sweep · donemany-v381 · donedate-v380 · app-version · mobile-list 통과, mobile-field-flow ②③★ 통과.
   대역에서만 떨어지는 것(v611 기준선에서도 똑같음 — 대역 탓): mobile-field-flow ①(카메라 시트) · demofix-v554 ②(대역 크롬의 스크롤바 15px). **진짜 판정은 PR 뒤 CI 전체 회귀**.
+- **v613 병합 트리 로컬(11/19, 같은 Windows·대역)**: `*.check`+`*.unit` 57개 중 54 통과 — 실패 3 은 위와 같은 환경 문제(mutation-anchors 는 대역을 NODE_PATH 로 주면 검사 53개·기준 글 437곳 통과 · office-ops-server-isolation 은 보호 파일 두 개 LF SHA-256 = 지금 핀, AGENTS 단언 따로 통과 · sri 는 LF fixture 로 통과).
+  대역 e2e: 새 e2e 4개 26/26 · photozip-v612 8/8(LF fixture·python3 zipfile) · reviewfix-v387 7/7(시계 고정 줄 포함) · menu-integrity 8/8 · action-search 10/10 · app-version 8/8 · stmtphoto-v568 5/5 · unbilled-v566 6/6 · photo-tools-select · healthline-v524 4/4 통과.
+  대역에서 떨어지는 것은 기준선 둘(05616db · origin/main 7787c66 을 같은 8299 에 띄움)에서도 같은 곳: mobile-field-flow ①(카메라 시트 4개) · mobile-more-sweep 세 번째 판(폰 모드 768 form close timeout) · folderguard-v532(stale appState). **진짜 판정은 PR 뒤 CI 전체 회귀**.
 - 대표 확인 대기: ① A/S 접수일 = 붙여 넣은 날(보증 판정 기준) ② 웹 A/S 는 현장 고객 칸(전화)을 채우지 않음 ③ 누수 '다른 원인'이면 그 메일은 접수되지 않고 새 현장 제안으로 ④ 접수함 승인 메모에 현장 이름
   ⑤ 접수함 로그인은 창 메모리에만(검토 뒤 — 같은 출처 만물웹 페이지가 IDB 를 읽을 수 있어서) → 앱을 새로 열 때마다 관리 비밀번호로 다시 로그인
   ⑥ 처음 보류 13개 목록(☁ 팀 공유 할일 포함)·보류 설정은 기기별 ⑦ cw_calsync·cw_stmt·cw_month 는 남기고 cw_photoassign ↔ '확인필요 정리' 판정 · cw_month 와 관리 프로그램 「월간 정리」 중 어느 쪽을 쓸지(현장별 손익이 겹침, cw_month 예약이 켜져 있음)

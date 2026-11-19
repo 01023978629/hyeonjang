@@ -183,7 +183,7 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
     {const {context,page}=await boot({teamConfigured:false,relay:false});
       const calls=mock.calls.length;
       await openMyWork(page);await page.locator('#myWork').waitFor();
-      // v612 18 — 직원 작업실 서버가 없으면 보류 묶음 규칙대로 '🏢 직원 작업실' 줄 자체가 없다(더보기 ⏸ 보류에서 연다)
+      // v613 18 — 직원 작업실 서버가 없으면 보류 묶음 규칙대로 '🏢 직원 작업실' 줄 자체가 없다(더보기 ⏸ 보류에서 연다)
       await page.waitForFunction(()=>__hjMyWork.team==='off');
       assert.equal(await page.locator('#myWork [data-mw-teamh]').count()+await page.locator('#mwTeam').count(),0,'⑦ 직원 작업실 미설정(보류)이면 그 줄이 없음');
       assert.equal(await page.locator('#mwTeamOpen').count(),0,'⑦ 직원 작업실 미설정이면 링크 없음');

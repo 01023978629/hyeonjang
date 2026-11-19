@@ -16,7 +16,7 @@ const publicFiles = ['.nojekyll', 'index.html', 'media-safety.js', 'shared-todo-
   'manifest.webmanifest', 'operations-review.js', 'team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js', 'team-upload.js',
   'bathroom-defaults.json', 'bathroom.html', 'bathroom.css', 'bathroom-model.js', 'bathroom.js', 'bathroom-warm.webp', 'bathroom-white.webp', 'bathroom-gray.webp',
   'leak.html'];   // v431 공개 누수 접수 — sw.js 셸 목록에는 넣지 않는다(앱 셸 아님)
-// v612 손님용 누수 접수는 만물웹 leak.html 하나 — 현장 앱 leak.html 은 '홈페이지로 옮겼어요' 안내(noindex, 스크립트·스타일 파일 없음)만 남았다.
+// v613 손님용 누수 접수는 만물웹 leak.html 하나 — 현장 앱 leak.html 은 '홈페이지로 옮겼어요' 안내(noindex, 스크립트·스타일 파일 없음)만 남았다.
 //      옛 접수 화면 leak.js·leak.css 는 저장소에 남겨 두되(지우지 않음) 더는 공개하지 않는다. 다시 공개하려면 이 목록과 pages-artifact 검사를 함께 고쳐라.
 await mkdir(output, { recursive: false });
 for (const rel of publicFiles) {

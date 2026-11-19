@@ -1,9 +1,9 @@
-/* v612 📬 홈페이지 문의 접수함 당겨오기(대표 정리 항목 28) — 만물웹 apps-script-lead-inbox 서버에서 문의를 당겨 📥 웹 업무 연결의 같은 미리보기·등록 흐름으로.
+/* v613 📬 홈페이지 문의 접수함 당겨오기(대표 정리 항목 28) — 만물웹 apps-script-lead-inbox 서버에서 문의를 당겨 📥 웹 업무 연결의 같은 미리보기·등록 흐름으로.
    실제 앱 코드(index.html 의 웹 업무 연결 구역 + '📬 문의 접수함 당겨오기' 구역 통째)를 vm 에서 돌린다 — 가짜 접수함 서버(fetch)·가짜 IndexedDB·작은 가짜 화면,
    합성 자료만, 브라우저·바깥 요청 없음. 서버 문의 줄의 message 는 만물웹 97c4d0b js/lead-transport.js buildLeadText → LeadInboxPure.gs 정규화를 실제로 돌려 얻은 그대로.
    ① GUARD     주소가 없으면 큰 단추 대신 한 줄 안내와 작은 [켜는 법](누르면 '설정에서 넣어 주세요' 안내만 — 요청·창 0) · 주소 검사(script.google.com /exec 만) · 주소를 바꾸면 옛 세션을 버린다
    ② LOGIN     관리 비밀번호는 leadLogin 요청 본문 한 곳에만 — 이 기기 저장소(IndexedDB)·state·직렬화 자료 어디에도 없다 · 세션 {token,expiresAt}은 이 창 메모리에만
-               (현장웹·만물웹이 같은 출처라 IDB·웹 저장소는 만물웹 페이지도 읽는다 — v612 검토) · 형식 틀리면 요청 없음 ·
+               (현장웹·만물웹이 같은 출처라 IDB·웹 저장소는 만물웹 페이지도 읽는다 — v613 검토) · 형식 틀리면 요청 없음 ·
                이상한 응답(짧은 토큰·9시간 넘는 만료)은 받지 않음 · 부팅 때 세션을 이어 쓰지 않고 예전 개발판의 IDB 세션은 지운다 · 로그인 창에 보낼 곳(배포 ID 끝 6자리)
    ③ LIST      leadList 요청 꼴(POST text/plain · credentials omit · sessionToken) · 문의 줄 정리(잘못된 ID 버림) · 본문 = message + '접수번호' 줄
                (만물웹 접수함 '앱에 붙여넣을 본문 복사'와 같은 글) → 메일 붙여넣기와 같은 중복 ID · 인테리어·누수·관리사무소·A/S 본문이 모두 읽힌다
@@ -30,7 +30,7 @@ let source = process.env.HJ_V612L_BASELINE
   : fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'store-password': ["  const result=await leadInboxPost('leadLogin',{adminCode:code},false);", "  await idbSet('lead_inbox_code',code);const result=await leadInboxPost('leadLogin',{adminCode:code},false);"],
-  'no-approve': ["    try{if(draft.via&&typeof leadInboxAfterRegister==='function')leadInboxAfterRegister(draft.via,projectName,'site');}catch(e){}   // v612 저장이 끝난 뒤에만 접수함에 '승인'\n", ''],
+  'no-approve': ["    try{if(draft.via&&typeof leadInboxAfterRegister==='function')leadInboxAfterRegister(draft.via,projectName,'site');}catch(e){}   // v613 저장이 끝난 뒤에만 접수함에 '승인'\n", ''],
   'new-request-id': ["if(!LEAD_INBOX_UUID_RE.test(String(requestId||''))){requestId=leadInboxUuid();__leadInbox.req[key]=requestId;}", "{requestId=leadInboxUuid();__leadInbox.req[key]=requestId;}"],
   'register-rejected': ["function leadInboxRegisterAllowed(via){const status=leadInboxStatusOf(via);return status==='신규'||status==='보류'||status==='승인';}", 'function leadInboxRegisterAllowed(via){return true;}'],
   'store-session': ["  __leadInbox.session=session;__leadInbox.statusById={};", "  __leadInbox.session=session;__leadInbox.statusById={};await idbSet('lead_inbox_session',{token:session.token,expiresAt:session.expiresAt});"],

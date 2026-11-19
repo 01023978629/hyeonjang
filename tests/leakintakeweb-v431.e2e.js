@@ -1,6 +1,6 @@
 /* v431 공개 누수 접수 페이지(leak.html) + 앱 붙여넣기 파서 — 합성 레코드만. 외부 쓰기·업로드 0.
    HJ_V431_BASELINE=<commit> 은 LEAKWEB_API_PRESENT 에서, HJ_V431_MUTATION=keymap(파서 키 매핑 제거) 은 LEAKWEB_PARSE_FIELDS 에서 실패해야 한다.
-   v612 손님용 누수 접수는 만물웹 leak.html 하나 — 현장 앱 leak.html 은 '홈페이지로 옮겼어요' 안내(noindex)만, 광고 탭 링크·소개글은 만물웹 주소와 그 폼에 맞춘다.
+   v613 손님용 누수 접수는 만물웹 leak.html 하나 — 현장 앱 leak.html 은 '홈페이지로 옮겼어요' 안내(noindex)만, 광고 탭 링크·소개글은 만물웹 주소와 그 폼에 맞춘다.
    옛 형식 '[누수접수]' 문자 파서·붙여넣기·공유 받기는 그대로(옛 링크로 문자가 아직 올 수 있다) — 아래 파서·붙여넣기 검사는 예전 그대로다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -39,10 +39,10 @@ let browser, passed = 0, page;
     await p.screenshot({ path: path.join(process.env.HJ_V431_SHOTS, name + '.png'), fullPage: false, animations: 'disabled' });
   }
 
-  // ── 공개 페이지 (v612: 만물웹 leak.html 로 옮겼다는 안내만 — 체크리스트·문자 만들기 화면은 떼었다) ─────────────
+  // ── 공개 페이지 (v613: 만물웹 leak.html 로 옮겼다는 안내만 — 체크리스트·문자 만들기 화면은 떼었다) ─────────────
   const pub = await context.newPage(); pub.setDefaultTimeout(15000); pub.on('pageerror', e => errors.push('leak.html: ' + e));
   await pub.goto(PAGE, { waitUntil: 'load' });
-  await test('public page (v612): moved notice → manmool leak.html, noindex, no scripts or forms, no price, 44px, no overflow', async () => {
+  await test('public page (v613): moved notice → manmool leak.html, noindex, no scripts or forms, no price, 44px, no overflow', async () => {
     const r = await pub.evaluate(() => ({
       robots: (document.querySelector('meta[name=robots]') || {}).content || '', go: (document.querySelector('#leakGo[data-leak-moved]') || {}).href || '',
       scripts: document.scripts.length, sheets: document.querySelectorAll('link[rel~=stylesheet]').length, forms: document.forms.length, inputs: document.querySelectorAll('input,textarea,select').length,
@@ -177,13 +177,13 @@ let browser, passed = 0, page;
     await seed(); const before = await snapshot();
     await page.evaluate(() => { state.tab = 'ads'; render(); }); await page.locator('[data-leakweb]').waitFor();
     const card = await page.locator('[data-leakweb]').innerText();
-    assert.match(card, /manmool\/leak\.html/, 'v612 the card shows the manmool leak page'); assert.doesNotMatch(card, /hyeonjang\/leak\.html/); await tapOk(page, '[data-leakwebcopy]');
-    assert.match(await page.locator('[data-leakweb-route]').innerText(), /웹 업무 연결/, 'v612 the card says where that form arrives (mail → 📥 웹 업무 연결)');
+    assert.match(card, /manmool\/leak\.html/, 'v613 the card shows the manmool leak page'); assert.doesNotMatch(card, /hyeonjang\/leak\.html/); await tapOk(page, '[data-leakwebcopy]');
+    assert.match(await page.locator('[data-leakweb-route]').innerText(), /웹 업무 연결/, 'v613 the card says where that form arrives (mail → 📥 웹 업무 연결)');
     assert.equal(await page.locator('[data-leakweb] a.hjAdLink').getAttribute('href'), 'https://01023978629.github.io/manmool/leak.html');
     await page.locator('[data-leakwebcopy="intro"]').click(); await page.waitForFunction(() => __v431Calls.copied.length === 1);
     const intro = await page.evaluate(() => __v431Calls.copied[0]);
     assert(!/010[-\s.]?\d{3,4}[-\s.]?\d{4}/.test(intro.replace(/https?:\/\/\S+/g, '')), 'intro text carries no phone number'); assert.match(intro, /\nhttps:\/\/01023978629\.github\.io\/manmool\/leak\.html$/); assert(!/\d\s*원|최저가/.test(intro));
-    // v612 소개글은 만물웹 폼이 받는 그대로 — 연락처·증상, 사진은 회신 때 문자로. 옛 현장 앱 페이지 안내(증상 여섯 가지·사진 두 장 문자로)와 동·호수·협력사 이름은 없다.
+    // v613 소개글은 만물웹 폼이 받는 그대로 — 연락처·증상, 사진은 회신 때 문자로. 옛 현장 앱 페이지 안내(증상 여섯 가지·사진 두 장 문자로)와 동·호수·협력사 이름은 없다.
     assert.match(intro, /연락처/); assert.match(intro, /증상/); assert.match(intro, /사진은 회신드릴 때 문자로/);
     assert.doesNotMatch(intro, /여섯 가지|사진 두 장|두 장만|문자로 보내 주세요|체크하고/, 'no old hyeonjang leak page wording');
     assert.doesNotMatch(intro.replace(/https?:\/\/\S+/g, ''), /\d[\d,]*\s*원|만\s*원|\d+\s*동\s*\d+\s*호|\d+\s*호|협력/, 'no unit numbers, amounts or partner names');
@@ -193,7 +193,7 @@ let browser, passed = 0, page;
     sameSnapshot(await snapshot(), before);
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), shell = sw.match(/const SHELL_PATHS=new Set\(\[([\s\S]*?)\]\);/)[1];
     assert(!/leak\./.test(shell), 'leak page is not an app shell asset'); assert.equal((shell.match(/SCOPE_PATH/g) || []).length, 13, 'shell list unchanged');
-    // v612 Pages 에는 안내 페이지 leak.html 만 — 옛 접수 화면 leak.css·leak.js 는 저장소에만 남는다
+    // v613 Pages 에는 안내 페이지 leak.html 만 — 옛 접수 화면 leak.css·leak.js 는 저장소에만 남는다
     const stage = fs.readFileSync(path.join(ROOT, 'scripts', 'stage-pages.mjs'), 'utf8'), publicList = (stage.match(/const publicFiles = \[([\s\S]*?)\];/) || [])[1] || '';
     assert(publicList.includes("'leak.html'"), 'leak.html (moved notice) staged to Pages');
     for (const f of ['leak.css', 'leak.js']) { assert(!publicList.includes("'" + f + "'"), f + ' is no longer staged'); assert(fs.existsSync(path.join(ROOT, f)), f + ' kept in the repo'); }

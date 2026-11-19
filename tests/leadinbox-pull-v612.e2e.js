@@ -1,4 +1,4 @@
-/* v612 📬 홈페이지 문의 접수함 당겨오기 — 진짜 화면(폰 390)·진짜 안전판·진짜 이 기기 저장, 접수함 서버만 가짜(route 로 script.google.com 응답). 합성 자료, 바깥 쓰기 0.
+/* v613 📬 홈페이지 문의 접수함 당겨오기 — 진짜 화면(폰 390)·진짜 안전판·진짜 이 기기 저장, 접수함 서버만 가짜(route 로 script.google.com 응답). 합성 자료, 바깥 쓰기 0.
    ① NOURL     주소가 없으면 큰 단추 없이 한 줄 안내 + 작은 [켜는 법](누르면 '설정에서 넣어 주세요' 안내만 — 요청 0·자료 그대로) → ⚙️ 설정 › ⭐ 기타 칸: 틀린 주소 거절 · 맞는 주소는 이 기기 IDB 에만
    ② PULL      로그인 창(type=password) → 틀린 비밀번호(칸 비움·안내) → 맞는 비밀번호 → 목록(폰 넘침 0·44px) → [📥 열어서 등록] → 미리보기(접수함 칸·메모) →
                [현장으로 등록] → 안전판·이 기기 저장 뒤 leadDecide '승인'(메모·requestId) · 현장 source lead-inbox·접수번호 · 등록한 문의는 '앱에 등록됨'
@@ -7,7 +7,7 @@
    ⑤ DECIDE    보류 문의 거절: 사유 없으면 요청 없음 → 사유 넣으면 거절·목록으로
    ⑥ EXPIRED   서버 세션이 끝나면 [새로고침] → 로그인 창 '만료' · 메모리 세션 지움
    ⑦ PRIVACY   관리 비밀번호는 leadLogin 요청 본문 한 곳에만 — localStorage·sessionStorage·IndexedDB 모든 값·직렬화 자료·화면 어디에도 없다 ·
-               세션 토큰은 이 창 메모리에만 — IndexedDB·localStorage·sessionStorage·직렬화 자료에 없음(현장웹·만물웹이 같은 출처 — v612 검토) · 바깥 쓰기는 가짜 접수함 주소뿐 · 페이지 오류 0
+               세션 토큰은 이 창 메모리에만 — IndexedDB·localStorage·sessionStorage·직렬화 자료에 없음(현장웹·만물웹이 같은 출처 — v613 검토) · 바깥 쓰기는 가짜 접수함 주소뿐 · 페이지 오류 0
    HJ_V612L_BASELINE=<commit> 은 ① 에서 실패해야 한다(기준선 5a87511 에는 접수함 버튼이 없다). */
 'use strict';
 const assert = require('node:assert/strict');

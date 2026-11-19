@@ -164,7 +164,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const out = await page.evaluate(() => {
       openMoreSheetV2();
       const sheet = document.getElementById('moreSheet');
-      // v612 맨 아래 ⏸ 보류 묶음(details.more-hold)은 분류가 아니다 — 따로 센다(접힌 채로 시작)
+      // v613 맨 아래 ⏸ 보류 묶음(details.more-hold)은 분류가 아니다 — 따로 센다(접힌 채로 시작)
       const details = [...sheet.querySelectorAll('details.more-cat-block:not(.more-hold)')], hold = sheet.querySelector('details.more-hold');
       const summarySmall = details.map(d => d.querySelector('summary').getBoundingClientRect().height).filter(h => h < 44).length;
       // 보류 묶음 한 줄이 차지하는 높이 = 바로 앞 분류의 아래 끝 → 보류 줄 아래 끝(사이 간격 포함)
@@ -181,7 +181,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(out.open === 0, '처음에는 모든 카테고리가 접혀 있어야 함: ' + out.open);
     assert(out.holdLast, '보류 묶음은 맨 아래에 접힌 채로 있어야 함');
     // v550 하단에서 빠진 대시보드·내 업무가 바로가기 맨 앞에 들어와(6→8개) 바로가기가 한 줄 늘었다(약 +90px). 다 펼치면 수천 px 라 이 기준은 여전히 '접힘'을 가른다.
-    // v612 맨 아래 접힌 ⏸ 보류 묶음 한 줄이 더해졌다 — 기준(1150)은 그대로 두고 보류 줄은 따로 잰다(늘어난 원인별로 지킨다 · CI 글꼴 차이에 덜 흔들림).
+    // v613 맨 아래 접힌 ⏸ 보류 묶음 한 줄이 더해졌다 — 기준(1150)은 그대로 두고 보류 줄은 따로 잰다(늘어난 원인별로 지킨다 · CI 글꼴 차이에 덜 흔들림).
     //   보류 줄은 접힌 한 줄이어야 하고(< 90px), 나머지(분류·바로가기·검색)는 예전 기준 1150 안. '견적 작성' 바로가기 설명은 한 줄로 줄였다.
     assert(out.holdBlock > 0 && out.holdBlock < 90, '보류 묶음은 접힌 한 줄이어야 함: ' + out.holdBlock + 'px');
     assert(out.scrollHeight - out.holdBlock < 1150, '처음부터 전체 108개가 펼쳐져 너무 김: ' + out.scrollHeight + 'px (보류 줄 ' + out.holdBlock + 'px 제외)');

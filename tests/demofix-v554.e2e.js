@@ -5,7 +5,7 @@
    ③ 실제 자료가 있는 기기의 확인창 문구 '가상 현장 N곳' 의 N = HJ_DEMO_PROJECT_COUNT = 데모 시드 현장 수(4) — "3곳"으로 남아 있던 문구 (COUNT)
    ④ 데모 '견적 작성' 2건(시드 현장에 연결) → 견적 협상·유사 견적·계약 검토·공정표 생성이 토스트 대신 창을 연다 · 파일 수 17 그대로(가상 견적 파일 없음) · 토스트에 '견적 작성 2건' (QUOTES)
    ⑤ leak.html 폰 390: 모든 .chip 이 44×44 이상(한 글자 '벽' 칩이 42.9px 였다 — leakintakeweb-v431 의 실패 원인) (CHIP)
-      v612 부터 leak.html 은 만물웹으로 옮겼다는 안내 페이지(칩 없음) — 그 페이지의 누르는 것(링크) 전부 44×44 이상으로 같은 뜻을 지킨다. leak.css 의 칩 규칙은 파일에 그대로 남는다.
+      v613 부터 leak.html 은 만물웹으로 옮겼다는 안내 페이지(칩 없음) — 그 페이지의 누르는 것(링크) 전부 44×44 이상으로 같은 뜻을 지킨다. leak.css 의 칩 규칙은 파일에 그대로 남는다.
    ⑥ 소스·핀 3곳(v554 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0
    HJ_V554_BASELINE=<commit> 은 ① 에서, HJ_V554_MUTATION=timer(persistLocal 타이머의 데모 가드 삭제)는 ① 에서 실패해야 한다. */
 'use strict';
@@ -130,7 +130,7 @@ const headerState = page => page.evaluate(() => {
     await ph.waitForFunction(() => !document.querySelector('#modalRoot .modal'));
   });
 
-  await test('⑤ leak.html 폰 390: 누르는 것 전부 44×44 이상 (CHIP — v612 안내 페이지는 칩 대신 링크)', async () => {
+  await test('⑤ leak.html 폰 390: 누르는 것 전부 44×44 이상 (CHIP — v613 안내 페이지는 칩 대신 링크)', async () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, serviceWorkers: 'block', timezoneId: 'Asia/Seoul' });
     const page = await context.newPage(); page.on('pageerror', e => errors.push(String(e)));
     await context.route('**/*', route => new URL(route.request().url()).origin === ORIGIN && route.request().method() === 'GET' ? route.continue() : route.abort('blockedbyclient'));

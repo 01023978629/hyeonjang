@@ -20,7 +20,7 @@ const out = path.join(temp, '_site');
 // 2026-10-01 v333: team-upload.js — 직원 사진함의 영속 업로드 대기열(HEIC·동영상·실패 후 재시도). team.html 이 부른다.
 // v416: manifest.webmanifest는 설치·공유대상 선언뿐이며 수신 원본/DB는 공개 산출물에 넣지 않는다.
 // v418: 익명 표준품목 집계 단가표만 공개한다. 고객별 초안/사진/원본 견적은 배포하지 않는다.
-// v612: 누수 접수는 만물웹 leak.html 로 옮겼다 — leak.html 은 안내(noindex)만, 옛 접수 화면 leak.js·leak.css 는 저장소에만 남고 공개하지 않는다.
+// v613: 누수 접수는 만물웹 leak.html 로 옮겼다 — leak.html 은 안내(noindex)만, 옛 접수 화면 leak.js·leak.css 는 저장소에만 남고 공개하지 않는다.
 const expected = ['.nojekyll', 'apple-touch-icon.png', 'bathroom-defaults.json', 'bathroom-gray.webp', 'bathroom-model.js', 'bathroom-warm.webp', 'bathroom-white.webp', 'bathroom.css', 'bathroom.html', 'bathroom.js', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
   'index.html', 'leak.html', 'manifest.webmanifest', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team-upload.js', 'team.html', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
@@ -440,7 +440,7 @@ try {
     assert(teamHtml.includes('<script defer src="'+name+'"></script>'),'직원 페이지 모듈 연결 누락: '+name);
     assert(fs.readFileSync(path.join(out,name),'utf8')===fs.readFileSync(path.join(root,name),'utf8'),'직원 모듈 원본 불일치: '+name);
   }
-  // v612: 공개 주소에 있는 내부·안내 페이지(욕실 상담 계산기 bathroom.html · 누수 이동 안내 leak.html)도 검색에서 뺀다 — 손님용 공개 페이지는 만물웹.
+  // v613: 공개 주소에 있는 내부·안내 페이지(욕실 상담 계산기 bathroom.html · 누수 이동 안내 leak.html)도 검색에서 뺀다 — 손님용 공개 페이지는 만물웹.
   for (const pageName of ['index.html', 'privacy.html', 'terms.html','team.html','bathroom.html','leak.html']) {
     const sourceHtml = fs.readFileSync(path.join(root, pageName), 'utf8');
     const stagedHtml = fs.readFileSync(path.join(out, pageName), 'utf8');
@@ -453,7 +453,7 @@ try {
       pageName + ' noindex 제거 변이를 거절해야 한다'
     );
   }
-  // v612: 누수 안내 페이지는 바깥 스크립트·스타일 파일을 부르지 않는다(공개하지 않는 leak.js·leak.css 를 가리키면 404) — 두 파일은 저장소에 남는다.
+  // v613: 누수 안내 페이지는 바깥 스크립트·스타일 파일을 부르지 않는다(공개하지 않는 leak.js·leak.css 를 가리키면 404) — 두 파일은 저장소에 남는다.
   const stagedLeak = fs.readFileSync(path.join(out, 'leak.html'), 'utf8');
   assert(!/<script\b[^>]*\bsrc\s*=|<link\b[^>]*\bstylesheet\b/i.test(stagedLeak), 'leak.html 이 바깥 스크립트·스타일 파일을 부른다');
   assert(stagedLeak.includes('href="https://01023978629.github.io/manmool/leak.html"'), 'leak.html 이 만물웹 누수 페이지로 보내지 않는다');

@@ -31,7 +31,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   page.on('pageerror', e => errs.push(String(e)));
   page.on('dialog', d => d.accept());
   await page.route('https://**/*', route => route.abort());
-  await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_more_hold', JSON.stringify({ show: ['quotenew'] })); /* v612 새 견적 작성은 보류가 기본 — 이 검사는 다시 보이게 한(그 길을 쓰는) 상태의 흐름을 본다 · 보류 안내는 hold-v612 */ } catch (e) {} });
+  await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_more_hold', JSON.stringify({ show: ['quotenew'] })); /* v613 새 견적 작성은 보류가 기본 — 이 검사는 다시 보이게 한(그 길을 쓰는) 상태의 흐름을 본다 · 보류 안내는 hold-v612 */ } catch (e) {} });
   await page.clock.setFixedTime(new Date('2026-11-05T10:00:00+09:00'));   // 시계도 11/5 로 — localDate 만 고정하면 실제 시계로 세는 staleProjectData(R4 '14일 방치')가 11/19 부터 떨어졌다
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1400);
