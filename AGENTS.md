@@ -3,21 +3,22 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
-## 2026-11-19 v612 정리 묶음 — 📥 웹 업무 연결 A/S·📬 접수함 당겨오기 · 📣 누수 접수 링크를 만물웹으로 · ⏸ 보류 묶음 · 🧹 현장 단계 한 번에 정리 · 🏢 관리사무소 접수 분리 스위치
+## 2026-11-19 v613 정리 묶음 — 📥 웹 업무 연결 A/S·📬 접수함 당겨오기 · 📣 누수 접수 링크를 만물웹으로 · ⏸ 보류 묶음 · 🧹 현장 단계 한 번에 정리 · 🏢 관리사무소 접수 분리 스위치
 
 대표 지시(11/19 세 시스템 정리 목록 "8,11,12,14,16,17,18,20,21,22,23,24,25,26,27,28,29,30,32,33,38") 중 **현장웹 몫 = 11·12·14·17·18·22·23·24·28·32**. 나머지 번호는 이 판에 없다(만물웹·감시웹 쪽 일).
 네 갈래(`claude/hj-intake` 11·12·28 · `claude/hj-hide` 23·14·18·22 · `claude/hj-stage` 24 · `claude/hj-office` 32·17)를 각각 origin/main(2c8160d, v611) 위에서 구현·새 검사·변이·기준선 실패 확인 →
 `claude/v612-tidy` 에서 차례로 `--no-ff` 병합(네 번 모두 자동 병합 — 충돌 없음) → 판 한 번. 분석 근거는 갈래마다 OV D6·D7 · AD DA5·DA6·DA7·DA18·WA2·WA3·WA5·WA6·WA20 · W5·W15·W17·D12.
-**핀** `hyeonjang-v612-tidy`(index.html `APP_BUILD` · sw.js `C` · tests/version-sync.check.js `TARGET_BUILD`).
+**v613 으로 올림(11/19)**: v612 번호는 main 의 🗜 사진 ZIP·구글 사본 판(`hyeonjang-v612-photozipdrive`, PR #222 · 7787c66)이 먼저 썼다 — 이 묶음을 그 위로 올렸다(`claude/v612-tidy` 에 origin/main 을 `--no-ff` 병합 · 충돌은 핀 셋·AGENTS·reviewfix-v387 init 한 줄뿐, 양쪽 다 살림). 새 검사 파일 이름은 `*-v612` 그대로.
+**핀** `hyeonjang-v613-tidy`(index.html `APP_BUILD` · sw.js `C` · tests/version-sync.check.js `TARGET_BUILD`).
 **저장**: 새 최상위 저장 키 없음(직렬화 42개 그대로 — serialized-keys). 기록 안 칸만 — AS 기록 `sourceInquiryId`·`sourceReceiptNo`, 현장 `source:'lead-inbox'` 값, 현장 `stage`·`doneAt`·`doneAtPrev`(있던 칸).
 **이 기기에만**(state·serializeData·안전판·동기화 밖): IDB `lead_inbox_url` · localStorage `hj_more_hold` · 접수함 세션은 **창 메모리에만**(`__leadInbox.session`, 검토 뒤 — 아래 접수함 갈래).
 AI_TOOLS·SAFE_AUTO·MORE_CATS(126칸) 무변경, 고객 발송 없음. 바깥 요청은 대표가 [📬 접수함에서 가져오기]를 누를 때 만물웹 접수함(Apps Script)으로만, 부팅 때 같은 출처 `./team-config.js` 한 번(GET).
 apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스위치 — 속성이 없으면 중계는 예전과 한 글자도 다르지 않다) + 새 source-only `apps-script-office-intake/`. Code.gs 무변경.
 
 **배포 순서(바꾸지 마라)**
-1. 현장웹 v612(이 판) Pages 배포가 먼저. 대표가 붙여 넣거나 바꿀 서버 설정은 없다.
-2. **만물웹 상담 폼 '공간 유형' A/S 선택지는 현장웹 v612 배포가 끝나고, 대표 PC·폰 앱의 판 번호가 `v612-tidy` 로 바뀐 것을 확인한 뒤**(⚙️ 설정의 판 번호 —
-   새로고침해야 바뀐다) — 반대로 나가면 v611 이 남은 기기에서 A/S 메일 붙여넣기가 '공간 첫 항목' 오류.
+1. 현장웹 v613(이 판) Pages 배포가 먼저. 대표가 붙여 넣거나 바꿀 서버 설정은 없다.
+2. **만물웹 상담 폼 '공간 유형' A/S 선택지는 현장웹 v613 배포가 끝나고, 대표 PC·폰 앱의 판 번호가 `v613-tidy` 로 바뀐 것을 확인한 뒤**(⚙️ 설정의 판 번호 —
+   새로고침해야 바뀐다) — 반대로 나가면 v612(photozipdrive) 이하가 남은 기기에서 A/S 메일 붙여넣기가 '공간 첫 항목' 오류.
 3. 📬 접수함 당겨오기는 만물웹 접수함(apps-script-lead-inbox)을 대표가 배포하고 ⚙️ 설정 › ⭐ 기타에 /exec 주소를 기기마다 넣기 전까지 안내만 보인다(요청 0).
 4. **관리사무소 접수 분리는 대표가 새 Apps Script 프로젝트를 만들고 중계에 `OFFICE_INTAKE_MODE`·`OFFICE_INTAKE_STORE_ID` 속성을 넣기 전까지 아무것도 바뀌지 않는다**(중계 OfficeIntake.gs 를 새 판으로 바꿔 넣어도 동작 같음). 순서·되돌리기는 `docs/office-intake-split-20261119.md`(값 없음). 만물웹 office-api.json 주소 교체는 대표가 새 /exec 주소를 준 뒤 manmool PR.
    **보호 서버 파일 변경**: 이 판은 보호 경로 `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md` 를 바꾸고 격리 검사(`office-ops-server-isolation.check.js`)에 승인 지문(SHA-256)을 같은 갈래에서 넣었다 —
@@ -43,7 +44,7 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
 - 서버 계약(만물웹 97c4d0b apps-script-lead-inbox): POST text/plain JSON `{action,ts,payload[,sessionToken]}` → `{ok,…}`. leadLogin → `{sessionToken,expiresAt}`(8시간) · leadList `{status}` → `{leads,counts}`(상태별 200건) ·
   leadDecide `{leadId,decision,memo(거절 필수),requestId(UUID v4 멱등)}` · leadLogout. 전이 신규→승인·보류·거절 / 보류→승인·거절 / 거절→보류 / 승인 끝(`LEAD_INBOX_NEXT`). 오류 코드 → 쉬운 문구 `LEAD_INBOX_MESSAGES`.
 - **저장 위치(바꾸지 마라)**: 접수함 주소 IDB `lead_inbox_url`(`leadInboxUrlOk` — script.google.com 의 /exec 꼴만) — 이 기기에만. 서버 세션 `{token,expiresAt}`(8시간)은 **창 메모리 `__leadInbox.session` 에만**
-  (v612 검토: 현장웹 `01023978629.github.io/hyeonjang/` 과 만물웹 공개 사이트 `…/manmool/` 은 **같은 출처**라 IDB·localStorage 를 만물웹 쪽 페이지 스크립트도 읽을 수 있다 —
+  (v613 묶음 검토: 현장웹 `01023978629.github.io/hyeonjang/` 과 만물웹 공개 사이트 `…/manmool/` 은 **같은 출처**라 IDB·localStorage 를 만물웹 쪽 페이지 스크립트도 읽을 수 있다 —
   만물웹 lead-inbox.html 과 같은 규칙). 앱을 닫거나 새로고침하면 다시 로그인. `leadInboxBoot` 는 세션을 이어 쓰지 않고 예전 개발판이 남긴 IDB `lead_inbox_session` 을 지운다.
   로그인 창 `[data-lead-inbox-dest]` 에 비밀번호를 보낼 접수함 주소의 배포 ID 끝 6자리(`leadInboxUrlTail`) — 같은 출처 스크립트가 주소를 바꿔 두었는지 대표가 알아보게.
   관리 비밀번호는 입력 칸에서 읽자마자 비우고 로그인 요청 한 번에만 쓴다(어디에도 저장 안 함). 받은 목록(`__leadInbox.leads`)은 메모리에만 — 창을 닫거나 등록하면 버린다. 세션이 끝나면 `leadInboxForgetSession` 이 메모리 세션을 버리고 로그인 창.
@@ -155,7 +156,61 @@ apps-script: `apps-script/OfficeIntake.gs`·`README_APPS_SCRIPT.md`(속성 스�
   단계 1~2 현장 완료 제안·더보기 칸(기능 찾기 '현장 단계 정리'는 더함) · 아무 기능이나 접는 편집(지금은 [처음 보류로]만) · 일정 ⋯ 📋 작업지시·#lead= 수신부·📱 진행 공유·💬 셀프 견적은 보류 안 함(분석 DA7 이름 — 대표 확인 ⑭) ·
   옛 관리사무소접수.json 옮기기(지금 0건) · 보호 서버 파일의 이유 문장 중립화(승인 지문 필요 — ⑬) · 방치 현장 0곳일 때 그 창의 단계 정리 입구.
 
+## 2026-11-19 v612 🗜 한 달 지난 현장 사진 — PC 에는 줄인 사진 ZIP, 앱(폰·PC)에서는 구글 서버 사본 (v611 바꿈)
+
+대표 지시(11/19 "Pc에서는 압축 관리하고 구글서버에는 사진 자료가 올라왔게해서 pc에서만 용량을 주릴 수 있게해줘"). 물음 두 개에 대표 답:
+원본 = **원본은 안 남김**(구글에는 앱이 늘 올리던 사본 긴 변 1600px, PC ZIP 에는 줄인 사진 긴 변 2000px — 원본 화질은 어디에도 안 남는다), PC = **줄인 사진 ZIP**(2.9GB → 약 0.4GB 짐작).
+사진은 앱(폰·PC)에서 구글 사본으로 그대로 보인다 — v611 처럼 앱 목록에서 빠지지 않는다.
+**핀** `hyeonjang-v612-photozipdrive`. 새 최상위 저장 키 없음(현장 안 `p.photoArchive` 그대로), apps-script·AI_TOOLS 무변경, 고객 발송 없음. 바깥 요청은 기존 중계 action(listFiles·upload·thumbnail)뿐.
+- 대상 `hjPhotoZipPlan` 은 v611 그대로(+ `noDrive` = 구글 사본 ID 없는 수). **구글 서버 연결(`relayReady`)이 없으면 아무것도 안 한다** — block 'relay'(손으로는 안내·[지금 보관] 잠김, 자동은 마지막 결과에만 why 'relay' — 기다려도 안 생기니 15초 재시도 안 함).
+- 구글 사본 확인: 실행마다 `hjPzDriveIndex`(cloudApiListFiles('photo') — deep·2000개 상한) 한 번. `hjPzDriveHas` = 목록에 있으면 있음 · 목록이 다 왔는데 없으면 없음(서버에서 사라짐) ·
+  목록이 잘렸으면(truncated) 그 사진만 `cloudApiThumbnail`(ok·not-ready·too-large = 있음, not-found·forbidden = 없음, 그 밖·연결 오류 = **모름 → 이번엔 안 지움** `res.unknown`). 목록을 못 받으면 why 'drivelist'(아무것도 안 함).
+  없으면 `hjPzDriveUpload` = relayBuildUploadPayload + relayCall('upload')(relayUploadFiles 와 같은 사본·같은 _driveSize 셈) → 기록에 `_driveId`·`_driveMimeType`·`_driveSize`·`_relayLink` + markDirty(멈춰도 다시 안 올리게).
+  bad-request·too-large·형식 = 못 올림(그 사진은 PC 에 그대로 `res.noDrive`), 인증 오류면 그 실행의 나머지 올리기를 멈춘다. 목록에 없는 Drive ID(만물인테리어 폴더 밖·지워짐)는 새로 올려 ID 를 바꾼다.
+- 줄인 사진 `hjPzShrink`: jpg·png·webp·gif·bmp 만 그려(EXIF 방향 반영 `imageOrientation:'from-image'`, 흰 바탕) 긴 변 `HJ_PZ_SHRINK_PX`(2000) JPEG q0.85 → `hjPzExifJpeg` 가 캔버스 JPEG 의 JFIF(APP0)를 빼고 SOI 바로 뒤에
+  Exif(APP1) — IFD0 → Exif `DateTimeOriginal`(**한국 시각**) · GPS(위·경도, 0,0 이면 안 적음). 앱 판독기(EXIF.js·parseExifDate·dms)로 같은 값이 읽히는 것을 검사가 본다.
+  못 그리는 HEIC·TIFF 나 줄여도 안 작아지면 그 바이트 그대로. 같은 그림으로 긴 변 `HJ_PZ_THUMB_PX`(320) 미리보기를 만들어, 기록을 바꾼 뒤 IDB `thumb:<Drive ID>`(relayGetThumbnail 캐시)에 넣어 둔다 — PC 가 서버에 다시 안 묻는다.
+- ZIP: v611 과 같은 자리·같은 쓰기(STORE·UTF-8·`hjPzVerify`·`.작성중`), 이름 `촬영일/원래 이름`(줄여서 JPEG 가 되면 .jpg). 끝(EOCD) 주석 **`HJ_PZ_ZIP_TAG` = 'hj-photozip-v2'**(영문 — 압축 프로그램 글자판과 무관) = 줄인 사진 ZIP 표시.
+  표시가 있는 ZIP 에만 덧붙이고(`hjPzOpenPart`), 검사도 표시를 본다. csv v2 열(`HJ_PZ_CSV_HEAD`): …·원본 크기·보관 크기·줄임(예/원본 그대로)·구글 사본 ID·**원본 CRC32**·CRC32 — `hjPzCsvParse` 는 v611 의 '크기(바이트)'를 원본 크기로 읽는다.
+- 마무리 순서 `hjPzFinish`: ZIP 검사 → 읽은 뒤 그대로인지(`hjPzSame` 크기·수정 시각) → **기록을 구글 사본 기록으로 바꿔 저장**(`hjPzConvert` → `hjPzGoogleBacked`: handle·_file·_heicFile·thumb 없음,
+  `_virtual`, `_relayLink`, ocr 'pending' → 'na', 나머지 칸·id 그대로 — `guardedPersistMediaFiles` 원자 저장, 정리 표시·다시 불러오지 않기 없음) → **저장된 뒤에만** 원본 지우기(`hjPzDeleteSource` — 같은 파일·크기·수정 시각).
+  저장이 끝내 안 되면 원본을 지우지 않고 why 'commit'(ZIP 에는 있으니 다음 실행이 다시 안 담고 마무리). 원본을 못 지우면 기록은 이미 구글 사본 — 다음 폴더 읽기에서 PC 기록으로 다시 잡히면 다음 실행이 지운다.
+  **v611 의 순서(지우고 나서 목록 저장)로 되돌리지 마라** — 이번에 올린 사본 ID 가 저장되기 전에 원본이 사라지면, 앱을 다시 열 때 그 기록이 Drive ID 없이 폴더 읽기 prune 에 빠진다.
+- 이미 ZIP 에 든 사진(같은 원래 위치·원본 크기·**원본 CRC32**)은 다시 안 담고 기록만 바꾸고 원본을 지운다(later). 같은 자리·크기라도 내용이 다르면 새로 담는다(' (2)').
+  파일이 이미 없는 기록(heal)은 구글 사본이 확인되면 기록만 바꾸고, 없으면 그대로(`res.missing`).
+- 현장 요약 `p.photoArchive` 는 실행 끝(`hjPzProject` finally)에 그 현장 ZIP 들의 csv 로 다시 센다(`hjPzSummaryFrom`, 바뀌었을 때만 markDirty):
+  `{v:2(옛 원본 ZIP 이 남았으면 1), n, bytes(원본), zbytes(ZIP), zips, from, to, at, days?, labels?}`. 지금 있는 다른 현장 이름의 줄은 빼고, 지금 없는 현장 이름(바꾼 이름)의 줄은 센다.
+  `days/labels` 는 v611 때 앱에서 빠진 사진만 남는다(`hjPzArchivedEach` — 📑 내역서 사진 수). ZIP 찾기 `hjPzParts` = 이름 사슬(`<현장>_사진보관(_k).zip`, 덧붙이는 곳) + 요약 zips 에 적힌 ZIP(이름을 바꾼 현장).
+- **v611 옛 원본 ZIP(표시 없음) 바꾸기** `hjPzMigratePart` — 요약이 v!==2 이고 zips 가 있는 현장은 대상 사진이 없어도 돈다(`hjPzLegacyProjects`):
+  ① csv 줄마다 앱 기록을 되살린다 — 정리 표시의 Drive ID 가 서버에 있으면 그 ID, 없으면 ZIP 원본으로 지금 올림(못 올리는 형식은 ZIP 에 원본 그대로·앱엔 없음, 모름·일시 실패는 ② 를 미룸).
+  applyData 꼴 가상 기록(현장·공정·작업명·동·호수(라벨로 다시 찾음)·촬영일시·위치·주소) · 정리 표시 되살림(그 Drive ID 와 '' 의 열쇠, `hjTombUpdate` added) · 다시 불러오지 않기에서 뺌 ·
+  그 현장 days/labels 에서 뺌(`hjPzSummaryRestore`) — 20장씩 한 원자 저장(실패면 표시·요약 되돌림). ② ①이 다 됐으면 ZIP 을 `.작성중` 에 다시 쓴다(앱에 구글 사본 기록이 있는 사진만 줄이고, 나머지는 원본 그대로,
+  날짜는 옛 항목 그대로, 새 csv 하나) → 검사 → 원래 이름으로 옮겨 쓰기 → 검사. 깨진 항목이 든 옛 ZIP 은 그대로 두고(`res.badZip`) 다른 일은 이어서.
+- 실행 끝에 기록을 바꿨으면 `saveProject(true)`(폴더 `_현장.json` 을 지금 자료로) — 같은 세션에 [다시 스캔]하면 `loadProject` 가 폴더 저장본·처음 불러온 자료(`__lastData`)로 맞추는데,
+  거기엔 이번에 올린 구글 사본 ID 가 없어 PC 원본 없는 기록이 prune 으로 빠진다. **`__lastData` 는 저장으로 바뀌지 않는다** — PC 원본 없는 기록을 세션 중에 만드는 새 길도 이것을 보라.
+- 폴더 읽기 '⚠️ 스캔된 파일이 평소보다 적어요'(v100 안전장치) 기준 = `_savedFileCount − hjPzArchivedCount()`(v2 요약 n 합) — 빼지 않으면 보관 뒤 폴더를 읽을 때마다 거짓 경고 + 색인 정리 끔.
+- 화면: ⋯ 사진 도구 항목·창 글(줄인 사진·원본 화질 안 남김·구글 사본) · `[data-pz-nodrive]` 구글에 먼저 올릴 n장 · `[data-pz-legacy]` 예전 방식 현장 안내 · 현장 줄 '원본 X → ZIP Y'·`[data-pz-old]` ·
+  결과 글(올림·되살림·옛 ZIP·못 올림·모름·저장 못 함) · 도움말 줄. 바뀌지 않는 것: 동영상·현장 미지정·최근 한 달·구글 사본(지우지 않음)·원본 전송(_mediaOriginal) 기록·Web Lock·자동·[멈추기]·
+  안전판 1회·자동화 브라우저 예약 없음·`_사진보관` 스캔 안 함.
+- 검사 `tests/photozip-v612.e2e.js` 8/8 — **v611 검사(photozip-v611.e2e.js)는 지웠다**(옛 동작 — 원본 ZIP·목록에서 뺌 — 을 지키던 검사). OPFS + python3 zipfile + 페이지 안 가짜 중계(relayCall: listFiles·upload·thumbnail,
+  앱의 다른 서버 길은 끔) + EXIF.js 2.3.0 고정본: ① PLAN(+EXIF·막음) ② RUN(확인·올림·못 올림·줄임·EXIF·csv·표시·기록·저장본·미리보기·요약·내역서) ③ APPEND(덧붙임·later·CRC 가드·heal·missing·_2·멈춤)
+  ④ GUARD(깨짐 둘·안전판·바뀐 원본·저장 실패 → 다음 실행·서버 없음·목록 실패·잘린 목록+미리보기·막음·스캔 거부) ⑤ MIGRATE(**진짜 v611 2c8160d 페이지로** 원본 ZIP·정리 표시·removed_ids·days 를 만들고,
+  같은 기기 자료를 v612 로 열어 되살림·다시 씀·내역서 사진 수 두 번 안 셈·다시 열어도 그대로·두 번째는 할 일 없음) ⑥ AUTO(진짜 scanDir → 자동 → 다시 읽기: 기록 남음·평소보다 적어요 없음 · 서버 없으면 기록만)
+  ⑦ UI · ⑦-2 폰 390·핀·오류 0·바깥 쓰기 0. 기준선 2c8160d(v611)는 ① 실패. 변이 16종 모두 의도한 곳에서 실패: all-ages ① · no-drive-check·no-shrink·no-exif·remove-records ② · no-crc-guard·no-heal ③ ·
+  no-verify·no-tmp·delete-first ④ · no-restore·no-days·no-tomb-revive ⑤ · no-scan-guard·no-auto·no-scan-skip ⑥. 관련 32개(scandup·relayscan·folderguard·project-scan-order·casefolder·settings-safety·
+  photo-intake-safety·photo-no-recovery·gd-reingest·stmtphoto·unbilled·stmttab·healthline·photo-tools·mobile-more 둘·photodupsync·phototwins·drivetomb·photodupclean·placejudge·photoview·visitunit·worklabel·
+  chatphoto·photo-source·photo-delete 둘·photo-safety·relay-queue·relaysync·pcupload) 통과, 정적 *.check.js 전부.
+  전체 회귀(이 컨테이너, `LANG=C.UTF-8` · 동시 3 · 20분): 505개 중 504 통과 — 실패 1 = reviewfix-v387 R4(아래, main 에서도 같은 날 떨어짐), 재시도 통과 1(leakdetect-v420 — 병렬 부하).
+- 같이 고친 것: `tests/reviewfix-v387.e2e.js` R4 가 **11/19 부터 어느 가지에서나 떨어졌다** — 시험이 `localDate` 만 2026-11-05 로 고정하고, 앱 `staleProjectData` 는 실제 시계(`new Date()`)로 '14일 방치'를 세서
+  오늘(11/19)이 그날부터 14일째가 되자 '방금 받은 문의'가 방치 현장이 됐다. `page.clock.setFixedTime(2026-11-05 10:00 +09:00)`(다른 검사와 같은 꼴)로 시계도 고정 → 7/7. 앱 코드는 그대로.
+  **날짜를 고정하는 검사는 `localDate` 만 바꾸지 말고 시계(page.clock)도 같이** — v552 notefilter-v475 와 같은 종류.
+- 대표 확인 대기: ① 첫 실행은 구글 사본이 없는 사진을 올린다(한 장 2~3초 — 수백 장이면 수십 분, 진행 띠·[멈추기], 다음 실행이 이어서) ② PC 에 ☁️ 서버 연결이 돼 있어야 한다 ③ HEIC 은 줄이지 않는다(구글에도 HEIC 그대로)
+  ④ v611 이 이미 돌았다면 첫 v612 실행이 그 사진을 앱에 되살리고 ZIP 을 줄인다(못 올리는 형식은 ZIP 에만) ⑤ 줄인 ZIP 크기(2.9GB → 약 0.4GB)는 짐작 — 사진에 따라 다르다.
+- 안 한 것: 실제 Windows 탐색기·7-Zip 으로 연 확인 · 실제 Apps Script·실기기 확인(합성) · 원본 화질 보관(대표 선택으로 안 함) · 동영상 · 폰 전용 사진 · 잘린 목록의 미리보기 확인을 여러 개 동시에 · 올리기 동시에 여러 장.
+
 ## 2026-11-18 v611 🗜 한 달 지난 현장 사진 → 현장별 ZIP 보관 · 낱장 삭제 (PC 에서 폴더를 열면 자동)
+
+> **v612 에서 바뀜**(위) — 원본 ZIP·앱 목록에서 뺌 → 줄인 사진 ZIP·기록은 구글 사본으로 앱에 남음. v611 이 만든 원본 ZIP 은 v612 가 바꾼다. 아래는 v611 당시 기록이고, 검사 photozip-v611.e2e.js 는 v612 검사로 바뀌었다.
 
 대표 지시(11/18 "프로젝트에서 1달 넘어간 사진은 압축해서 보관해서 정리 될 수 있게해줘 원본은 압축본으로 보관 사진은 삭제 코드 수정 해줘").
 물음 두 개에 대표 답: 압축 방식 = **현장별 ZIP 으로 묶기**(원본 화질 그대로 · 용량은 거의 안 줄고 · 낱장은 앱 사진 목록에서 빠짐 — '사진마다 작게 줄이기'(긴 변 2000px)가 아님),

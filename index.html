@@ -2042,7 +2042,8 @@ async function hjScanDirRun(){
   // [v100 안전장치] 스캔 결과가 저장된 색인보다 크게 적으면(폴더 접근 실패·제외 사고) 정리(prune)를 끈다
   window.__pruneOff=directOrganizedRoot();
   try{
-    const _saved=(state._savedFileCount||0);
+    let _pzN=0;try{_pzN=hjPzArchivedCount();}catch(e){_pzN=0;}   // v612 PC 원본을 지우고 구글 사본으로만 남긴 사진은 폴더에 없다 — 기준에서 뺀다
+    const _saved=Math.max(0,(state._savedFileCount||0)-_pzN);
     if(_saved>20&&(state.files||[]).length<_saved*0.7){
       window.__pruneOff=true;
       toast('⚠️ 스캔된 파일이 평소보다 적어요('+state.files.length+'/'+_saved+') — 안전을 위해 색인 정리를 건너뜁니다');
@@ -4068,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v612-tidy';
+const APP_BUILD='hyeonjang-v613-tidy';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6302,7 +6303,7 @@ function showHelp(){
       <li><b>공정(작업단계)</b> — 사진을 현장에 배정한 뒤, ‘현장별 보기’에서 그 현장의 공정(방수 1차·철거·목공 등)을 추가하고 각 사진에 지정합니다. 사진이 공정별로 묶여 정리됩니다.</li>
       <li><b>중복</b> — 같은 사진을 자동 감지. 상단 ‘중복만 보기’로 확인 후 ‘대표만 남기기’로 정리합니다.</li>
       <li><b>주소 조회</b> — GPS 좌표를 실제 지명으로 바꿉니다.</li>
-      <li><b>한 달 지난 사진 ZIP 보관</b> — PC 에서 만물 폴더를 열면 촬영한 지 한 달 지난 현장 사진을 <b>_사진보관</b> 폴더에 현장별 ZIP(원본 그대로·사진 목록 csv 포함)으로 묶고, ZIP 을 검사한 뒤 낱장 사진은 지웁니다. ‘⋯ 사진 도구’에서 끄고 켜며, 다시 보려면 [📦 압축 사진 불러오기(zip)].</li>
+      <li><b>한 달 지난 사진 ZIP 보관</b> — PC 에서 만물 폴더를 열면 촬영한 지 한 달 지난 현장 사진을 <b>_사진보관</b> 폴더에 현장별 <b>줄인 사진 ZIP</b>(긴 변 2000px·촬영일시·GPS·사진 목록 csv)으로 묶고 PC 원본은 지웁니다. 앱(폰·PC)에서는 <b>구글 서버 사본</b>으로 그대로 보입니다 — 구글 사본이 없는 사진은 먼저 올리고, 사본을 확인한 사진만 지웁니다(원본 화질은 남기지 않음). 구글 서버 연결이 필요하고, ‘⋯ 사진 도구’에서 끄고 켭니다.</li>
     </ul>
 
     <div class="help-sec">💰 견적·정산과 대시보드</div>
@@ -10550,7 +10551,7 @@ function photoToolsView(){
     it('🔒','드라이브 자동 불러오기','자주 쓰는 폴더를 고정해 둡니다.','gdToggleAutoload')+
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">정리 (PC 폴더 연결 시)</div>'+
     it('📦','전체 정리완료','현장이 배정된 파일을 현장별 _정리완료 폴더로 모읍니다.','organizeAllProjects')+
-    it('🗜','한 달 지난 사진 ZIP 보관'+(pzN?' '+pzN+'장':''),'촬영한 지 한 달 지난 현장 사진을 만물/_사진보관 에 현장별 ZIP(원본 그대로)으로 묶고 낱장은 지웁니다. PC 에서 폴더를 열면 자동으로 합니다.','hjPhotoZipView')+   // v611
+    it('🗜','한 달 지난 사진 ZIP 보관'+(pzN?' '+pzN+'장':''),'촬영한 지 한 달 지난 현장 사진을 PC 에서는 줄인 사진 ZIP(만물/_사진보관)으로 묶고 원본은 지웁니다. 앱에서는 구글 서버 사본으로 그대로 보입니다. PC 에서 폴더를 열면 자동으로 합니다.','hjPhotoZipView')+   // v611·v612
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">점검</div>'+
     (labelGapN?it('🏷','작업명 빈 사진 채우기 '+labelGapN+'장','같은 날 같은 현장의 작업명으로 빈 사진만 채웁니다.','hjLabelGapView'):'')+
     it('📍','사진 배정 점검','GPS 로 현장과 맞지 않는 사진을 찾아 다시 배정하고, 중복 사진을 정리합니다.','photoAssignmentAudit')+
@@ -38480,33 +38481,36 @@ function deleteSelectedPhotos(){
     }}
   ], true);
 }
-/* ═══ v611 🗜 한 달 지난 현장 사진 → 현장별 ZIP 보관 · 낱장 삭제
-   대표 11/18 "프로젝트에서 1달 넘어간 사진은 압축해서 보관해서 정리 될 수 있게해줘 원본은 압축본으로 보관 사진은 삭제 코드 수정 해줘"
-   → 물음 두 개에 '현장별 ZIP 으로 묶기'(원본 화질 그대로 · 낱장은 앱 사진 목록에서 빠짐) · 'PC 에서 앱 열면 자동'(묻지 않음).
-   대상 hjPhotoZipPlan(읽기만): 현장이 정해진 PC 폴더 사진(이번 스캔의 handle 이 있는 기록) 중 촬영일(한국 날짜)이 한 달 전 같은 날보다 앞선 것
-     (11/18 이면 10/17 까지 · 그 달에 없는 날이면 그 달 마지막 날). Drive 전용 가상 기록·동영상·현장 미지정·지운 현장 사진은 그대로.
-   어디에: 만물 폴더 맨 위 `_사진보관/<현장>_사진보관.zip` — 현장마다 ZIP 하나(HJ_PZ_PART_MAX 를 넘으면 `_2`·`_3` …). 안은 `촬영일/원래 이름` +
-     `_목록/<보관 시각>.csv`(원래 위치·현장·촬영일시·공정·작업명·동·호수·위치·주소·크기·CRC32 — 앱 목록에서 빠지는 정보). 원본 바이트를 그대로(무압축 STORE · 이름 UTF-8)
-     담아 화질·EXIF(촬영일·GPS)가 그대로고 [📦 압축 사진 불러오기(zip)]로 다시 넣을 수 있다. ZIP 안 파일 설명(중앙 목록 주석)에 원래 위치.
-   순서(현장마다): 사진을 읽어 CRC32 → 같은 사진(크기·CRC32·이름)이 이미 ZIP 에 있으면 다시 담지 않음 → ZIP 쓰기(이미 있는 ZIP 에 덧붙일 때는 `.작성중` 파일에
-     옛 내용 + 새 사진을 쓰고 검사한 뒤 원래 이름으로 옮겨 쓴다 — 옛 ZIP 이 깨진 채 남는 순간이 없다) → 다시 읽어 검사(목록·자리·이름·크기, 사진마다 CRC32 를 다시 계산) →
-     통과한 사진만 원본 파일 삭제(읽은 뒤 크기·수정 시각이 바뀌었거나 다른 파일이면 지우지 않음) → 지운 사진만 앱 목록에서 뺀다(정리 표시·Drive 다시 불러오지 않기 —
-     deletePhotoRecordsSafely 와 같은 규칙, 같은 원자 저장에 현장 요약 p.photoArchive). 안전판은 한 번 실행에 한 번('한 달 지난 사진 ZIP 보관 전').
-   파일이 이미 없는데 ZIP 에 있는 기록(지난번 원본을 지운 뒤 목록 저장 전에 멈춤)은 목록에서만 뺀다.
-   p.photoArchive {n,bytes,zips,days{날짜:장수},labels{날짜:{작업명:장수}},from,to,at} — 📑 내역서 줄 📷 사진 수(hjStmtPhotoIndex)·내역서에 없는 작업(hjUnbilledPlan)이 센다.
-   자동: PC 에서 폴더를 다 읽은 뒤(scanDir 정상 끝) HJ_PZ_AUTO_DELAY_MS 뒤 · 폴더 쓰기 권한이 이미 있을 때만(묻지 않음) · 데모·오래된 창·직원 모드·_정리완료만 연결이면 안 함 ·
-     폴더 읽는 중·사진 넣는 중·창 숨김·원자 저장 중이면 15초마다 다시 본다(10분까지) · 이 기기에서 끌 수 있다(localStorage hj_photo_zip_auto='0') ·
-     자동화 브라우저(navigator.webdriver)는 안 함(옛 검사의 합성 폴더를 건드리지 않게 — v592 와 같은 이유). 다른 창과는 Web Lock 으로 한 번에 하나.
-   보관 중에는 [다시 스캔]을 막는다(스캔이 목록을 비우는 사이 지운 기록이 정리 표시 없이 빠지면 Drive 사본이 미배정으로 되살아난다). `_사진보관` 은 스캔하지 않는다.
-   그대로인 것: Drive 사본(서버에 지우는 길이 없다 — 다시 불러오지 않기만) · 동영상 · 현장 미지정 · 최근 한 달 · 폴더(빈 공정 폴더도). */
-const HJ_PZ_DIR='_사진보관',HJ_PZ_TMP='.작성중',HJ_PZ_AUTO_KEY='hj_photo_zip_auto',HJ_PZ_LAST_KEY='hj_photo_zip_last';
+/* ═══ v611·v612 🗜 한 달 지난 현장 사진 — PC 에는 줄인 사진 ZIP, 앱(폰·PC)에서는 구글 서버 사본으로 계속 보기
+   v611(11/18) 대표 "프로젝트에서 1달 넘어간 사진은 압축해서 보관해서 정리 … 원본은 압축본으로 보관 사진은 삭제" → 현장별 ZIP(원본 그대로)·낱장 삭제·앱 목록에서 뺌·PC 에서 자동.
+   v612(11/19) 대표 "PC 에서는 압축 관리하고 구글서버에는 사진 자료가 올라와 있게 해서 PC 에서만 용량을 줄일 수 있게" → 물음 두 개에 '원본은 안 남김'·'PC 엔 줄인 사진 ZIP'.
+   그래서 이제:
+   · 대상(hjPhotoZipPlan · 읽기만): 현장이 정해진 PC 폴더 사진(이번 폴더 읽기의 handle 이 있는 기록) 중 촬영일(한국 날짜)이 한 달 전 같은 날보다 앞선 것 — v611 그대로.
+   · 사진마다 먼저 구글 서버 사본(_driveId)을 확인한다 — 실행마다 서버 사진 목록(cloudApiListFiles) 한 번, 목록이 잘렸으면(2,000장↑) 목록에 없는 사진만 미리보기로 하나씩.
+     사본이 없거나 서버에서 사라졌으면 지금 올린다(relayBuildUploadPayload — 앱이 늘 올리던 사본: 긴 변 1600px JPEG, 브라우저가 못 그리는 HEIC 은 그대로).
+     사본을 확인하지 못한 사진은 PC 에 그대로 둔다(다음 실행에서 다시).
+   · PC 에는 줄인 사진(긴 변 HJ_PZ_SHRINK_PX JPEG · 촬영일시·GPS 를 EXIF 로 다시 적음 · 못 그리는 HEIC 이나 줄여도 안 작아지면 그 파일 그대로)을 v611 과 같은 자리
+     (만물/_사진보관/<현장>_사진보관.zip)에 담고 같은 검사(다시 읽어 CRC32)를 한다. ZIP 끝 주석 HJ_PZ_ZIP_TAG = 줄인 사진 ZIP 표시 — 이 표시가 있는 ZIP 에만 덧붙인다.
+     **원본 화질은 남기지 않는다**(대표 선택).
+   · 차례: ZIP 검사 → 그 사진 기록을 구글 사본 기록으로 바꿔 저장(hjPzGoogleBacked — handle·미리보기 없이 _driveId, 폰과 같은 꼴, 다시 폴더를 읽어도 저장 기록으로 남는다)
+     → 저장된 뒤에만 PC 원본을 지운다(읽은 뒤 크기·수정 시각이 바뀌었으면 안 지움). 미리보기는 줄일 때 만든 작은 사진을 이 기기에 넣어 둔다(서버에 다시 묻지 않게).
+     앱 목록에서 빼지 않는다 — 정리 표시·다시 불러오지 않기 없음.
+   · 현장 요약 p.photoArchive 는 실행 끝에 그 현장 ZIP 들의 사진 목록(csv)에서 다시 센다(장수·원본 용량·ZIP 용량·기간·ZIP). days/labels 는 v611 때 앱에서 빠진 사진만
+     (📑 내역서 사진 수 — hjPzArchivedEach) 남고, 되살리면 같은 저장에서 뺀다.
+   · v611 이 만든 원본 ZIP(표시 없음)은 hjPzMigratePart 가 바꾼다: ① csv 의 사진마다 앱 기록을 되살린다(정리 표시의 Drive ID 가 서버에 있으면 그 ID, 없으면 ZIP 의
+     원본으로 지금 올림 · 정리 표시 되살림 · 다시 불러오지 않기 풀기 · days 에서 뺌 — 한 저장으로) ② ①이 모두 끝났으면 ZIP 을 줄인 사진으로 다시 쓴다
+     (.작성중 → 검사 → 옮겨 쓰기 → 검사). 형식 때문에 못 올리는 사진은 ZIP 에 원본 그대로 남는다. 이름을 바꾼 현장도 요약에 적힌 ZIP 으로 찾는다.
+   · 구글 서버 연결(relayReady)이 없으면 하지 않는다(자동은 조용히 기록만, 손으로는 안내).
+   그대로인 것: 동영상 · 현장 미지정 · 최근 한 달 · 구글 사본(지우지 않는다) · 원본 전송(_mediaOriginal) 기록. */
+const HJ_PZ_DIR='_사진보관',HJ_PZ_TMP='.작성중',HJ_PZ_AUTO_KEY='hj_photo_zip_auto',HJ_PZ_LAST_KEY='hj_photo_zip_last',HJ_PZ_ZIP_TAG='hj-photozip-v2';
 let HJ_PZ_PART_MAX=500*1024*1024;   // ZIP 한 개 크기(넘으면 _2 …) — 검사가 작게 바꾼다
 let HJ_PZ_AUTO_DELAY_MS=4000;       // 폴더 읽기가 끝난 뒤 기다림 — 검사가 작게 바꾼다
-const HJ_PZ_AUTO_RETRY_MS=15000,HJ_PZ_AUTO_TRIES=40,HJ_PZ_MAX_ENTRIES=60000;
+const HJ_PZ_AUTO_RETRY_MS=15000,HJ_PZ_AUTO_TRIES=40,HJ_PZ_MAX_ENTRIES=60000,HJ_PZ_SHRINK_PX=2000,HJ_PZ_SHRINK_Q=0.85,HJ_PZ_THUMB_PX=320,HJ_PZ_RESTORE_BATCH=20;
 const HJ_PZ_WHY={demo:'🧪 데모 중에는 사진을 보관하지 않아요',stale:'오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요',staff:'👷 직원 모드에서는 사진을 보관(삭제)하지 않아요',
   nofolder:'PC 만물 폴더를 먼저 연결하세요(📁 로컬 폴더 연결)',direct:'만물 폴더(맨 위)를 연결해야 보관할 수 있어요 — 지금은 _정리완료 폴더만 연결돼 있어요',
+  relay:'구글 서버(☁️ 서버 연결)를 먼저 연결하세요 — 구글 사본을 확인한 사진만 PC 에서 지웁니다',
   scan:'폴더를 읽는 중이에요 — 끝난 뒤 다시 눌러 주세요',intake:'사진을 넣는 중이에요 — 끝난 뒤 다시 눌러 주세요',busy:'이미 사진을 보관하는 중이에요',
-  permission:'폴더 쓰기 권한이 없어 사진을 보관하지 않았어요',locked:'다른 창에서 사진을 보관하는 중이에요'};
+  permission:'폴더 쓰기 권한이 없어 사진을 보관하지 않았어요',locked:'다른 창에서 사진을 보관하는 중이에요',drivelist:'구글 서버 사진 목록을 받지 못해 보관하지 않았어요'};
 let __hjPzAutoTimer=null,__hjPzAutoTries=0,__hjCrcTable=null;
 function hjCrc32(u8,prev){
   let t=__hjCrcTable;
@@ -38522,8 +38526,10 @@ function hjPzYield(){
 }
 async function hjCrc32Async(u8){let c=0;const step=4*1024*1024;for(let o=0;o<u8.length;o+=step){c=hjCrc32(u8.subarray(o,Math.min(u8.length,o+step)),c);if(o+step<u8.length)await hjPzYield();}return c;}
 async function hjCrc32Blob(blob){let c=0;const step=8*1024*1024;for(let o=0;o<blob.size;o+=step){c=hjCrc32(new Uint8Array(await blob.slice(o,Math.min(blob.size,o+step)).arrayBuffer()),c);await hjPzYield();}return c;}
+function hjPzHex(n){return (n>>>0).toString(16).padStart(8,'0');}
 function hjPzKstParts(when){const t=new Date(when),ms=isNaN(t.getTime())?Date.now():t.getTime(),k=new Date(ms+9*3600000);return {y:k.getUTCFullYear(),mo:k.getUTCMonth()+1,d:k.getUTCDate(),h:k.getUTCHours(),mi:k.getUTCMinutes(),s:k.getUTCSeconds()};}
 function hjPzKst(when){if(when==null)return '';const t=new Date(when);if(isNaN(t.getTime()))return '';const k=hjPzKstParts(t),p=n=>String(n).padStart(2,'0');return k.y+'-'+p(k.mo)+'-'+p(k.d)+' '+p(k.h)+':'+p(k.mi)+':'+p(k.s);}
+function hjPzKstDate(s){s=String(s||'');return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)?new Date(s.replace(' ','T')+'+09:00'):null;}
 function hjPzStamp(){const k=hjPzKstParts(new Date()),p=n=>String(n).padStart(2,'0');return ''+k.y+p(k.mo)+p(k.d)+'-'+p(k.h)+p(k.mi)+p(k.s);}
 function hjPzDos(when){const k=hjPzKstParts(when),y=Math.min(2107,Math.max(1980,k.y));return {time:(k.h<<11)|(k.mi<<5)|(k.s>>1),date:((y-1980)<<9)|(k.mo<<5)|k.d};}
 function hjPzToday(){return hjKDayFast({when:new Date()});}
@@ -38544,11 +38550,11 @@ function hjPzEligible(f,cutoff,names){
 function hjPhotoZipPlan(opts){
   const today=(opts&&opts.today)||hjPzToday(),cutoff=hjPzCutoff(today);
   const names=new Set((state.projects||[]).filter(p=>p&&p.name).map(p=>p.name));
-  const groups=new Map();let n=0,bytes=0;
-  if(cutoff)(state.files||[]).forEach(f=>{if(!hjPzEligible(f,cutoff,names))return;let g=groups.get(f.project);if(!g){g=[];groups.set(f.project,g);}g.push(f);n++;bytes+=Number(f.size)||0;});
+  const groups=new Map();let n=0,bytes=0,noDrive=0;
+  if(cutoff)(state.files||[]).forEach(f=>{if(!hjPzEligible(f,cutoff,names))return;let g=groups.get(f.project);if(!g){g=[];groups.set(f.project,g);}g.push(f);n++;bytes+=Number(f.size)||0;if(!f._driveId)noDrive++;});
   const t=f=>{const x=new Date(f.when).getTime();return isFinite(x)?x:0;};
   groups.forEach(g=>g.sort((a,b)=>t(a)-t(b)||String(a.name||'').localeCompare(String(b.name||''))));
-  return {today,cutoff,groups,n,bytes,projects:groups.size};
+  return {today,cutoff,groups,n,bytes,noDrive,projects:groups.size};
 }
 function hjPzSafeName(s){
   let n=String(s||'').normalize('NFC').replace(/[\\\/:*?"<>|\x00-\x1f]/g,'_').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'');
@@ -38559,12 +38565,15 @@ function hjPzZipName(base,k){return base+'_사진보관'+(k>1?'_'+k:'')+'.zip';}
 // 조각에 사진 하나(이름·머리·중앙 목록·csv 몫까지 넉넉히)를 더 담을 자리가 있나 — 담는 중(pt.off)과 덧붙일 ZIP(파일 크기) 모두 같은 셈
 function hjPzRoom(size,need){return size+need+8192+512<=HJ_PZ_PART_MAX;}
 function hjPzPath(f){return String(f&&f.prefix||'')+String(f&&f.name||'');}
+function hjPzSplitPath(path){const s=String(path||''),i=s.lastIndexOf('/');return {prefix:i>=0?s.slice(0,i+1):'',name:i>=0?s.slice(i+1):s};}
 function hjPzUnique(name,used){
   if(!used.has(name))return name;
   const s=name.lastIndexOf('/'),dir=name.slice(0,s+1),file=name.slice(s+1),dot=file.lastIndexOf('.'),stem=dot>0?file.slice(0,dot):file,ext=dot>0?file.slice(dot):'';
   for(let i=2;i<100000;i++){const n=dir+stem+' ('+i+')'+ext;if(!used.has(n))return n;}
   return dir+stem+' ('+Date.now()+')'+ext;
 }
+const HJ_PZ_MIME={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',heic:'image/heic',heif:'image/heif',gif:'image/gif',bmp:'image/bmp',tif:'image/tiff',tiff:'image/tiff'};
+function hjPzMime(name){return HJ_PZ_MIME[String(bestExt(name||'','')||'').toLowerCase()]||'image/jpeg';}
 // ── ZIP(무압축 STORE · 이름 UTF-8 표시 0x0800 · ZIP64 없음) ──
 function hjPzLocal(nameB,crc,size,dos){
   const b=new Uint8Array(30+nameB.length),v=new DataView(b.buffer);
@@ -38579,32 +38588,47 @@ function hjPzCentral(e){
   v.setUint32(42,e.offset,true);b.set(e.nameB,46);b.set(e.commentB,46+e.nameB.length);
   return b;
 }
-function hjPzEnd(count,cdSize,cdOff){const b=new Uint8Array(22),v=new DataView(b.buffer);v.setUint32(0,0x06054b50,true);v.setUint16(8,count,true);v.setUint16(10,count,true);v.setUint32(12,cdSize,true);v.setUint32(16,cdOff,true);return b;}
-// ZIP 의 중앙 목록 읽기 — 여러 조각·ZIP64·앞뒤에 다른 자료가 낀 ZIP 은 null(덧붙이지 않는다)
+// 끝 — v612 부터 ZIP 주석에 HJ_PZ_ZIP_TAG(줄인 사진 ZIP 표시, 영문 — 압축 프로그램 글자판과 무관)
+function hjPzEnd(count,cdSize,cdOff){
+  const c=new TextEncoder().encode(HJ_PZ_ZIP_TAG),b=new Uint8Array(22+c.length),v=new DataView(b.buffer);
+  v.setUint32(0,0x06054b50,true);v.setUint16(8,count,true);v.setUint16(10,count,true);v.setUint32(12,cdSize,true);v.setUint32(16,cdOff,true);v.setUint16(20,c.length,true);b.set(c,22);
+  return b;
+}
+// ZIP 의 중앙 목록 읽기 — 여러 조각·ZIP64·앞뒤에 다른 자료가 낀 ZIP 은 null(덧붙이지도 바꾸지도 않는다). v2 = 줄인 사진 ZIP 표시가 있음
 async function hjPzReadDir(file){
   const n=file.size;if(n<22)return null;
   const tailLen=Math.min(n,22+65535),tail=new Uint8Array(await file.slice(n-tailLen).arrayBuffer());
   let at=-1;for(let i=tail.length-22;i>=0;i--){if(tail[i]===0x50&&tail[i+1]===0x4b&&tail[i+2]===5&&tail[i+3]===6){at=i;break;}}
   if(at<0)return null;
   const v=new DataView(tail.buffer,tail.byteOffset+at,22),eocd=n-tailLen+at;
-  const count=v.getUint16(10,true),cdSize=v.getUint32(12,true),cdOffset=v.getUint32(16,true);
-  if(v.getUint16(4,true)||v.getUint16(6,true)||v.getUint16(8,true)!==count||count===0xFFFF||cdSize===0xFFFFFFFF||cdOffset===0xFFFFFFFF||cdOffset+cdSize!==eocd)return null;
+  const count=v.getUint16(10,true),cdSize=v.getUint32(12,true),cdOffset=v.getUint32(16,true),cl=v.getUint16(20,true);
+  if(v.getUint16(4,true)||v.getUint16(6,true)||v.getUint16(8,true)!==count||count===0xFFFF||cdSize===0xFFFFFFFF||cdOffset===0xFFFFFFFF||cdOffset+cdSize!==eocd||eocd+22+cl!==n)return null;
+  const zipComment=new TextDecoder().decode(tail.subarray(at+22,at+22+cl));
   const cd=new Uint8Array(await file.slice(cdOffset,eocd).arrayBuffer()),dv=new DataView(cd.buffer),dec=new TextDecoder(),entries=[];
   let p=0;
   for(let i=0;i<count;i++){
     if(p+46>cd.length||dv.getUint32(p,true)!==0x02014b50)return null;
-    const nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),offset=dv.getUint32(p+42,true);
-    if(p+46+nl+xl+cl>cd.length||offset>=cdOffset)return null;
-    entries.push({name:dec.decode(cd.subarray(p+46,p+46+nl)),comment:dec.decode(cd.subarray(p+46+nl+xl,p+46+nl+xl+cl)),flags:dv.getUint16(p+8,true),method:dv.getUint16(p+10,true),
-      crc:dv.getUint32(p+16,true),csize:dv.getUint32(p+20,true),size:dv.getUint32(p+24,true),offset});
-    p+=46+nl+xl+cl;
+    const nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl2=dv.getUint16(p+32,true),offset=dv.getUint32(p+42,true);
+    if(p+46+nl+xl+cl2>cd.length||offset>=cdOffset)return null;
+    entries.push({name:dec.decode(cd.subarray(p+46,p+46+nl)),comment:dec.decode(cd.subarray(p+46+nl+xl,p+46+nl+xl+cl2)),method:dv.getUint16(p+10,true),
+      crc:dv.getUint32(p+16,true),csize:dv.getUint32(p+20,true),size:dv.getUint32(p+24,true),offset,dos:{time:dv.getUint16(p+12,true),date:dv.getUint16(p+14,true)}});
+    p+=46+nl+xl+cl2;
   }
-  return p===cd.length?{entries,count,cdOffset,cdSize,size:n}:null;
+  return p===cd.length?{entries,count,cdOffset,cdSize,size:n,v2:zipComment===HJ_PZ_ZIP_TAG}:null;
 }
-// 쓴 ZIP 을 다시 읽어 검사 — 개수 · 새로 담은 것마다 목록·자리·머리·이름·크기, 그리고 담긴 바이트의 CRC32 를 다시 계산
+// 항목 하나의 바이트(무압축만) — CRC32 가 맞을 때만 돌려준다
+async function hjPzEntryData(file,e){
+  if(!e||e.method!==0||e.csize!==e.size)throw new Error('zip-method');
+  const h=new Uint8Array(await file.slice(e.offset,e.offset+30).arrayBuffer());if(h.length!==30)throw new Error('zip-local');
+  const hv=new DataView(h.buffer);if(hv.getUint32(0,true)!==0x04034b50)throw new Error('zip-local');
+  const start=e.offset+30+hv.getUint16(26,true)+hv.getUint16(28,true),u=new Uint8Array(await file.slice(start,start+e.size).arrayBuffer());
+  if(u.length!==e.size||(await hjCrc32Async(u))!==e.crc)throw new Error('zip-crc');
+  return u;
+}
+// 쓴 ZIP 을 다시 읽어 검사 — 표시 · 개수 · 새로 담은 것마다 목록·자리·머리·이름·크기, 그리고 담긴 바이트의 CRC32 를 다시 계산
 async function hjPzVerify(file,count,added){
   const d=await hjPzReadDir(file);if(!d)throw new Error('zip-dir');
-  if(d.count!==count)throw new Error('zip-count');
+  if(d.count!==count||!d.v2)throw new Error('zip-count');
   const byOff=new Map(d.entries.map(e=>[e.offset,e])),dec=new TextDecoder();
   for(const a of added){
     const e=byOff.get(a.offset);
@@ -38618,37 +38642,154 @@ async function hjPzVerify(file,count,added){
   }
   return d;
 }
+// ── 사진 목록 csv(UTF-8 BOM) — v612 부터 원본·보관 크기, 줄임, 구글 사본 ID, 원본 CRC32 ──
+const HJ_PZ_CSV_HEAD=['압축 안 파일','원래 위치','현장','촬영일시','공정','작업명','동·호수','위도','경도','주소','원본 크기(바이트)','보관 크기(바이트)','줄임','구글 사본 ID','원본 CRC32','CRC32'];
 function hjPzCsv(list){
   const cell=v=>{let s=String(v==null?'':v);if(/^[=+\-@]/.test(s))s="'"+s;return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  const rows=[['압축 안 파일','원래 위치','현장','촬영일시','공정','작업명','동·호수','위도','경도','주소','크기(바이트)','CRC32']];
-  list.forEach(e=>{const it=e.item,r=it&&it.rec;if(!r)return;
-    let unit='';try{const p=(state.projects||[]).find(x=>x&&x.name===r.project),u=p?aptUnitForPhoto(r,p):null;unit=u?aptUnitLabel(u):'';}catch(_){unit='';}
-    rows.push([e.name,hjPzPath(r),r.project,hjPzKst(r.when),r._phase||'',r._worklabel||'',unit,r.lat==null?'':r.lat,r.lng==null?'':r.lng,r.address||'',e.size,e.crc.toString(16).padStart(8,'0')]);});
+  const rows=[HJ_PZ_CSV_HEAD];
+  list.forEach(e=>{const m=e.item&&e.item.meta;if(!m)return;
+    rows.push([e.name,m.path,m.project,m.when,m.phase,m.work,m.unit,m.lat,m.lng,m.address,m.osize,e.size,m.shrunk?'예':'원본 그대로',m.driveId,m.ocrc,hjPzHex(e.crc)]);});
   return '﻿'+rows.map(x=>x.map(cell).join(',')).join('\r\n')+'\r\n';
 }
-async function hjPzPut(pt,name,bytes,crc,when,comment,item){
+function hjPzCsvParse(text){
+  const s=String(text||'').replace(/^﻿/,''),rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(q){if(c==='"'){if(s[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=c;continue;}
+    if(c==='"')q=true;else if(c===','){row.push(cur);cur='';}else if(c==='\r'){}else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';}else cur+=c;
+  }
+  if(cur||row.length){row.push(cur);rows.push(row);}
+  const head=rows.shift()||[],un=v=>String(v||'').replace(/^'(?=[=+\-@])/,'');
+  return rows.filter(r=>r.length>1).map(r=>{const o={};head.forEach((h,i)=>{o[h]=un(r[i]);});if(o['크기(바이트)']&&!o['원본 크기(바이트)'])o['원본 크기(바이트)']=o['크기(바이트)'];return o;});   // v611 csv 는 '크기(바이트)'
+}
+// 조각 안 csv 들 → '압축 안 파일' 별 줄(나중 csv 가 이긴다)
+async function hjPzPartRows(file,dir){
+  const rows=new Map(),dec=new TextDecoder();
+  for(const e of (dir&&dir.entries)||[]){if(!/^_목록\/.*\.csv$/.test(e.name))continue;let u;try{u=await hjPzEntryData(file,e);}catch(_){continue;}hjPzCsvParse(dec.decode(u)).forEach(r=>{if(r['압축 안 파일'])rows.set(r['압축 안 파일'],r);});}
+  return rows;
+}
+function hjPzMeta(rec,driveId,shrunk,ocrc){
+  let unit='';try{const p=(state.projects||[]).find(x=>x&&x.name===rec.project),u=p?aptUnitForPhoto(rec,p):null;unit=u?aptUnitLabel(u):'';}catch(_){unit='';}
+  return {path:hjPzPath(rec),project:rec.project||'',when:hjPzKst(rec.when),phase:rec._phase||'',work:rec._worklabel||'',unit,lat:rec.lat==null?'':rec.lat,lng:rec.lng==null?'':rec.lng,address:rec.address||'',
+    osize:Number(rec.size)||0,shrunk:!!shrunk,driveId:driveId||'',ocrc:ocrc||''};
+}
+// ── 줄인 사진: 긴 변 HJ_PZ_SHRINK_PX JPEG + 촬영일시(한국)·GPS EXIF ──
+// 캔버스 JPEG 의 JFIF(APP0)를 빼고 SOI 바로 뒤에 Exif(APP1) — IFD0 → Exif(DateTimeOriginal) · GPS(위도·경도)
+function hjPzExifJpeg(u8,when,lat,lng){
+  if(!(u8&&u8.length>4&&u8[0]===0xFF&&u8[1]===0xD8))return u8;
+  const k=hjPzKstParts(when),p2=n=>String(n).padStart(2,'0'),dt=k.y+':'+p2(k.mo)+':'+p2(k.d)+' '+p2(k.h)+':'+p2(k.mi)+':'+p2(k.s);
+  const la=lat==null||lat===''?NaN:Number(lat),lo=lng==null||lng===''?NaN:Number(lng),gps=Number.isFinite(la)&&Number.isFinite(lo)&&Math.abs(la)<=90&&Math.abs(lo)<=180&&!(la===0&&lo===0);
+  const t=[],u16=v=>t.push(v&255,v>>8&255),u32=v=>t.push(v&255,v>>8&255,v>>16&255,v>>>24&255);
+  const dms=x=>{x=Math.abs(x);let d=Math.floor(x),m=Math.floor((x-d)*60),s=Math.round(((x-d)*60-m)*60*1000);if(s>=60000){s-=60000;m++;}if(m>=60){m-=60;d++;}return [[d,1],[m,1],[s,1000]];};
+  const n0=gps?2:1,exifOff=8+2+12*n0+4,dtOff=exifOff+18,gpsOff=dtOff+20,latOff=gpsOff+2+12*4+4,lngOff=latOff+24;
+  t.push(0x49,0x49,0x2A,0x00);u32(8);
+  u16(n0);u16(0x8769);u16(4);u32(1);u32(exifOff);if(gps){u16(0x8825);u16(4);u32(1);u32(gpsOff);}u32(0);
+  u16(1);u16(0x9003);u16(2);u32(20);u32(dtOff);u32(0);
+  for(const c of dt)t.push(c.charCodeAt(0));t.push(0);
+  if(gps){
+    u16(4);u16(1);u16(2);u32(2);t.push(la<0?0x53:0x4E,0,0,0);u16(2);u16(5);u32(3);u32(latOff);u16(3);u16(2);u32(2);t.push(lo<0?0x57:0x45,0,0,0);u16(4);u16(5);u32(3);u32(lngOff);u32(0);
+    dms(la).forEach(([a,b])=>{u32(a);u32(b);});dms(lo).forEach(([a,b])=>{u32(a);u32(b);});
+  }
+  const payload=[0x45,0x78,0x69,0x66,0,0,...t],len=payload.length+2;
+  let rest=2;if(u8[2]===0xFF&&u8[3]===0xE0&&u8.length>6)rest=4+((u8[4]<<8)|u8[5]);   // JFIF(APP0) 빼기
+  if(len>65535||rest>=u8.length)return u8;
+  const out=new Uint8Array(6+payload.length+u8.length-rest);out.set([0xFF,0xD8,0xFF,0xE1,len>>8,len&255]);out.set(payload,6);out.set(u8.subarray(rest),6+payload.length);
+  return out;
+}
+async function hjPzCanvasJpeg(bmp,px,q){
+  const sc=Math.min(1,px/Math.max(bmp.width,bmp.height)),w=Math.max(1,Math.round(bmp.width*sc)),h=Math.max(1,Math.round(bmp.height*sc));
+  if(typeof OffscreenCanvas!=='undefined'){const c=new OffscreenCanvas(w,h),x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(bmp,0,0,w,h);return c.convertToBlob({type:'image/jpeg',quality:q});}
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(bmp,0,0,w,h);
+  return new Promise(r=>c.toBlob(r,'image/jpeg',q));
+}
+// → {bytes, shrunk, thumb(이 기기 미리보기 data URL)} — HEIC 등 브라우저가 못 그리거나 줄여도 안 작아지면 그 바이트 그대로
+async function hjPzShrink(u8,name,rec){
+  const ext=String(bestExt(name||'','')||'').toLowerCase();
+  if(!['jpg','jpeg','png','webp','gif','bmp'].includes(ext))return {bytes:u8,shrunk:false,thumb:''};
+  let bmp=null;
+  try{bmp=await createImageBitmap(new Blob([u8],{type:hjPzMime(name)}),{imageOrientation:'from-image'});}catch(e){return {bytes:u8,shrunk:false,thumb:''};}
+  try{
+    let thumb='';
+    try{const tb=await hjPzCanvasJpeg(bmp,HJ_PZ_THUMB_PX,0.8);if(tb)thumb='data:image/jpeg;base64,'+await relayBlobB64(tb);}catch(e){thumb='';}
+    const blob=await hjPzCanvasJpeg(bmp,HJ_PZ_SHRINK_PX,HJ_PZ_SHRINK_Q);
+    if(!blob)return {bytes:u8,shrunk:false,thumb};
+    const out=hjPzExifJpeg(new Uint8Array(await blob.arrayBuffer()),rec&&rec.when,rec&&rec.lat,rec&&rec.lng);
+    if(out.length>=u8.length)return {bytes:u8,shrunk:false,thumb};   // 줄여도 안 작아지면 그대로
+    return {bytes:out,shrunk:true,thumb};
+  }catch(e){return {bytes:u8,shrunk:false,thumb:''};}
+  finally{try{bmp.close();}catch(_){}}
+}
+function hjPzShrunkName(name,shrunk){const s=String(name||'');return shrunk&&!/\.jpe?g$/i.test(s)?s.replace(/\.[^./]*$/,'')+'.jpg':s;}
+// ── 구글 서버(Drive) 사본 ──
+async function hjPzDriveIndex(){
+  let r=null;try{r=await cloudApiListFiles('photo');}catch(e){r=null;}
+  if(r&&(r.error==='unauthorized'||r.error==='not-configured')){try{relayAuthFail(r);}catch(_){}}
+  if(!r||r.ok!==true||!Array.isArray(r.files))return null;
+  const ids=new Map();r.files.forEach(f=>{if(f&&typeof f.id==='string'&&f.id)ids.set(f.id,{mimeType:String(f.mimeType||''),size:Number(f.size)||0});});
+  return {ids,truncated:!!r.truncated,checked:new Map()};
+}
+// 그 구글 사본이 서버에 있나 — true 있음 · false 없음(확실) · null 모름(이번에는 안 지움)
+async function hjPzDriveHas(ctx,id){
+  if(!id||!ctx||!ctx.drive)return false;
+  if(ctx.drive.ids.has(id))return true;
+  if(!ctx.drive.truncated)return false;   // 목록이 다 왔는데 없다 = 서버에 없다
+  if(ctx.drive.checked.has(id))return ctx.drive.checked.get(id);
+  let v=null;   // 목록이 잘렸으면 그 사진만 미리보기로 확인
+  try{const r=await cloudApiThumbnail(id);if(r&&r.ok===true)v=true;else if(r&&(r.error==='not-ready'||r.error==='too-large'))v=true;else if(r&&(r.error==='not-found'||r.error==='forbidden'))v=false;}catch(e){v=null;}
+  ctx.drive.checked.set(id,v);
+  return v;
+}
+// 구글 서버에 올리기(앱이 늘 올리던 사본) → {fileId,mimeType,size} · {error:'permanent'(형식·크기)|'auth'} · null(이번에는 못 함)
+async function hjPzDriveUpload(ctx,bytes,name){
+  if(ctx&&ctx.auth)return {error:'auth'};
+  const mime=hjPzMime(name);let payload=null,r=null;
+  try{payload=await relayBuildUploadPayload(new Blob([bytes],{type:mime}),'photo',name,mime);}catch(e){return {error:'permanent'};}
+  try{r=await relayCall('upload',payload);}catch(e){return null;}
+  if(r&&r.ok===true&&typeof r.fileId==='string'&&r.fileId){
+    const b64=String(payload.dataB64||''),size=Number(r.size)||Math.max(0,Math.floor(b64.length*3/4)-(b64.endsWith('==')?2:b64.endsWith('=')?1:0));
+    const info={mimeType:String(r.mimeType||payload.mimeType||''),size};
+    if(ctx&&ctx.drive)ctx.drive.ids.set(r.fileId,info);
+    return {fileId:r.fileId,...info};
+  }
+  if(r&&(r.error==='unauthorized'||r.error==='not-configured')){try{relayAuthFail(r);}catch(_){}if(ctx)ctx.auth=true;return {error:'auth'};}
+  if(r&&(r.error==='bad-request'||r.error==='too-large'))return {error:'permanent'};
+  return null;
+}
+// 구글 사본 확인(없거나 서버에서 사라졌으면 지금 올림) — 되면 기록에 Drive ID 를 적고 그 ID, 못 하면 ''
+async function hjPzEnsureDrive(rec,bytes,ctx,res){
+  if(rec._driveId){const has=await hjPzDriveHas(ctx,rec._driveId);if(has===true)return rec._driveId;if(has===null){res.unknown++;return '';}}
+  const up=await hjPzDriveUpload(ctx,bytes,String(rec.name||'photo.jpg'));
+  if(!up||up.error){res.noDrive++;return '';}
+  if(!state.files.includes(rec))return '';
+  Object.assign(rec,{_driveId:up.fileId,_driveMimeType:up.mimeType,_driveSize:up.size,_relayLink:'relay:'+up.fileId});
+  res.uploaded++;try{markDirty();}catch(e){}   // 올린 사본은 바로 저장 쪽으로(멈춰도 다음에 또 올리지 않게) — relayUploadFiles 와 같은 꼴
+  return up.fileId;
+}
+async function hjPzPut(pt,name,bytes,crc,when,comment,item,dos){
   const enc=new TextEncoder(),nameB=enc.encode(name),commentB=enc.encode(comment||'');
-  if(crc==null)crc=hjCrc32(bytes);
-  const dos=hjPzDos(when),head=hjPzLocal(nameB,crc,bytes.length,dos);
+  if(crc==null)crc=await hjCrc32Async(bytes);
+  dos=dos||hjPzDos(when);const head=hjPzLocal(nameB,crc,bytes.length,dos);
   await pt.w.write(head);await pt.w.write(bytes);
   const e={name,nameB,commentB,crc,size:bytes.length,dos,offset:pt.off,item:item||null};
   pt.list.push(e);pt.names.add(name);pt.off+=head.length+bytes.length;
   return e;
 }
-// 덧붙일 조각 열기 — 마지막 ZIP 이 읽히고 자리가 있으면 그 ZIP(.작성중 파일에 옛 내용부터), 아니면 새 번호
+// 쓸 파일 열기 — 열다 실패하면 빈 파일을 남기지 않는다
+async function hjPzOpenWrite(root,name){const h=await root.getFileHandle(name,{create:true});try{return {h,w:await h.createWritable()};}catch(e){try{await root.removeEntry(name);}catch(_){}throw e;}}
+// 덧붙일 조각 열기 — 마지막 ZIP 이 줄인 사진 ZIP(v2)이고 자리가 있으면 그 ZIP(.작성중 파일에 옛 내용부터), 아니면 새 번호
 async function hjPzOpenPart(root,base,parts,need){
   const last=parts[parts.length-1];
-  const open=async name=>{const h=await root.getFileHandle(name,{create:true});try{return {h,w:await h.createWritable()};}catch(e){try{await root.removeEntry(name);}catch(_){}throw e;}};   // 열다 실패하면 빈 파일을 남기지 않는다
-  if(last&&last.dir&&hjPzRoom(last.file.size,need)&&last.dir.count+2<HJ_PZ_MAX_ENTRIES){
-    const tmpName=last.name+HJ_PZ_TMP,{h:th,w}=await open(tmpName);
+  if(last&&last.dir&&last.dir.v2&&hjPzRoom(last.file.size,need)&&last.dir.count+2<HJ_PZ_MAX_ENTRIES){
+    const tmpName=last.name+HJ_PZ_TMP,{h:th,w}=await hjPzOpenWrite(root,tmpName);
     try{await w.write(last.file.slice(0,last.dir.cdOffset));}catch(e){try{await w.abort();}catch(_){}try{await root.removeEntry(tmpName);}catch(_){}throw e;}
-    return {k:last.k,name:last.name,append:last,tmpName,handle:th,w,off:last.dir.cdOffset,oldCount:last.dir.count,cdOld:last.file.slice(last.dir.cdOffset,last.dir.cdOffset+last.dir.cdSize),names:new Set(last.dir.entries.map(e=>e.name)),list:[],dups:[],closed:false};
+    return {k:last.k,name:last.name,append:last,tmpName,handle:th,w,off:last.dir.cdOffset,oldCount:last.dir.count,cdOld:last.file.slice(last.dir.cdOffset,last.dir.cdOffset+last.dir.cdSize),names:new Set(last.dir.entries.map(e=>e.name)),list:[],closed:false};
   }
   const k=(last?last.k:0)+1;if(k>99)throw new Error('zip-parts');
-  const name=hjPzZipName(base,k),{h,w}=await open(name);
-  return {k,name,append:null,tmpName:'',handle:h,w,off:0,oldCount:0,cdOld:null,names:new Set(),list:[],dups:[],closed:false};
+  const name=hjPzZipName(base,k),{h,w}=await hjPzOpenWrite(root,name);
+  return {k,name,append:null,tmpName:'',handle:h,w,off:0,oldCount:0,cdOld:null,names:new Set(),list:[],closed:false};
 }
-// 조각 마무리 — 목록 csv · 중앙 목록 · 끝 → 닫기 → 검사 → (덧붙임이면) 원래 ZIP 으로 옮겨 쓰고 다시 검사. 실패면 우리가 만든 파일만 지우고 던진다(원래 ZIP 은 그대로)
+// 조각 마무리 — 목록 csv · 중앙 목록 · 끝(표시) → 닫기 → 검사 → (덧붙임·다시 쓰기면) 원래 ZIP 으로 옮겨 쓰고 다시 검사.
+// 실패면 우리가 만든 파일만 지우고 던진다(원래 ZIP 은 그대로 — 바꿔 쓰기는 닫을 때 한 번에 바뀐다)
 async function hjPzClosePart(root,pt,stamp){
   const mine=pt.append?pt.tmpName:pt.name;
   if(!pt.list.length){try{await pt.w.abort();}catch(e){}try{await root.removeEntry(mine);}catch(e){}return null;}
@@ -38666,7 +38807,7 @@ async function hjPzClosePart(root,pt,stamp){
     await hjPzVerify(file,count,pt.list);
     if(pt.append){
       const zh=pt.append.handle,w2=await zh.createWritable();
-      try{await w2.write(file);await w2.close();}catch(e){try{await w2.abort();}catch(_){}throw e;}   // 실패하면 원래 ZIP 그대로(덮어쓰기는 닫을 때 한 번에 바뀐다)
+      try{await w2.write(file);await w2.close();}catch(e){try{await w2.abort();}catch(_){}throw e;}
       copied=true;
       file=await zh.getFile();
       await hjPzVerify(file,count,pt.list);
@@ -38679,88 +38820,232 @@ async function hjPzClosePart(root,pt,stamp){
     throw e;
   }
 }
-// 검사한 ZIP 에 담긴 사진의 원본 파일 지우기 — 같은 파일이고 읽은 뒤 크기·수정 시각이 그대로일 때만
+// 원본을 지운 사진 = 구글 사본 기록(폰과 같은 꼴 — 이 기기 파일·미리보기 없음). 아직 안 읽은 글자 읽기는 '안 함'으로(원본이 없다)
+function hjPzGoogleBacked(rec){return Object.assign({},rec,{handle:null,_file:null,_heicFile:null,_needHeic:false,thumb:null,_virtual:true,ocr:rec.ocr==='pending'?'na':rec.ocr,_relayLink:'relay:'+rec._driveId});}
+// 기록을 구글 사본 기록으로 바꿔 저장(한 번의 원자 쓰기) → 바꾼 항목들 · [] · null(저장 실패)
+async function hjPzConvert(items){
+  for(let attempt=0;attempt<3;attempt++){
+    const arr0=state.files,len0=arr0.length,ok=items.filter(x=>x.rec&&arr0.includes(x.rec)&&x.rec._driveId===x.driveId);
+    if(!ok.length)return [];
+    const map=new Map(ok.map(x=>[x.rec,hjPzGoogleBacked(x.rec)]));
+    const current=()=>state.files===arr0&&state.files.length===len0&&ok.every(x=>arr0.includes(x.rec)&&x.rec._driveId===x.driveId);
+    let saved=false;
+    try{saved=await guardedPersistMediaFiles(arr0.map(f=>map.get(f)||f),current);}catch(e){saved=false;}
+    if(saved){ok.forEach(x=>{try{revokeThumbUrl(x.rec);}catch(e){}});if(typeof __photoCache!=='undefined')__photoCache.key=null;return ok;}
+    if((typeof __tabStale!=='undefined'&&__tabStale)||state._demo)return null;
+    await new Promise(r=>setTimeout(r,400));
+  }
+  return null;
+}
+// 읽은 뒤 그대로인가 — true · 'gone'(이미 없음) · false(바뀜·못 읽음)
+async function hjPzSame(it){
+  try{const f=await it.handle.getFile();return f.size===it.size&&(it.lm==null||f.lastModified===it.lm);}
+  catch(e){return e&&e.name==='NotFoundError'?'gone':false;}
+}
+// 검사를 통과한 ZIP 의 원본 지우기 — 같은 파일이고 읽은 뒤 크기·수정 시각이 그대로일 때만
 async function hjPzDeleteSource(it){
-  const rec=it.rec,nm=String(rec&&rec.name||'');
-  if(!rec||!state.files.includes(rec))return 'record';
-  const dir=await fsDirOfPrefix(rec.prefix);if(!dir)return 'dir';
+  const nm=String(it.name||''),dir=await fsDirOfPrefix(it.prefix);if(!dir)return 'dir';
   let h;try{h=await dir.getFileHandle(nm);}catch(e){return e&&e.name==='NotFoundError'?'already':'error';}
-  try{if(rec.handle&&typeof h.isSameEntry==='function'&&!(await h.isSameEntry(rec.handle)))return 'other';}catch(e){return 'error';}
+  try{if(it.handle&&typeof h.isSameEntry==='function'&&!(await h.isSameEntry(it.handle)))return 'other';}catch(e){return 'error';}
   let f;try{f=await h.getFile();}catch(e){return 'error';}
   if(f.size!==it.size||(it.lm!=null&&f.lastModified!==it.lm))return 'changed';
   try{await dir.removeEntry(nm);}catch(e){return e&&e.name==='NotFoundError'?'already':'error';}
   return 'deleted';
 }
-function hjPzSummaryAdd(prev,items){
-  const s=Object.assign({n:0,bytes:0,zips:[],days:{},labels:{},from:'',to:'',at:''},prev&&typeof prev==='object'&&!Array.isArray(prev)?JSON.parse(JSON.stringify(prev)):{});
-  if(!Array.isArray(s.zips))s.zips=[];if(!s.days||typeof s.days!=='object')s.days={};if(!s.labels||typeof s.labels!=='object')s.labels={};
-  items.forEach(it=>{
-    s.n=(Number(s.n)||0)+1;s.bytes=(Number(s.bytes)||0)+(Number(it.size)||0);
-    if(it.zip){const z=HJ_PZ_DIR+'/'+it.zip;if(!s.zips.includes(z))s.zips.push(z);}
-    const day=String(it.day||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
-    s.days[day]=(Number(s.days[day])||0)+1;if(!s.from||day<s.from)s.from=day;if(!s.to||day>s.to)s.to=day;
-    const lb=hjWorkLabelClean(it.rec&&it.rec._worklabel);if(lb){const m=s.labels[day]||(s.labels[day]={});m[lb]=(Number(m[lb])||0)+1;}
+// ZIP 에 담긴 사진 마무리: 그대로인지 → 구글 사본 기록으로 바꿔 저장 → 저장된 뒤에만 원본 지우기 → 미리보기 넣어 두기
+async function hjPzFinish(items,res){
+  const go=[];
+  for(const it of items){
+    if(it.heal){go.push(it);continue;}
+    const s=await hjPzSame(it);
+    if(s===true||s==='gone')go.push(it);else res.changed++;
+  }
+  if(!go.length)return 0;
+  const done=await hjPzConvert(go);
+  if(done===null){res.uncommitted+=go.length;res.why='commit';return 0;}   // 원본은 그대로 — ZIP 에 이미 있으니 다음 실행이 기록만 바꾸고 원본을 지운다
+  for(const it of done){
+    if(it.thumb){try{await idbSet('thumb:'+it.driveId,it.thumb);}catch(e){}}
+    if(it.heal){res.healed++;continue;}
+    const r=await hjPzDeleteSource(it);
+    if(r==='deleted'){res.bytes+=it.size;res.saved+=Math.max(0,it.size-(Number(it.zsize)||0));}
+    else if(r==='changed'||r==='other')res.changed++;
+    else if(r!=='already')res.keep++;
+  }
+  res.n+=done.length;
+  return done.length;
+}
+// v611 요약 days/labels 에서 되살린 사진 빼기(📑 내역서 사진 수가 두 번 세지 않게 — 기록을 되살리는 같은 저장에서)
+function hjPzSummaryRestore(prev,recs){
+  if(!prev||typeof prev!=='object'||Array.isArray(prev))return prev;
+  const s=JSON.parse(JSON.stringify(prev));
+  recs.forEach(r=>{
+    const day=hjKDayFast(r);if(!day)return;
+    if(s.days&&typeof s.days==='object'&&Number(s.days[day])>0){s.days[day]=Number(s.days[day])-1;if(!s.days[day])delete s.days[day];}
+    const lb=hjWorkLabelClean(r._worklabel),m=s.labels&&s.labels[day];
+    if(lb&&m&&typeof m==='object'&&Number(m[lb])>0){m[lb]=Number(m[lb])-1;if(!m[lb])delete m[lb];if(!Object.keys(m).length)delete s.labels[day];}
   });
-  Object.keys(s.labels).forEach(d=>{const m=s.labels[d];if(!m||typeof m!=='object'){delete s.labels[d];return;}s.labels[d]=Object.fromEntries(Object.entries(m).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ko')).slice(0,3));});
-  s.at=new Date().toISOString();
+  if(s.days&&!Object.keys(s.days).length)delete s.days;if(s.labels&&!Object.keys(s.labels).length)delete s.labels;
   return s;
 }
-// 지운 사진의 기록을 앱 목록에서 뺀다 — deletePhotoRecordsSafely 와 같은 규칙(정리 표시·Drive 다시 불러오지 않기), 현장 요약을 같은 원자 저장에
-async function hjPzCommit(project,items){
-  for(let attempt=0;attempt<3;attempt++){
-    const arr0=state.files,len0=arr0.length,drop=new Set(items.map(x=>x.rec).filter(r=>arr0.includes(r)));
-    if(!drop.size)return 0;
-    const refs=[...drop],used=items.filter(x=>drop.has(x.rec));
-    const stillUsed=new Set();arr0.forEach(f=>{if(drop.has(f))return;if(f._driveId)stillUsed.add(f._driveId);if(f._mediaOriginal&&f._mediaOriginal.fileId)stillUsed.add(f._mediaOriginal.fileId);});
-    const removed=new Set(__removedIds);refs.forEach(f=>{if(f._driveId&&!stillUsed.has(f._driveId))removed.add(f._driveId);if(f._mediaOriginal&&f._mediaOriginal.fileId&&!stillUsed.has(f._mediaOriginal.fileId))removed.add(f._mediaOriginal.fileId);});
-    const p=(state.projects||[]).find(x=>x&&x.name===project),had=!!(p&&Object.prototype.hasOwnProperty.call(p,'photoArchive')),prev=had?p.photoArchive:undefined;
-    if(p)p.photoArchive=hjPzSummaryAdd(prev,used);
-    const current=()=>state.files===arr0&&state.files.length===len0&&refs.every(f=>arr0.includes(f));
-    let ok=false;
-    try{ok=await guardedPersistMediaFiles(arr0.filter(f=>!drop.has(f)),current,[...removed],undefined,{tomb:true});}catch(e){ok=false;}
-    if(ok){refs.forEach(f=>{revokeThumbUrl(f);__sel.delete(f.id);});if(typeof __photoCache!=='undefined')__photoCache.key=null;return refs.length;}
-    if(p){if(had)p.photoArchive=prev;else delete p.photoArchive;}
-    if((typeof __tabStale!=='undefined'&&__tabStale)||state._demo)return -1;
-    await new Promise(r=>setTimeout(r,400));
+// 현장 요약 다시 세기 — 그 현장 ZIP 들의 사진 목록(csv)에서. 다른 현장 줄은 빼고, 지금 없는 현장 이름(바꾼 이름)의 줄은 센다
+function hjPzSummaryFrom(prev,project,parts,rowsOf){
+  const names=new Set((state.projects||[]).filter(p=>p&&p.name).map(p=>p.name));
+  let n=0,bytes=0,zbytes=0,from='',to='',legacy=0;const zips=[];
+  parts.forEach(part=>{
+    const rows=part&&part.dir&&rowsOf.get(part.name);if(!rows)return;
+    let mine=0;
+    rows.forEach(r=>{const pj=String(r['현장']||'');if(pj!==project&&names.has(pj))return;mine++;bytes+=Number(r['원본 크기(바이트)'])||0;const day=String(r['촬영일시']||'').slice(0,10);if(/^\d{4}-\d{2}-\d{2}$/.test(day)){if(!from||day<from)from=day;if(!to||day>to)to=day;}});
+    if(!mine)return;
+    n+=mine;zips.push(HJ_PZ_DIR+'/'+part.name);zbytes+=part.file.size;if(!part.dir.v2)legacy++;
+  });
+  const keep={};
+  if(prev&&typeof prev==='object'&&!Array.isArray(prev)){
+    if(prev.days&&typeof prev.days==='object'&&!Array.isArray(prev.days)&&Object.keys(prev.days).length)keep.days=JSON.parse(JSON.stringify(prev.days));
+    if(keep.days&&prev.labels&&typeof prev.labels==='object'&&!Array.isArray(prev.labels)&&Object.keys(prev.labels).length)keep.labels=JSON.parse(JSON.stringify(prev.labels));
   }
-  return -1;
+  if(!n&&!keep.days)return null;
+  return Object.assign({v:legacy?1:2,n,bytes,zbytes,zips,from,to},keep);
 }
-async function hjPzFinish(project,items,res){
-  const ok=[];
-  for(const it of items){
-    if(it.heal){ok.push(it);continue;}   // 파일이 이미 없고 ZIP 에 있다
-    const r=await hjPzDeleteSource(it);
-    if(r==='deleted'||r==='already')ok.push(it);else if(r==='changed'||r==='other')res.changed++;else res.keep++;
-  }
-  if(!ok.length)return 0;
-  const n=await hjPzCommit(project,ok);
-  if(n>0){res.n+=n;ok.forEach(it=>{if(!state.files.includes(it.rec)){if(it.dup)res.dup++;else if(it.heal)res.healed++;res.bytes+=Number(it.size)||0;}});return n;}
-  res.uncommitted+=ok.length;res.why='commit';   // 원본은 지웠고 ZIP 에 있다 — 다음 보관 때 '파일 없음 + ZIP 에 있음'으로 목록에서 뺀다
-  return 0;
-}
-async function hjPzProject(root,project,recs,res,tick){
-  const base=hjPzSafeName(project),parts=[];
+// 그 현장의 ZIP — 이름 사슬(<현장>_사진보관(_k).zip, 덧붙이는 곳) + 요약에 적힌 ZIP(이름을 바꾼 현장)
+async function hjPzParts(root,project){
+  const base=hjPzSafeName(project),chain=[],extra=[];
   for(let k=1;k<100;k++){
     const name=hjPzZipName(base,k);let h;
-    try{h=await root.getFileHandle(name);}catch(e){if(e&&e.name==='NotFoundError')break;throw e;}
-    const file=await h.getFile();parts.push({k,name,handle:h,file,dir:await hjPzReadDir(file)});
+    try{h=await root.getFileHandle(name);}catch(e){if(e&&(e.name==='NotFoundError'||e.name==='TypeMismatchError'))break;throw e;}
+    const file=await h.getFile();chain.push({k,name,handle:h,file,dir:await hjPzReadDir(file)});
   }
-  const have=new Map(),havePath=new Map(),haveBase=new Map(),later=[];   // '크기:CRC' → [{base,zip,owner}] · '원래 위치|크기'·'파일 이름|크기' → {zip,owner} · owner = 아직 검사 전 조각(null = 검사된 ZIP)
-  const remember=(e,zip,owner)=>{const k=e.size+':'+e.crc,bn=String(e.name).split('/').pop().replace(/ \(\d+\)(\.[^.]*)?$/,'$1');let a=have.get(k);if(!a)have.set(k,a=[]);a.push({base:String(e.name).split('/').pop(),zip,owner});
-    if(e.comment)havePath.set(e.comment+'|'+e.size,{zip,owner});if(!haveBase.has(bn+'|'+e.size))haveBase.set(bn+'|'+e.size,{zip,owner});};
-  parts.forEach(pt=>{if(pt.dir)pt.dir.entries.forEach(e=>{if(!/^_목록\//.test(e.name))remember(e,pt.name,null);});});
-  let pt=null;
-  const flush=async()=>{
-    const p0=pt;pt=null;if(!p0)return;
-    const closed=await hjPzClosePart(root,p0,res.stamp);
-    if(closed){
-      const info={k:p0.k,name:p0.name,handle:closed.handle,file:closed.file,dir:closed.dir},i=parts.findIndex(x=>x.k===p0.k);if(i>=0)parts[i]=info;else parts.push(info);
-      have.forEach(a=>a.forEach(x=>{if(x.owner===p0)x.owner=null;}));havePath.forEach(x=>{if(x.owner===p0)x.owner=null;});
-      res.zips.add(HJ_PZ_DIR+'/'+p0.name);res.added+=p0.list.filter(e=>e.item).length;
+  const pj=(state.projects||[]).find(p=>p&&p.name===project),zs=pj&&pj.photoArchive&&Array.isArray(pj.photoArchive.zips)?pj.photoArchive.zips:[];
+  for(const z of zs){
+    const s=String(z||''),nm=s.startsWith(HJ_PZ_DIR+'/')?s.slice(HJ_PZ_DIR.length+1):'';
+    if(!/^[^/\\]+\.zip$/i.test(nm)||chain.some(x=>x.name===nm)||extra.some(x=>x.name===nm))continue;
+    let h;try{h=await root.getFileHandle(nm);}catch(e){continue;}
+    const file=await h.getFile();extra.push({k:0,name:nm,handle:h,file,dir:await hjPzReadDir(file)});
+  }
+  return {base,chain,extra};
+}
+// v611 이 만든 원본 ZIP(표시 없음) → ① 앱 기록 되살리기 ② (①이 다 됐으면) 줄인 사진 ZIP 으로 다시 쓰기
+async function hjPzMigratePart(root,project,part,res,ctx){
+  const rows=await hjPzPartRows(part.file,part.dir),photos=part.dir.entries.filter(e=>!/^_목록\//.test(e.name));
+  const tombDrive=new Map();
+  hjTombActiveKeys(state.photoTombs).forEach(k=>{try{const a=JSON.parse(k);if(Array.isArray(a)&&a[3])tombDrive.set(String(a[0])+String(a[1])+'|'+(Number(a[2])||0),String(a[3]));}catch(e){}});
+  const names=new Set((state.projects||[]).filter(p=>p&&p.name).map(p=>p.name));
+  const unitOf=(pname,label)=>{const pj=(state.projects||[]).find(p=>p&&p.name===pname);if(!label||!pj)return null;try{const u=aptUnitList(pj).find(x=>aptUnitLabel(x)===label);return u?{project:pj.name,unitId:u.id}:null;}catch(e){return null;}};
+  const ready=new Map(),pend=[],tombOf=new Map();let blocked=0;
+  const commit=async()=>{
+    if(!pend.length)return true;
+    const recs=pend.splice(0);
+    for(let attempt=0;attempt<3;attempt++){
+      const arr0=state.files,len0=arr0.length,files=arr0.concat(recs),prevT=state.photoTombs;
+      const pseudo=[];recs.forEach(r=>{pseudo.push({prefix:r.prefix,name:r.name,size:r.size,_driveId:''});const t=tombOf.get(r);if(t)pseudo.push({prefix:r.prefix,name:r.name,size:r.size,_driveId:t});});
+      const removedIds=new Set(__removedIds);recs.forEach(r=>{removedIds.delete(r._driveId);const t=tombOf.get(r);if(t)removedIds.delete(t);});
+      const byProj=new Map();recs.forEach(r=>{if(!byProj.has(r.project))byProj.set(r.project,[]);byProj.get(r.project).push(r);});
+      const undo=[];
+      byProj.forEach((list,pname)=>{const p=(state.projects||[]).find(x=>x&&x.name===pname);if(!p||!p.photoArchive)return;undo.push([p,p.photoArchive]);p.photoArchive=hjPzSummaryRestore(p.photoArchive,list);});
+      state.photoTombs=hjTombUpdate(prevT,[],recs.concat(pseudo),files,new Date().toISOString());   // 정리 표시 되살림(그 Drive ID 의 것 · Drive ID 없던 것)
+      let ok=false;try{ok=await guardedPersistMediaFiles(files,()=>state.files===arr0&&state.files.length===len0,[...removedIds]);}catch(e){ok=false;}
+      if(ok){if(typeof __photoCache!=='undefined')__photoCache.key=null;res.restored+=recs.length;return true;}
+      state.photoTombs=prevT;undo.forEach(([p,v])=>{p.photoArchive=v;});
+      if((typeof __tabStale!=='undefined'&&__tabStale)||state._demo)break;
+      await new Promise(r=>setTimeout(r,400));
     }
-    await hjPzFinish(project,p0.list.filter(e=>e.item).map(e=>e.item).concat(p0.dups),res);
+    res.why='commit';return false;
   };
+  // ① 되살리기
+  for(const e of photos){
+    if(window.__hjPzStop){res.why='stopped';break;}
+    const row=rows.get(e.name);if(!row)continue;   // 목록 줄이 없는 항목 — ZIP 에 그대로(원본) 둔다
+    const path=String(row['원래 위치']||''),osize=Number(row['원본 크기(바이트)'])||e.size,sp=hjPzSplitPath(path);
+    if(!sp.name)continue;
+    const have=state.files.find(f=>f&&f.kind==='photo'&&hjPzPath(f)===path&&Number(f.size)===osize)||pend.find(f=>hjPzPath(f)===path&&f.size===osize);
+    if(have){if(have._driveId&&!have.handle&&(pend.includes(have)||(await hjPzDriveHas(ctx,have._driveId))===true))ready.set(e.name,have._driveId);continue;}   // 이미 앱에 있다(지난 실행에서 되살림)
+    const tombId=tombDrive.get(path+'|'+osize)||'';let driveId='',info=null;
+    if(tombId){const has=await hjPzDriveHas(ctx,tombId);if(has===null){blocked++;res.unknown++;continue;}if(has){driveId=tombId;info=ctx.drive.ids.get(tombId)||null;}}
+    if(!driveId){
+      let bytes=null;try{bytes=await hjPzEntryData(part.file,e);}catch(err){res.keep++;continue;}
+      const up=await hjPzDriveUpload(ctx,bytes,sp.name);
+      if(!up||up.error){res.noDrive++;if(!up||up.error==='auth')blocked++;continue;}   // 형식·크기로 못 올리는 사진은 ZIP 에 원본 그대로 남는다(앱에는 없음)
+      driveId=up.fileId;info=up;res.uploaded++;
+    }
+    const when=hjPzKstDate(row['촬영일시']);
+    const lat=row['위도']===''||row['위도']==null?null:Number(row['위도']),lng=row['경도']===''||row['경도']==null?null:Number(row['경도']);
+    const proj=names.has(row['현장'])?row['현장']:project,unit=unitOf(proj,row['동·호수']);
+    const rec={id:uid(),name:sp.name,handle:null,prefix:sp.prefix,ext:bestExt(sp.name,''),size:osize,kind:'photo',project:proj,when,
+      lat:Number.isFinite(lat)?lat:null,lng:Number.isFinite(lng)?lng:null,place:null,address:row['주소']||null,thumb:null,text:'',ocr:'na',est:null,exSum:false,ledger:null,quote:null,contact:null,
+      _phase:row['공정']||null,_worklabel:row['작업명']||null,_gdFolder:null,...(unit?{_aptUnit:unit}:{}),
+      _driveId:driveId,_driveMimeType:(info&&info.mimeType)||'image/jpeg',_driveSize:(info&&info.size)||0,_relayLink:'relay:'+driveId,_file:null,_virtual:true};
+    if(tombId)tombOf.set(rec,tombId);
+    pend.push(rec);ready.set(e.name,driveId);
+    if(pend.length>=HJ_PZ_RESTORE_BATCH&&!(await commit()))return false;
+  }
+  if(!(await commit()))return false;
+  if(res.why==='stopped'||blocked)return false;   // 구글 사본을 아직 확인·올리지 못한 사진이 있다 — ZIP 은 원본 그대로, 다음 실행에서 다시
+  // ② 줄인 사진 ZIP 으로 다시 쓰기 — 앱에 구글 사본 기록이 있는 사진만 줄이고(촬영일시·GPS 를 EXIF 로), 나머지는 원본 그대로
+  const tmpName=part.name+HJ_PZ_TMP,{h:th,w}=await hjPzOpenWrite(root,tmpName);
+  const pt={k:part.k,name:part.name,append:null,tmpName,handle:th,w,off:0,oldCount:0,cdOld:null,names:new Set(),list:[],closed:false};
+  let copied=false;
   try{
+    for(const e of photos){
+      if(window.__hjPzStop){res.why='stopped';throw new Error('stopped');}
+      let u;try{u=await hjPzEntryData(part.file,e);}catch(err){if(err&&/^zip-(method|local|crc)$/.test(String(err.message)))throw new Error('zip-legacy-bad');throw err;}
+      const row=rows.get(e.name)||{},path=String(row['원래 위치']||e.comment||'');
+      const id=ready.get(e.name)||'',rec=id?state.files.find(f=>f&&f._driveId===id&&!f.handle&&hjPzPath(f)===path):null;
+      const meta={path,project:row['현장']||project,when:row['촬영일시']||'',phase:row['공정']||'',work:row['작업명']||'',unit:row['동·호수']||'',lat:row['위도']||'',lng:row['경도']||'',address:row['주소']||'',
+        osize:Number(row['원본 크기(바이트)'])||e.size,shrunk:false,driveId:rec?id:'',ocrc:row['원본 CRC32']||hjPzHex(e.crc)};
+      let out={bytes:u,shrunk:false,thumb:''};
+      if(rec)out=await hjPzShrink(u,hjPzSplitPath(path).name||e.name,rec);
+      meta.shrunk=out.shrunk;
+      if(rec&&out.thumb){try{await idbSet('thumb:'+id,out.thumb);}catch(_){}}
+      await hjPzPut(pt,hjPzUnique(hjPzShrunkName(e.name,out.shrunk),pt.names),out.bytes,out.shrunk?null:e.crc,null,path,{meta},e.dos);
+      if(out.shrunk)res.shrunk++;
+    }
+    await hjPzPut(pt,hjPzUnique('_목록/'+res.stamp+'.csv',pt.names),new TextEncoder().encode(hjPzCsv(pt.list)),null,new Date(),'',null);
+    const cd=pt.list.map(hjPzCentral),cdLen=cd.reduce((a,b)=>a+b.length,0),count=pt.list.length,cdOff=pt.off;
+    for(const b of cd)await pt.w.write(b);
+    await pt.w.write(hjPzEnd(count,cdLen,cdOff));
+    await pt.w.close();pt.closed=true;
+    let file=await th.getFile();await hjPzVerify(file,count,pt.list);
+    const w2=await part.handle.createWritable();
+    try{await w2.write(file);await w2.close();}catch(e){try{await w2.abort();}catch(_){}throw e;}
+    copied=true;
+    file=await part.handle.getFile();await hjPzVerify(file,count,pt.list);
+    try{await root.removeEntry(tmpName);}catch(e){}
+    const before=part.file.size;Object.assign(part,{file,dir:await hjPzReadDir(file)});
+    res.migrated++;res.saved+=Math.max(0,before-file.size);res.zips.add(HJ_PZ_DIR+'/'+part.name);
+    return true;
+  }catch(e){
+    if(!pt.closed){try{await pt.w.abort();}catch(_){}}
+    if(!copied){try{await root.removeEntry(tmpName);}catch(_){}}
+    if(res.why==='stopped')return false;
+    if(e&&e.message==='zip-legacy-bad'){res.badZip++;return false;}   // 깨진 항목이 든 옛 ZIP — 다시 쓰지 않고 그대로(읽히는 사진은 ①에서 앱에 되살렸다) · 다른 현장 보관은 이어서
+    throw e;
+  }
+}
+async function hjPzProject(root,project,recs,res,tick,ctx){
+  const {base,chain,extra}=await hjPzParts(root,project),all=()=>chain.concat(extra),rowsOf=new Map();
+  const rowsFor=async part=>{if(!rowsOf.has(part.name))rowsOf.set(part.name,part.dir?await hjPzPartRows(part.file,part.dir):new Map());return rowsOf.get(part.name);};
+  let pt=null;
+  try{
+    // ① v611 원본 ZIP 부터 — 사진을 앱에 되살리고 줄인 사진 ZIP 으로
+    for(const part of all()){
+      if(!part.dir||part.dir.v2||!part.dir.entries.length)continue;
+      if(window.__hjPzStop){res.why='stopped';break;}
+      await hjPzMigratePart(root,project,part,res,ctx);rowsOf.delete(part.name);
+      if(res.why==='stopped'||res.why==='commit')break;
+    }
+    if(res.why==='stopped'||res.why==='commit')return;
+    // ② 새 대상 — 이미 줄인 사진 ZIP 에 든 원래 위치(지난 실행이 ZIP 에 쓰고 기록을 못 바꿨거나 원본을 못 지운 경우)는 원본 CRC 가 같으면 다시 안 담는다
+    const inZip=new Map();
+    for(const part of all()){if(!part.dir||!part.dir.v2)continue;(await rowsFor(part)).forEach(r=>{if(r['원래 위치'])inZip.set(r['원래 위치']+'|'+(Number(r['원본 크기(바이트)'])||0),String(r['원본 CRC32']||''));});}
+    const later=[];
+    const flush=async()=>{
+      const p0=pt;pt=null;if(!p0)return;
+      const closed=await hjPzClosePart(root,p0,res.stamp);
+      if(!closed)return;
+      const info={k:p0.k,name:p0.name,handle:closed.handle,file:closed.file,dir:closed.dir},i=chain.findIndex(x=>x.k===p0.k);if(i>=0)chain[i]=info;else chain.push(info);
+      rowsOf.delete(p0.name);res.zips.add(HJ_PZ_DIR+'/'+p0.name);
+      const items=p0.list.filter(e=>e.item&&e.item.rec).map(e=>e.item);res.added+=items.length;
+      await hjPzFinish(items,res);
+    };
     for(const rec of recs){
       if(window.__hjPzStop){res.why='stopped';break;}
       if(res.why==='commit')break;
@@ -38769,29 +39054,48 @@ async function hjPzProject(root,project,recs,res,tick){
       let file=null;
       try{file=await rec.handle.getFile();}
       catch(e){
-        if(e&&e.name==='NotFoundError'){const hit=havePath.get(path+'|'+size0)||haveBase.get(String(rec.name||'')+'|'+size0),it={rec,size:size0,day,zip:hit&&hit.zip,heal:true};if(!hit)res.missing++;else if(hit.owner)hit.owner.dups.push(it);else later.push(it);continue;}   // 원래 위치가 같거나(같은 사진의 다른 폴더 사본이면) 이름·크기가 같은 항목
+        if(e&&e.name==='NotFoundError'){   // 원본 파일이 이미 없다 — 구글 사본이 확인되면 기록만 바꾼다
+          const has=rec._driveId?await hjPzDriveHas(ctx,rec._driveId):false;
+          if(has===true)later.push({rec,driveId:rec._driveId,heal:true});else res.missing++;
+          continue;
+        }
         res.keep++;continue;
       }
       if(file.size!==size0){res.changed++;continue;}   // 폴더를 읽은 뒤 바뀐 파일 — 다음 폴더 읽기 뒤에
       const lm=file.lastModified,bytes=new Uint8Array(await file.arrayBuffer());
       if(bytes.length!==size0){res.changed++;continue;}
-      const crc=await hjCrc32Async(bytes),b=String(rec.name||'');
-      const twin=(have.get(size0+':'+crc)||[]).find(x=>x.base===b);
-      if(twin){const it={rec,size:size0,lm,day,zip:twin.zip,dup:true};if(twin.owner)twin.owner.dups.push(it);else later.push(it);continue;}   // 같은 사진이 이미 ZIP 에 — 다시 담지 않고 원본만
-      const entryBase=(day||'날짜 없음')+'/'+b;
-      if(pt&&pt.list.length&&(!hjPzRoom(pt.off,size0)||pt.oldCount+pt.list.length+2>=HJ_PZ_MAX_ENTRIES))await flush();
+      const driveId=await hjPzEnsureDrive(rec,bytes,ctx,res);
+      if(!driveId)continue;   // 구글 사본을 확인 못 하면 PC 원본을 지우지 않는다
+      const ocrc=hjPzHex(await hjCrc32Async(bytes)),key=path+'|'+size0;
+      const it={rec,prefix:rec.prefix,name:rec.name,handle:rec.handle,size:size0,lm,day,driveId,zsize:0,thumb:''};
+      if(inZip.get(key)===ocrc){later.push(it);continue;}   // 이미 ZIP 에 있는 같은 사진 — 기록만 바꾸고 원본을 지운다
+      const out=await hjPzShrink(bytes,String(rec.name||''),rec);
+      if(pt&&pt.list.length&&(!hjPzRoom(pt.off,out.bytes.length)||pt.oldCount+pt.list.length+2>=HJ_PZ_MAX_ENTRIES))await flush();
       if(res.why==='commit')break;
-      if(!pt)pt=await hjPzOpenPart(root,base,parts,size0);
-      const it={rec,size:size0,lm,day,zip:pt.name},name=hjPzUnique(entryBase,pt.names);
-      await hjPzPut(pt,name,bytes,crc,rec.when,path,it);
-      it.entry=name;remember({name,size:size0,crc,comment:path},pt.name,pt);
+      if(!pt)pt=await hjPzOpenPart(root,base,chain,out.bytes.length);
+      Object.assign(it,{zsize:out.bytes.length,thumb:out.thumb||'',meta:hjPzMeta(rec,driveId,out.shrunk,ocrc)});
+      await hjPzPut(pt,hjPzUnique((day||'날짜 없음')+'/'+hjPzShrunkName(String(rec.name||''),out.shrunk),pt.names),out.bytes,null,rec.when,path,it);
+      if(out.shrunk)res.shrunk++;else res.asIs++;
+      inZip.set(key,ocrc);
     }
     await flush();
+    if(later.length&&res.why!=='commit')await hjPzFinish(later,res);
   }catch(e){
     if(pt){const p0=pt;pt=null;if(!p0.closed){try{await p0.w.abort();}catch(_){}}try{await root.removeEntry(p0.append?p0.tmpName:p0.name);}catch(_){}}
     throw e;
+  }finally{
+    // 현장 요약 다시 세기(ZIP 사진 목록 기준) — 바뀌었을 때만 저장 쪽으로
+    try{
+      const p=(state.projects||[]).find(x=>x&&x.name===project);
+      if(p){
+        const parts=all();for(const part of parts)await rowsFor(part);
+        const had=Object.prototype.hasOwnProperty.call(p,'photoArchive'),prev=had?p.photoArchive:undefined,next=hjPzSummaryFrom(prev,project,parts,rowsOf);
+        const strip=o=>{if(!o||typeof o!=='object')return o;const c=Object.assign({},o);delete c.at;return JSON.stringify(c);};
+        if(next&&strip(next)!==strip(prev)){p.photoArchive=Object.assign(next,{at:new Date().toISOString()});try{markDirty();}catch(e){}}
+        else if(!next&&had){delete p.photoArchive;try{markDirty();}catch(e){}}
+      }
+    }catch(e){}
   }
-  if(later.length&&res.why!=='commit')await hjPzFinish(project,later,res);
 }
 function hjPhotoZipBlock(){
   if(state._demo)return 'demo';
@@ -38799,22 +39103,36 @@ function hjPhotoZipBlock(){
   if(typeof hjStaffOn==='function'&&hjStaffOn())return 'staff';
   if(!state.dirHandle)return 'nofolder';
   if(directOrganizedRoot())return 'direct';
+  if(!(typeof relayReady==='function'&&relayReady()))return 'relay';
   if(hjScanBusy())return 'scan';
   if(photoIntakePending())return 'intake';
   return '';
 }
+// v611 원본 ZIP(표시 없음)이 남은 현장 — 대상 사진이 없어도 돈다(사진을 앱에 되살리고 ZIP 을 줄이려고)
+function hjPzLegacyProjects(){return (state.projects||[]).filter(p=>p&&p.name&&p.photoArchive&&typeof p.photoArchive==='object'&&p.photoArchive.v!==2&&Array.isArray(p.photoArchive.zips)&&p.photoArchive.zips.length).map(p=>p.name);}
+// PC 원본을 지우고 구글 사본으로만 남긴 사진 수(줄인 사진 ZIP 요약) — 폴더 읽기의 '평소보다 적어요' 기준에서 뺀다
+function hjPzArchivedCount(){let n=0;(state.projects||[]).forEach(p=>{const a=p&&p.photoArchive;if(a&&typeof a==='object'&&a.v===2)n+=Math.max(0,Math.round(Number(a.n)||0));});return n;}
 function hjPzLastGet(){try{const v=JSON.parse(localStorage.getItem(HJ_PZ_LAST_KEY)||'null');return v&&typeof v==='object'?v:null;}catch(e){return null;}}
 function hjPzLastSet(v){try{localStorage.setItem(HJ_PZ_LAST_KEY,JSON.stringify(v));}catch(e){}}
 function hjPhotoZipResultText(r){
   if(!r)return '';
   if(r.why==='permission')return '폴더 쓰기 권한이 없어 못 함'+(r.pending?' ('+r.pending+'장 대기)':'')+' — [🗜 지금 보관]을 누르면 권한을 물어요';
+  if(r.why==='relay')return HJ_PZ_WHY.relay+(r.pending?' ('+r.pending+'장 대기)':'');
+  if(r.why==='drivelist')return HJ_PZ_WHY.drivelist;
   if(r.why==='snapshot')return '🛡 안전판을 저장하지 못해 안 함(사진 그대로)';
   const bits=[];
-  if(r.n)bits.push(r.n+'장 보관·낱장 삭제'+(r.projects?' (현장 '+r.projects+'곳)':''));
+  if(r.n)bits.push(r.n+'장 PC 원본 정리(앱엔 구글 사본)'+(r.projects?' · 현장 '+r.projects+'곳':''));
+  if(r.saved)bits.push('PC '+fmtSize(r.saved)+' 줄임');
+  if(r.uploaded)bits.push('구글에 새로 올림 '+r.uploaded+'장');
+  if(r.restored)bits.push('앱에 되살림 '+r.restored+'장');
+  if(r.migrated)bits.push('옛 원본 ZIP '+r.migrated+'개를 줄인 사진으로');
+  if(r.noDrive)bits.push('구글에 못 올린 '+r.noDrive+'장은 그대로');
+  if(r.unknown)bits.push('구글 사본을 확인 못 한 '+r.unknown+'장은 다음에');
+  if(r.badZip)bits.push('깨진 항목이 있는 옛 ZIP '+r.badZip+'개는 그대로');
   if(r.changed)bits.push('읽은 뒤 바뀐 사진 '+r.changed+'장은 다음에');
   if(r.missing)bits.push('파일이 없는 사진 '+r.missing+'장은 그대로');
   if(r.keep)bits.push('지우지 못한 사진 '+r.keep+'장은 그대로');
-  if(r.uncommitted)bits.push('목록 정리 '+r.uncommitted+'장은 다음에');
+  if(r.uncommitted)bits.push('저장 못 한 '+r.uncommitted+'장은 다음에(원본 그대로)');
   if(r.why==='stopped')bits.push('멈춤');
   if(r.why==='interrupted')bits.push('도중에 멈춤');
   if(r.why==='error')bits.push('오류로 멈춤('+(r.err||'?')+') — 검사를 통과하지 못한 사진은 그대로');
@@ -38839,46 +39157,59 @@ function hjPzBar(text){
 async function hjPzRunLocked(auto){
   if(window.__hjPzBusy)return {ok:false,why:'busy'};
   window.__hjPzBusy=true;window.__hjPzStop=false;
-  const res={at:new Date().toISOString(),auto:!!auto,stamp:hjPzStamp(),n:0,added:0,dup:0,healed:0,bytes:0,projects:0,zips:new Set(),changed:0,missing:0,keep:0,uncommitted:0,why:'',err:'',pending:0};
+  const res={at:new Date().toISOString(),auto:!!auto,stamp:hjPzStamp(),n:0,added:0,shrunk:0,asIs:0,healed:0,uploaded:0,restored:0,migrated:0,noDrive:0,unknown:0,badZip:0,bytes:0,saved:0,projects:0,zips:new Set(),changed:0,missing:0,keep:0,uncommitted:0,why:'',err:'',pending:0};
   try{
-    const plan=hjPhotoZipPlan();res.pending=plan.n;
-    if(!plan.n)res.why='none';
+    const plan=hjPhotoZipPlan(),legacy=hjPzLegacyProjects();res.pending=plan.n;
+    const order=[...plan.groups.keys()];legacy.forEach(n=>{if(!order.includes(n))order.push(n);});
+    if(!order.length)res.why='none';
     else{
-      hjPzBar('🗜 한 달 지난 사진 '+plan.n+'장 ZIP 보관 준비 중…');
-      if(await hjSnapshot('한 달 지난 사진 ZIP 보관 전',true)!==true)res.why='snapshot';
+      hjPzBar('🗜 한 달 지난 사진 '+plan.n+'장 — 구글 서버 사본 확인 중…');
+      const drive=await hjPzDriveIndex();
+      if(!drive)res.why='drivelist';
+      else if(await hjSnapshot('한 달 지난 사진 ZIP 보관 전',true)!==true)res.why='snapshot';
       else{
-        const root=await state.dirHandle.getDirectoryHandle(HJ_PZ_DIR,{create:true});
+        const ctx={drive,auth:false},root=await state.dirHandle.getDirectoryHandle(HJ_PZ_DIR,{create:true});
         let done=0;
-        for(const [project,recs] of plan.groups){
+        for(const project of order){
           if(window.__hjPzStop){res.why='stopped';break;}
           if(state._demo||(typeof __tabStale!=='undefined'&&__tabStale)||hjScanBusy()){res.why='interrupted';break;}
-          const n0=res.n;let i=0;
-          await hjPzProject(root,project,recs,res,()=>{i++;done++;hjPzBar('🗜 한 달 지난 사진 ZIP 보관 중 — '+project+' '+i+'/'+recs.length+' · 전체 '+done+'/'+plan.n);});
-          if(res.n>n0){res.projects++;try{markDirty();}catch(e){}}
+          const recs=plan.groups.get(project)||[],n0=res.n+res.restored+res.migrated;let i=0;
+          hjPzBar('🗜 한 달 지난 사진 보관 중 — '+project);
+          await hjPzProject(root,project,recs,res,()=>{i++;done++;hjPzBar('🗜 한 달 지난 사진 보관 중 — '+project+' '+i+'/'+recs.length+' · 전체 '+done+'/'+plan.n);},ctx);
+          if(res.n+res.restored+res.migrated>n0)res.projects++;
           if(res.why==='stopped'||res.why==='commit')break;
         }
       }
     }
   }catch(e){res.why='error';res.err=String(e&&(e.message||e.name)||e).slice(0,120);}
   finally{window.__hjPzBusy=false;window.__hjPzStop=false;hjPzBar(null);}
-  res.zips=[...res.zips];res.ok=!['error','snapshot','commit','interrupted'].includes(res.why);
+  res.zips=[...res.zips];res.ok=!['error','snapshot','commit','interrupted','drivelist'].includes(res.why);
   hjPzLastSet(res);
-  if(res.n){try{hjAuditAdd('delete','한 달 지난 사진 ZIP 보관',res.n);}catch(e){}try{render();}catch(e){}}
-  const tail=(res.changed?' · 읽은 뒤 바뀐 사진 '+res.changed+'장은 다음에':'')+(res.keep?' · 지우지 못한 '+res.keep+'장은 그대로':'');
-  if(res.n)toast('🗜 한 달 지난 사진 '+res.n+'장을 현장 '+res.projects+'곳 ZIP 으로 보관하고 낱장은 지웠어요 — 만물/'+HJ_PZ_DIR+tail+(res.why==='stopped'?' · 멈춤(나머지는 다음에)':''));
+  // 폴더 _현장.json 도 지금 자료로 — 같은 세션에 [다시 스캔]하면 폴더 저장본·처음 불러온 자료로 기록을 맞추는데, 거기엔 이번에 올린 구글 사본 ID 가 없어 그 기록이 빠진다(PC 원본이 없으니)
+  if((res.n||res.restored)&&state.dirHandle){try{await saveProject(true);}catch(e){}}
+  if(res.n||res.restored){try{hjAuditAdd('delete','한 달 지난 사진 PC 원본 정리(구글 사본 유지)',res.n||res.restored);}catch(e){}}
+  if(res.n||res.restored||res.migrated){try{render();}catch(e){}}
+  const tail=(res.saved?' · PC '+fmtSize(res.saved)+' 줄임':'')+(res.uploaded?' · 구글에 새로 올림 '+res.uploaded+'장':'')+(res.restored?' · 앱에 되살림 '+res.restored+'장':'')+
+    (res.noDrive?' · 구글에 못 올린 '+res.noDrive+'장은 PC 에 그대로':'')+(res.unknown?' · 구글 사본 확인 못 한 '+res.unknown+'장은 다음에':'')+(res.changed?' · 읽은 뒤 바뀐 사진 '+res.changed+'장은 다음에':'')+(res.keep?' · 지우지 못한 '+res.keep+'장은 그대로':'');
+  if(res.n||res.restored||res.migrated)toast('🗜 한 달 지난 사진 '+res.n+'장 — PC 에는 줄인 사진 ZIP(만물/'+HJ_PZ_DIR+'), 앱에는 구글 사본으로 그대로'+tail+(res.why==='stopped'?' · 멈춤(나머지는 다음에)':''));
   else if(res.why==='snapshot')toast('🛡 안전판을 저장하지 못해 사진을 보관하지 않았어요 — 사진은 그대로예요');
+  else if(res.why==='drivelist')toast('☁️ '+HJ_PZ_WHY.drivelist+' — 사진은 그대로예요');
   else if(res.why==='error')toast('🗜 사진 보관을 멈췄어요('+res.err+') — 검사를 통과하지 못한 사진은 지우지 않았어요');
   else if(!auto&&res.why==='none')toast('한 달 지난 현장 사진(PC 폴더)이 없어요 — 보관할 것이 없습니다');
-  else if(!auto||res.changed||res.keep||res.uncommitted)toast('🗜 '+hjPhotoZipResultText(res));
+  else if(!auto||res.changed||res.keep||res.uncommitted||res.noDrive||res.unknown)toast('🗜 '+hjPhotoZipResultText(res));
   return res;
 }
 async function hjPhotoZipRun(opts){
   const auto=!!(opts&&opts.auto);
   if(window.__hjPzBusy){if(!auto)toast(HJ_PZ_WHY.busy);return {ok:false,why:'busy'};}
   const block=hjPhotoZipBlock();
-  if(block){if(!auto)toast(HJ_PZ_WHY[block]||'지금은 사진을 보관할 수 없어요');return {ok:false,why:block};}
+  if(block){
+    if(!auto)toast(HJ_PZ_WHY[block]||'지금은 사진을 보관할 수 없어요');
+    else if(block==='relay'){const pn=hjPhotoZipPlan().n;if(pn||hjPzLegacyProjects().length)hjPzLastSet({at:new Date().toISOString(),auto,why:'relay',pending:pn,n:0});}
+    return {ok:false,why:block};
+  }
   const P=hjPhotoZipPlan();
-  if(!P.n){if(!auto)toast('한 달 지난 현장 사진(PC 폴더)이 없어요 — 보관할 것이 없습니다');return {ok:true,n:0,why:'none'};}
+  if(!P.n&&!hjPzLegacyProjects().length){if(!auto)toast('한 달 지난 현장 사진(PC 폴더)이 없어요 — 보관할 것이 없습니다');return {ok:true,n:0,why:'none'};}
   let perm='';try{perm=await state.dirHandle.queryPermission({mode:'readwrite'});}catch(e){perm='';}
   if(perm!=='granted'&&!auto){try{perm=await state.dirHandle.requestPermission({mode:'readwrite'});}catch(e){perm='';}}
   if(perm!=='granted'){hjPzLastSet({at:new Date().toISOString(),auto,why:'permission',pending:P.n,n:0});if(!auto)toast(HJ_PZ_WHY.permission);return {ok:false,why:'permission'};}
@@ -38901,38 +39232,43 @@ async function hjPhotoZipAutoTry(){
   if(!hjPhotoZipAutoOn()||window.__hjPzBusy)return null;
   const block=hjPhotoZipBlock();
   if(['demo','stale','staff','nofolder','direct'].includes(block))return null;   // 이번에는 안 함 — 다음 폴더 읽기 뒤에 다시
+  if(block==='relay')return hjPhotoZipRun({auto:true});   // 서버 연결이 없다 — 기다려도 안 생긴다(마지막 결과에만 적는다)
   if(block||document.hidden||__modalCloseLocked){if(++__hjPzAutoTries<HJ_PZ_AUTO_TRIES)__hjPzAutoTimer=setTimeout(hjPhotoZipAutoTry,HJ_PZ_AUTO_RETRY_MS);return null;}
   try{return await hjPhotoZipRun({auto:true});}catch(e){return null;}
 }
 function hjPhotoZipView(){
-  const P=hjPhotoZipPlan(),on=hjPhotoZipAutoOn(),last=hjPzLastGet(),block=hjPhotoZipBlock(),staff=block==='staff';
+  const P=hjPhotoZipPlan(),on=hjPhotoZipAutoOn(),last=hjPzLastGet(),block=hjPhotoZipBlock(),staff=block==='staff',legacy=hjPzLegacyProjects();
   const rows=(state.projects||[]).filter(p=>p&&p.photoArchive&&Number(p.photoArchive.n)>0)
     .sort((a,b)=>String(b.photoArchive.at||'').localeCompare(String(a.photoArchive.at||''))||String(a.name).localeCompare(String(b.name),'ko'));
   const upto=P.cutoff?hjStmtMd(hjAddDays(P.cutoff,-1)):'';
   const total=rows.reduce((a,p)=>a+(Number(p.photoArchive.n)||0),0);
-  const row=p=>{const a=p.photoArchive,z=(Array.isArray(a.zips)?a.zips:[]).map(x=>String(x).split('/').pop());
-    return '<div data-pz-row="'+escapeAttr(p.name)+'" style="padding:7px 0;border-top:1px solid var(--line-soft);font-size:12.5px;line-height:1.5;overflow-wrap:anywhere"><b>'+escapeHtml(p.name)+'</b> · '+(Number(a.n)||0)+'장'+(a.bytes?' · '+fmtSize(a.bytes):'')+
+  const row=p=>{const a=p.photoArchive,z=(Array.isArray(a.zips)?a.zips:[]).map(x=>String(x).split('/').pop()),old=a.v!==2;
+    return '<div data-pz-row="'+escapeAttr(p.name)+'" style="padding:7px 0;border-top:1px solid var(--line-soft);font-size:12.5px;line-height:1.5;overflow-wrap:anywhere"><b>'+escapeHtml(p.name)+'</b> · '+(Number(a.n)||0)+'장'+
+      (a.bytes?' · 원본 '+fmtSize(a.bytes)+(a.zbytes?' → ZIP '+fmtSize(a.zbytes):''):'')+
       (a.from?' · '+escapeHtml(hjStmtMd(a.from))+(a.to&&a.to!==a.from?'~'+escapeHtml(hjStmtMd(a.to)):''):'')+
+      (old?' · <span data-pz-old style="color:var(--hj-warn-fg,#b45309)">예전 방식(원본 ZIP·앱에서 빠짐) — 다음 보관 때 앱에 되살림</span>':'')+
       (z.length?'<div style="color:var(--muted)">📦 '+z.map(escapeHtml).join(' · ')+'</div>':'')+'</div>';};
   const body='<div data-pz-view style="font-size:13px;line-height:1.6">'+
-    '<p style="margin:0 0 10px">촬영한 지 <b>한 달 지난 현장 사진</b>을 PC 만물 폴더의 <b>'+HJ_PZ_DIR+'</b>에 <b>현장별 ZIP</b>으로 원본 그대로 묶고, ZIP 을 다시 읽어 검사한 뒤 <b>낱장 사진 파일과 앱 사진 목록에서 지웁니다</b>. ZIP 안에는 촬영일 폴더와 사진 목록(_목록 csv — 원래 위치·공정·작업명·동·호수·위치)이 같이 들어갑니다.</p>'+
-    '<div data-pz-pending="'+P.n+'" style="padding:9px 11px;border-radius:10px;background:var(--paper-2,rgba(128,128,128,.08));margin-bottom:8px">지금 대상 <b>'+P.n+'장</b>'+(P.n?' ('+fmtSize(P.bytes)+' · 현장 '+P.projects+'곳)':'')+(upto?' — '+escapeHtml(upto)+'까지 찍은 PC 폴더 사진':'')+'</div>'+
+    '<p style="margin:0 0 10px">촬영한 지 <b>한 달 지난 현장 사진</b>은 PC 에서는 <b>줄인 사진(긴 변 '+HJ_PZ_SHRINK_PX+'px)</b>으로 만물 폴더의 <b>'+HJ_PZ_DIR+'</b>에 현장별 ZIP 으로 묶고 PC 원본은 지웁니다. '+
+      '앱(폰·PC)에서는 <b>구글 서버 사본</b>으로 그대로 보입니다 — 구글 사본이 없는 사진은 먼저 올리고, 사본을 확인한 사진만 PC 에서 지웁니다. <b>원본 화질은 남기지 않습니다.</b></p>'+
+    '<div data-pz-pending="'+P.n+'" style="padding:9px 11px;border-radius:10px;background:var(--paper-2,rgba(128,128,128,.08));margin-bottom:8px">지금 대상 <b>'+P.n+'장</b>'+(P.n?' ('+fmtSize(P.bytes)+' · 현장 '+P.projects+'곳'+(P.noDrive?' · <span data-pz-nodrive="'+P.noDrive+'">구글에 먼저 올릴 '+P.noDrive+'장</span>':'')+')':'')+(upto?' — '+escapeHtml(upto)+'까지 찍은 PC 폴더 사진':'')+
+      (legacy.length?'<div data-pz-legacy="'+legacy.length+'" style="font-size:12.5px;margin-top:4px">예전 방식(원본 ZIP)으로 보관한 현장 '+legacy.length+'곳 — 다음 보관 때 그 사진을 앱에 되살리고 ZIP 을 줄인 사진으로 바꿉니다</div>':'')+'</div>'+
     '<div data-pz-auto="'+(on?'on':'off')+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><span style="flex:1 1 220px">자동 보관 <b>'+(on?'켜짐':'꺼짐')+'</b> — PC 에서 만물 폴더를 열면(폴더 읽기가 끝난 뒤) 묻지 않고 합니다.</span>'+
       (staff?'':'<button type="button" class="ghost tiny" id="pzAutoToggle" aria-pressed="'+(on?'true':'false')+'" style="min-height:44px">'+(on?'자동 끄기':'자동 켜기')+'</button>')+'</div>'+
     (last?'<div data-pz-last style="font-size:12.5px;color:var(--muted);margin-bottom:8px">마지막: '+escapeHtml(hjSnapTime(last.at))+(last.auto?' (자동)':'')+' · '+escapeHtml(hjPhotoZipResultText(last))+'</div>':'')+
     (block&&block!=='scan'&&block!=='intake'?'<div data-pz-block="'+block+'" role="note" style="font-size:12.5px;color:var(--hj-warn-fg,#b45309);margin-bottom:8px">'+escapeHtml(HJ_PZ_WHY[block]||'')+'</div>':'')+
-    (rows.length?'<div data-pz-arch="'+rows.length+'" style="margin:4px 0 8px"><div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:2px">보관한 현장 '+rows.length+'곳 · '+total+'장</div>'+rows.slice(0,40).map(row).join('')+(rows.length>40?'<div style="font-size:12px;color:var(--muted)">외 '+(rows.length-40)+'곳</div>':'')+'</div>':'')+
-    '<p class="hint" style="margin:8px 0 0">다시 보려면 PC 에서 ZIP 을 열거나 작업 폴더의 [📦 압축 사진 불러오기(zip)]로 다시 넣으세요. 동영상·현장 미지정 사진·드라이브에만 있는 사진은 그대로 둡니다. 드라이브 사본은 지우지 않고 다시 불러오지 않게만 합니다.</p></div>';
+    (rows.length?'<div data-pz-arch="'+rows.length+'" style="margin:4px 0 8px"><div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:2px">PC 에 줄여 둔 현장 '+rows.length+'곳 · '+total+'장</div>'+rows.slice(0,40).map(row).join('')+(rows.length>40?'<div style="font-size:12px;color:var(--muted)">외 '+(rows.length-40)+'곳</div>':'')+'</div>':'')+
+    '<p class="hint" style="margin:8px 0 0">ZIP 안에는 촬영일 폴더와 사진 목록(_목록 csv — 원래 위치·공정·작업명·동·호수·위치·구글 사본 ID)이 들어갑니다. 동영상·현장 미지정 사진·최근 한 달 사진은 그대로 둡니다. 구글 사본은 지우지 않습니다.</p></div>';
   openModal('🗜 한 달 지난 사진 ZIP 보관',body,[
     {label:'🗜 지금 보관'+(P.n?' ('+P.n+'장)':''),cls:'clay',fn:async()=>{closeModal();await hjPhotoZipRun({});}},
     {label:'닫기',cls:'ghost',fn:closeModal}
   ],true);
   const btn=document.querySelector('#modalRoot .mfoot button');
-  if(btn){btn.id='pzRunNow';if(!P.n||['demo','stale','staff','nofolder','direct'].includes(block)||window.__hjPzBusy)btn.disabled=true;}
+  if(btn){btn.id='pzRunNow';if((!P.n&&!legacy.length)||['demo','stale','staff','nofolder','direct','relay'].includes(block)||window.__hjPzBusy)btn.disabled=true;}
   const tg=document.getElementById('pzAutoToggle');if(tg)tg.onclick=()=>{hjPhotoZipAutoSet(!hjPhotoZipAutoOn());hjPhotoZipView();};
-  return {대상:P.n,자동:on,보관현장:rows.length};
+  return {대상:P.n,자동:on,보관현장:rows.length,예전방식:legacy.length};
 }
-/* ═══ /v611 ═══ */
+/* ═══ /v611·v612 ═══ */
 // 원본이 이 기기에 없는 사진도 앱 목록에서는 안전하게 삭제할 수 있다.
 function photoActionTools(p){
   return __mobileMode
@@ -39356,7 +39692,7 @@ function hjUnbilledHTML(){
 function hjStmtPhotoIndex(only){
   const idx=new Map();
   (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||!f.project||(only&&f.project!==only))return;const day=hjKDayFast(f);if(!day)return;let m=idx.get(f.project);if(!m){m=new Map();idx.set(f.project,m);}m.set(day,(m.get(day)||0)+1);});
-  hjPzArchivedEach(only,(name,day,c)=>{let m=idx.get(name);if(!m){m=new Map();idx.set(name,m);}m.set(day,(m.get(day)||0)+c);});   // v611 ZIP 으로 보관한 사진도 증빙 장수로 센다
+  hjPzArchivedEach(only,(name,day,c)=>{let m=idx.get(name);if(!m){m=new Map();idx.set(name,m);}m.set(day,(m.get(day)||0)+c);});   // v611 ZIP 으로 보관해 앱에서 빠진 사진도 증빙 장수로 센다(v612 는 앱에 남고, 되살리면 여기서 빠진다)
   return idx;
 }
 // v611 현장에 남긴 ZIP 보관 요약(p.photoArchive.days)의 날짜별 장수 — fn(현장, 날짜, 장수, 그날 작업명 {이름:장수})
