@@ -40,7 +40,8 @@ function oiIssueSession_(office,now){
 }
 
 function oiConfig_() {
-  var raw = PropertiesService.getScriptProperties().getProperty('OFFICE_CONFIG_JSON') || '';
+  // 새 접수 프로젝트(intake)는 중계가 내부 파일에 적어 둔 단지 목록 사본을 읽는다(아래 '관리사무소 접수 분리').
+  var raw = oiRole_() === 'intake' ? oiSplitConfigRaw_() : (PropertiesService.getScriptProperties().getProperty('OFFICE_CONFIG_JSON') || '');
   if (!raw) return { offices: [] };
   try {
     var config = JSON.parse(raw);
@@ -152,6 +153,9 @@ function oiVerifySession_(token, now) {
 }
 
 function oiHandlePublicAction_(action, req) {
+  // OFFICE_INTAKE_MODE=external: 공개 접수는 별도 접수 프로젝트(apps-script-office-intake/)가 받는다.
+  // 중계는 잠금·Drive·저장소를 건드리기 전에 거절한다.
+  if (oiRole_() === 'relay-external') return { ok: false, error: 'office-intake-moved', message: '관리사무소 접수 주소가 옮겨졌어요. 접수 화면을 새로 고친 뒤 다시 시도해 주세요' };
   var payload = req && req.payload && typeof req.payload === 'object' ? req.payload : {};
   if (action === 'officeLogin') return oiLogin_(payload, Date.now());
   var session = oiVerifySession_((req && req.sessionToken) || payload.sessionToken, Date.now());
@@ -234,13 +238,15 @@ function oiPhoto_(session, sessionToken, payload) {
 function oiStoreName_() {
   return PropertiesService.getScriptProperties().getProperty('OFFICE_STORE_FILE') || '관리사무소접수.json';
 }
-function oiStoreRoot_() { return rootFolder_(); }
+function oiStoreRoot_() { return oiRole_() === 'intake' ? oiSplitFolder_(oiSplitOfficeFile_()) : rootFolder_(); }
 function oiStoreFile_(root) {
   var files = root.getFilesByName(oiStoreName_());
   return files.hasNext() ? files.next() : null;
 }
 function oiEmptyStore_() { return { version: OI_STORE_VERSION, requests: [], audit: [], operationalErrors: [] }; }
 function oiReadStore_() {
+  var role = oiRole_();
+  if (role !== 'local') return oiSplitRead_(role);
   var file = oiStoreFile_(oiStoreRoot_());
   if (!file) return oiEmptyStore_();
   var store = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
@@ -253,6 +259,8 @@ function oiWriteStore_(store) {
   if (!store || store.version !== OI_STORE_VERSION || !Array.isArray(store.requests)) throw new Error('office-store-invalid');
   if (!Array.isArray(store.audit)) store.audit = [];
   if (!Array.isArray(store.operationalErrors)) store.operationalErrors = [];
+  var role = oiRole_();
+  if (role !== 'local') return oiSplitWrite_(role, store);
   var root = oiStoreRoot_();
   var file = oiStoreFile_(root);
   var content = JSON.stringify(store);
@@ -999,9 +1007,15 @@ function oiNotifyUrgent_(request) {
 }
 
 function oiHandleInternalAction_(action, req) {
+  var role = oiRole_();
+  // 새 접수 프로젝트에는 현장웹 내부 action 이 없다(관리·상태 결정은 중계만).
+  if (role === 'intake') return { ok: false, error: 'bad-request' };
   var payload = req && req.payload && typeof req.payload === 'object' ? req.payload : {};
   var now = Date.now();
-  if (action === 'officeInbox') return oiInbox_(payload);
+  if (action === 'officeInbox') {
+    if (role === 'relay-external') oiSplitPublishConfig_();
+    return oiInbox_(payload);
+  }
   if (action === 'officeAccept') return oiAccept_(payload, now);
   if (action === 'officeSetStatus') return oiSetStatus_(payload, now);
   if (action === 'officeAdminUpsert') return oiAdminUpsert_(payload, now);
@@ -1009,4 +1023,230 @@ function oiHandleInternalAction_(action, req) {
   if (action === 'officeDisable') return oiDisable_(payload, now);
   if (action === 'officeRetentionList') return { ok: true, requests: oiRetentionCandidates_(now) };
   return { ok: false, error: 'bad-request' };
+}
+
+/* ---------- 관리사무소 접수 분리 (2026-11-19, 항목 32) ----------
+ * 토큰 없이 부르는 공개 관리사무소 action 을 현장 전체 자료(load·save·download)를 가진 중계에서 떼어
+ * 별도 Apps Script 프로젝트(apps-script-office-intake/)가 받게 한다. 이 파일은 두 프로젝트에 똑같이 들어간다.
+ *
+ * 역할(oiRole_):
+ *   'local'          — 지금까지와 같다. 중계 한 곳이 공개·내부 action 과 접수 파일을 모두 맡는다.
+ *                      스크립트 속성 OFFICE_INTAKE_MODE 가 없거나 정확히 'external' 이 아니면 언제나 이 역할.
+ *   'relay-external' — 중계(OFFICE_INTAKE_MODE=external + OFFICE_INTAKE_STORE_ID). 공개 action 은 잠금·Drive 전에
+ *                      'office-intake-moved' 로 거절하고, 현장웹 내부 action(접수함 동기화·접수·상태·단지 관리)은
+ *                      바깥 저장소를 DriveApp 으로 읽어 예전과 같은 모양으로 돌려준다.
+ *   'intake'         — 새 접수 프로젝트(IntakeMain.gs 의 OI_INTAKE_PROJECT=true). 공개 action 만 받는다.
+ *
+ * 저장(같은 구글 계정 Drive 의 같은 폴더 '만물인테리어/관리사무소접수_분리/' 안 JSON 두 개 — 파일마다 쓰는 쪽은 하나):
+ *   관리사무소접수_공개.json (OFFICE_INTAKE_STORE_ID) — 접수 프로젝트만 쓴다: 관리사무소가 적은 칸·사진 목록·
+ *       관리사무소 쪽 상태 결정(status·statusAt·statusBasis)·감사·운영 오류(calendar-failed).
+ *   관리사무소접수_내부.json (같은 폴더에서 이름으로 찾음) — 중계만 쓴다: 현장 쪽 칸(OI_SPLIT_INTERNAL_FIELDS)·
+ *       현장 쪽 상태 결정·감사·운영 오류·단지 목록 사본(config: OFFICE_CONFIG_JSON 그대로 — PIN 해시·소금값, 평문 PIN 없음).
+ *   두 Apps Script 프로젝트는 잠금(LockService)을 나눌 수 없어서 한 파일을 둘이 쓰면 접수가 말없이 사라질 수 있다.
+ *   그래서 각자 자기 파일만 자기 잠금 안에서 쓰고, 읽을 때 둘을 합쳐(oiSplitMerge_) 예전과 같은 저장소 모양을 만든다.
+ *   위의 처리 함수들은 바뀌지 않는다 — 읽기·쓰기(oiReadStore_·oiWriteStore_)만 역할에 따라 나뉜다.
+ * 상태 합치기: 현장 쪽이 상태를 정한 적이 있고(statusAt), 관리사무소 쪽 결정이 바로 그 현장 쪽 결정을 보고 내린 것
+ *   (statusBasis 가 같음)이 아니면 현장 쪽 상태를 쓴다. 동시에 부딪히면 현장 쪽(대표의 결정)이 이긴다 — 두 파일 모두
+ *   남으므로 어느 쪽 기록도 사라지지 않는다.
+ * 사진 폴더가 '만물인테리어' 안에 있어야 현장웹이 중계(thumbnail·download)로 관리사무소 사진을 볼 수 있다.
+ */
+var OI_SPLIT_VERSION = 1;
+var OI_SPLIT_FOLDER = '관리사무소접수_분리';
+var OI_SPLIT_OFFICE_FILE = '관리사무소접수_공개.json';
+var OI_SPLIT_INTERNAL_FILE = '관리사무소접수_내부.json';
+var OI_SPLIT_INTERNAL_FIELDS = ['hyeonjangOrderId', 'publicAmount', 'visitAt', 'completionReport', 'completionPhotos', 'projectionRevision', 'needsInfoReason', 'completedAt', 'legalRetention'];
+var OI_SPLIT_DEFAULTED_FIELDS = ['hyeonjangOrderId', 'publicAmount', 'visitAt', 'completionReport', 'completionPhotos', 'projectionRevision', 'needsInfoReason'];
+var OI_SPLIT_STATUS_FIELDS = ['status', 'statusAt', 'statusBasis', 'updatedAt'];
+var OI_SPLIT_CONFIG_CACHE_KEY = 'oi-split:config';
+// 접수 프로젝트가 단지 목록을 다시 읽는 간격(초). 단지 중지·PIN 바꾸기는 이 시간 안에 접수 쪽에 닿는다.
+// 로그인 실패 잠금에 걸린 반복 시도가 Drive 읽기를 늘리지 않게 하는 몫도 한다.
+var OI_SPLIT_CONFIG_CACHE_SECONDS = 30;
+
+function oiRole_() {
+  if (typeof OI_INTAKE_PROJECT !== 'undefined' && OI_INTAKE_PROJECT === true) return 'intake';
+  return PropertiesService.getScriptProperties().getProperty('OFFICE_INTAKE_MODE') === 'external' ? 'relay-external' : 'local';
+}
+function oiSplitDefault_(field) {
+  if (field === 'completionPhotos') return [];
+  if (field === 'projectionRevision') return 0;
+  return null;
+}
+function oiSplitStoreId_() { return String(PropertiesService.getScriptProperties().getProperty('OFFICE_INTAKE_STORE_ID') || '').trim(); }
+function oiSplitOfficeFile_() {
+  var id = oiSplitStoreId_();
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) throw new Error('office-intake-store-not-configured');
+  try { return DriveApp.getFileById(id); } catch (_) { throw new Error('office-intake-store-unavailable'); }
+}
+function oiSplitFolder_(officeFile) {
+  var parents = officeFile.getParents();
+  if (!parents.hasNext()) throw new Error('office-intake-store-unavailable');
+  return parents.next();
+}
+function oiSplitInternalFile_(officeFile) {
+  var files = oiSplitFolder_(officeFile).getFilesByName(OI_SPLIT_INTERNAL_FILE);
+  return files.hasNext() ? files.next() : null;
+}
+function oiSplitEmptyDoc_(kind) {
+  if (kind === 'internal') return { version: OI_SPLIT_VERSION, kind: 'internal', projections: {}, audit: [], operationalErrors: [], config: { offices: [] } };
+  return { version: OI_SPLIT_VERSION, kind: 'office', requests: [], audit: [], operationalErrors: [] };
+}
+function oiSplitParse_(file, kind) {
+  if (!file) return oiSplitEmptyDoc_(kind);
+  var doc = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+  if (!doc || typeof doc !== 'object' || doc.version !== OI_SPLIT_VERSION || doc.kind !== kind) throw new Error('office-store-corrupt');
+  if (kind === 'office' && !Array.isArray(doc.requests)) throw new Error('office-store-corrupt');
+  if (kind === 'internal' && (!doc.projections || typeof doc.projections !== 'object' || Array.isArray(doc.projections))) throw new Error('office-store-corrupt');
+  if (!Array.isArray(doc.audit)) doc.audit = [];
+  if (!Array.isArray(doc.operationalErrors)) doc.operationalErrors = [];
+  return doc;
+}
+function oiSplitProjection_(internalDoc, requestId) {
+  var all = internalDoc && internalDoc.projections;
+  var value = all && Object.prototype.hasOwnProperty.call(all, requestId) ? all[requestId] : null;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+function oiSplitInternalWins_(record, projection) {
+  return !!(projection && projection.statusAt && String(record && record.statusBasis || '') !== String(projection.statusAt));
+}
+function oiSplitLater_(a, b) {
+  a = String(a || ''); b = String(b || '');
+  return a >= b ? a : b;
+}
+function oiSplitMerge_(role, officeDoc, internalDoc) {
+  var before = {};
+  var requests = officeDoc.requests.map(function (record) {
+    var id = String(record && record.requestId || '');
+    var projection = oiSplitProjection_(internalDoc, id);
+    var merged = {};
+    Object.keys(record).forEach(function (key) {
+      if (OI_SPLIT_INTERNAL_FIELDS.indexOf(key) < 0 && key !== 'statusAt' && key !== 'statusBasis') merged[key] = record[key];
+    });
+    OI_SPLIT_INTERNAL_FIELDS.forEach(function (field) {
+      if (projection && Object.prototype.hasOwnProperty.call(projection, field)) merged[field] = projection[field];
+      else if (OI_SPLIT_DEFAULTED_FIELDS.indexOf(field) >= 0) merged[field] = oiSplitDefault_(field);
+    });
+    var internalWins = oiSplitInternalWins_(record, projection);
+    merged.status = internalWins ? String(projection.status || '') : record.status;
+    // 관리사무소가 '정보 요청'에 답해 다시 '검토 대기'로 돌린 것이 이기면 요청 사유를 지운다(oiUpdate_ 와 같은 결과).
+    if (!internalWins && record.status === 'pending_review') merged.needsInfoReason = null;
+    merged.updatedAt = oiSplitLater_(record.updatedAt, projection && projection.updatedAt);
+    before[id] = { status: merged.status, updatedAt: merged.updatedAt };
+    return merged;
+  });
+  var own = role === 'intake' ? officeDoc : internalDoc;
+  var foreign = (role === 'intake' ? internalDoc : officeDoc).operationalErrors.slice();
+  var errors = own.operationalErrors.concat(foreign).map(function (error, index) { return { error: error, index: index }; })
+    .sort(function (a, b) {
+      var x = String(a.error && a.error.at || ''), y = String(b.error && b.error.at || '');
+      return x < y ? -1 : x > y ? 1 : a.index - b.index;
+    })
+    .map(function (row) { return row.error; });
+  var store = { version: OI_STORE_VERSION, requests: requests, audit: own.audit, operationalErrors: errors };
+  Object.defineProperty(store, '__oiSplit', {
+    value: { role: role, officeDoc: officeDoc, internalDoc: internalDoc, before: before, foreign: foreign },
+    enumerable: false, writable: true
+  });
+  return store;
+}
+function oiSplitRead_(role) {
+  var officeFile = oiSplitOfficeFile_();
+  return oiSplitMerge_(role, oiSplitParse_(officeFile, 'office'), oiSplitParse_(oiSplitInternalFile_(officeFile), 'internal'));
+}
+// 접수 프로젝트가 쓰는 한 줄: 관리사무소 칸 + 관리사무소 쪽 상태 결정. 현장 쪽 칸은 쓰지 않는다.
+function oiSplitOfficeRecord_(request, previous, before, projection) {
+  var record = {};
+  Object.keys(request).forEach(function (key) {
+    if (OI_SPLIT_INTERNAL_FIELDS.indexOf(key) < 0 && OI_SPLIT_STATUS_FIELDS.indexOf(key) < 0) record[key] = request[key];
+  });
+  if (!before || !previous || request.status !== before.status) {
+    record.status = request.status;
+    record.statusAt = String(request.updatedAt || request.createdAt || '');
+    record.statusBasis = projection && projection.statusAt ? String(projection.statusAt) : '';
+  } else {
+    record.status = previous.status;
+    record.statusAt = String(previous.statusAt || '');
+    record.statusBasis = String(previous.statusBasis || '');
+  }
+  record.updatedAt = !before || !previous || request.updatedAt !== before.updatedAt ? request.updatedAt : previous.updatedAt;
+  return record;
+}
+// 중계가 쓰는 한 줄: 현장 쪽 칸 + 현장 쪽 상태 결정. 현장 쪽이 손댄 적 없는 접수는 줄을 만들지 않는다.
+function oiSplitInternalRecord_(request, previous, before) {
+  if (!before) return previous;
+  var record = {}, keep = !!previous;
+  OI_SPLIT_INTERNAL_FIELDS.forEach(function (field) {
+    if (!Object.prototype.hasOwnProperty.call(request, field)) return;
+    record[field] = request[field];
+    if (OI_SPLIT_DEFAULTED_FIELDS.indexOf(field) < 0 || JSON.stringify(request[field]) !== JSON.stringify(oiSplitDefault_(field))) keep = true;
+  });
+  if (request.status !== before.status) {
+    record.status = request.status;
+    record.statusAt = String(request.updatedAt || '');
+    keep = true;
+  } else if (previous && previous.statusAt) {
+    record.status = previous.status;
+    record.statusAt = previous.statusAt;
+  }
+  if (request.updatedAt !== before.updatedAt) { record.updatedAt = request.updatedAt; keep = true; }
+  else if (previous && previous.updatedAt) record.updatedAt = previous.updatedAt;
+  return keep ? record : null;
+}
+function oiSplitWrite_(role, store) {
+  var meta = store && store.__oiSplit;
+  if (!meta || meta.role !== role) throw new Error('office-store-invalid');
+  var ownErrors = store.operationalErrors.filter(function (error) { return meta.foreign.indexOf(error) < 0; });
+  var officeFile = oiSplitOfficeFile_();
+  var doc;
+  if (role === 'intake') {
+    var previous = {};
+    meta.officeDoc.requests.forEach(function (record) { previous[String(record && record.requestId || '')] = record; });
+    doc = {
+      version: OI_SPLIT_VERSION, kind: 'office',
+      requests: store.requests.map(function (request) {
+        var id = String(request.requestId || '');
+        return oiSplitOfficeRecord_(request, previous[id] || null, meta.before[id] || null, oiSplitProjection_(meta.internalDoc, id));
+      }),
+      audit: store.audit, operationalErrors: ownErrors
+    };
+    officeFile.setContent(JSON.stringify(doc));
+    meta.officeDoc = doc;
+  } else {
+    var projections = {};
+    Object.keys(meta.internalDoc.projections).forEach(function (id) { projections[id] = meta.internalDoc.projections[id]; });
+    store.requests.forEach(function (request) {
+      var id = String(request.requestId || '');
+      var record = oiSplitInternalRecord_(request, oiSplitProjection_(meta.internalDoc, id), meta.before[id] || null);
+      if (record) projections[id] = record;
+    });
+    doc = { version: OI_SPLIT_VERSION, kind: 'internal', projections: projections, audit: store.audit, operationalErrors: ownErrors, config: oiConfig_() };
+    var content = JSON.stringify(doc);
+    var internalFile = oiSplitInternalFile_(officeFile);
+    if (internalFile) internalFile.setContent(content);
+    else oiSplitFolder_(officeFile).createFile(OI_SPLIT_INTERNAL_FILE, content, 'application/json');
+    meta.internalDoc = doc;
+  }
+  var after = {};
+  store.requests.forEach(function (request) { after[String(request.requestId || '')] = { status: request.status, updatedAt: request.updatedAt }; });
+  meta.before = after;
+}
+// 접수 프로젝트의 단지 목록: 중계가 내부 파일에 적은 사본을 짧게(OI_SPLIT_CONFIG_CACHE_SECONDS) 기억해 쓴다.
+function oiSplitConfigRaw_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(OI_SPLIT_CONFIG_CACHE_KEY);
+  if (cached) return cached;
+  var internalDoc = oiSplitParse_(oiSplitInternalFile_(oiSplitOfficeFile_()), 'internal');
+  var config = internalDoc.config && typeof internalDoc.config === 'object' && Array.isArray(internalDoc.config.offices) ? internalDoc.config : { offices: [] };
+  var raw = JSON.stringify(config);
+  try { cache.put(OI_SPLIT_CONFIG_CACHE_KEY, raw, OI_SPLIT_CONFIG_CACHE_SECONDS); } catch (_) {}
+  return raw;
+}
+// 중계(relay-external): 현장웹 접수함 동기화 때 내부 파일의 단지 목록 사본이 스크립트 속성과 다르면 맞춘다.
+// 스위치를 켠 뒤 첫 동기화가 내부 파일을 만들고, 그 뒤로는 단지 등록·PIN 바꾸기·중지가 쓸 때마다 같이 적힌다.
+function oiSplitPublishConfig_() {
+  var internalFile = oiSplitInternalFile_(oiSplitOfficeFile_());
+  if (internalFile && JSON.stringify(oiSplitParse_(internalFile, 'internal').config || null) === JSON.stringify(oiConfig_())) return false;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { oiWriteStore_(oiReadStore_()); } finally { lock.releaseLock(); }
+  return true;
 }

@@ -66,6 +66,10 @@
 | `OFFICE_SESSION_SECRET` | office PIN·세션 HMAC 서명 키 |
 | `OFFICE_CONFIG_JSON` | office 목록·PIN hash/salt·활성 상태·sessionVersion |
 | `OFFICE_STORE_FILE` | 관리사무소 접수 저장 파일명(선택) |
+| `OFFICE_INTAKE_MODE` | 관리사무소 접수 분리 스위치(선택 — 정확히 `external` 일 때만 켜짐, 처음 설치 때는 넣지 않음) |
+| `OFFICE_INTAKE_STORE_ID` | 분리한 접수 프로젝트의 저장 파일 ID(스위치를 켤 때만) |
+
+관리사무소 접수를 별도 프로젝트로 떼는 설치·되돌리기는 `docs/office-intake-split-20261119.md` 를 따릅니다.
 
 3. 기존 설치에서 사용하는 `BACKUP_KEEP_COUNT` 등 다른 Watchdog 속성이 있다면
    그대로 보존합니다. 새 기능의 저장 파일 기본 이름은 `관리사무소접수.json`입니다.

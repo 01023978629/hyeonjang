@@ -14,6 +14,8 @@ const installGuide = fs.readFileSync(path.join(__dirname, '..', 'APPS_SCRIPT_설
 const REQUIRED_PROPERTIES = new Set([
   'APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED',
   'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE',
+  // 2026-11-19 관리사무소 접수 분리 스위치(항목 32) — 없으면 지금 그대로. tests/office-intake-split.unit.js 가 동작을 본다.
+  'OFFICE_INTAKE_MODE', 'OFFICE_INTAKE_STORE_ID',
 ]);
 function sectionBetween(source, start, end) {
   const begin = source.indexOf(start);
