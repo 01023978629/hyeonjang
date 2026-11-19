@@ -82,7 +82,8 @@ async function mobileBounds(page){
     page.on('pageerror',error=>errors.push(device+': '+String(error)));
     page.on('popup',()=>effects.push('popup'));page.on('download',()=>effects.push('download'));
     page.on('dialog',dialog=>dialog.accept());
-    await page.addInitScript(()=>{localStorage.setItem('hj_onboard_done','1');localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));});
+    // v613 18 할 일 하나 — ☁ 팀 공유 할일은 중계가 연결돼 있어도 처음엔 보류(더보기 ⏸ 보류). 이 검사는 공유 할일 기능 자체를 보므로 이 기기에서 [다시 보이기]를 한 상태로 시작한다.
+    await page.addInitScript(()=>{localStorage.setItem('hj_onboard_done','1');localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));localStorage.setItem('hj_more_hold',JSON.stringify({show:['sharedtodo']}));});
     async function boot(){
       await page.goto(ORIGIN+'/index.html',{waitUntil:'domcontentloaded'});
       await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);

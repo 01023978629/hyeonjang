@@ -151,7 +151,8 @@ let browser;
     webWorkCenterOpen();
     return {projects:state.projects.length,notes:state.notes.length,orders:state.aptOrders.length,cards:document.querySelectorAll('[data-web-work-service]').length,maxlength:document.getElementById('webWorkPaste').maxLength,office:document.getElementById('webWorkOfficeSummary').textContent};
   });
-  assert.deepEqual({projects:before.projects,notes:before.notes,orders:before.orders,cards:before.cards,maxlength:before.maxlength},{projects:0,notes:0,orders:0,cards:3,maxlength:8000});
+  // v613: 분류 카드 넷 — 인테리어·누수배관·관리사무소 영업 + A/S·하자(현장 AS 관리로 — webwork-as-v612.e2e.js 가 따로 지킨다)
+  assert.deepEqual({projects:before.projects,notes:before.notes,orders:before.orders,cards:before.cards,maxlength:before.maxlength},{projects:0,notes:0,orders:0,cards:4,maxlength:8000});
   assert.match(before.office, /대기 1건/);
 
   await page.locator('#webWorkPaste').fill(FIXTURES.interior);

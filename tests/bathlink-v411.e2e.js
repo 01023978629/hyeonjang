@@ -29,7 +29,7 @@ async function makeContext(width=390,initial={},estimates=false){
  context.on('page',page=>{page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(30000);page.on('pageerror',e=>errors.push(String(e)));page.on('dialog',d=>d.accept());});
  const seed=await context.newPage();await seed.goto(BASE+'/__bathlink_seed__');
  await seed.evaluate(async({fixture,initial})=>{
-  localStorage.setItem('hj_onboard_done','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_gcal_auto','0');localStorage.setItem('bathlink_unrelated','TEST_KEEP');
+  localStorage.setItem('hj_onboard_done','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_gcal_auto','0');localStorage.setItem('bathlink_unrelated','TEST_KEEP');localStorage.setItem('hj_more_hold',JSON.stringify({show:['quotenew']}));/* v613 [+ 새 견적서]는 보류가 기본 — 이 검사는 다시 보이게 한 상태에서 욕실 연결을 본다 */
   for(const [key,value]of Object.entries(initial))localStorage.setItem(key,typeof value==='string'?value:JSON.stringify(value));
   await new Promise((resolve,reject)=>{const request=indexedDB.open('hyeonjang-db',1);request.onupgradeneeded=()=>request.result.createObjectStore('kv');request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(fixture,'appState');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};});
  },{fixture:appFixture(),initial});

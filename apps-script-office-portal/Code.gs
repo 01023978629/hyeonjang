@@ -1,4 +1,7 @@
 /*
+ * ※ 옛 판 — 고치지 마세요. 지금 정본은 대표 PC 외부 작업본(manmool-sites-portal/apps-script-office-portal)이고,
+ * 만물웹 저장소로 옮기는 일은 보안 검토 뒤로 미뤘어요(2026-11-19). 자세한 것은 같은 폴더 README.md 맨 위.
+ *
  * 독립 관리사무소 직원·입주민 포털 API.
  * 기존 현장 relay 프로젝트와 배포·Script Properties·저장소를 공유하지 않는다.
  */

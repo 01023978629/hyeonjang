@@ -451,6 +451,15 @@ const normalizeCheckoutLines = value => value.replace(/\r\n/g, '\n');
 // watch-v5 맞추기는 그대로(WATCH_CALSYNC=0 이면 멈춤). 이 정확한 본문(SHA-256)만 허용한다.
 // 운영 Apps Script 반영은 별도(운영 본문을 먼저 보관하고 Watchdog.gs 만 바꾼다).
 const approvedWatchdogV6Sha256 = '05de8511bef40dc6fd849cdf35292d17a35c1d16aad0ab6452da0c342c89c57e';
+// 2026-11-19 사용자 요청·승인(작업 목록 항목 32 '관리사무소 접수를 현장 전체 자료 서버에서 떼어 내기'):
+// OfficeIntake.gs 에 스크립트 속성 스위치(OFFICE_INTAKE_MODE=external)와 별도 접수 프로젝트(apps-script-office-intake/)용
+// 저장 나눔(oiRole_·oiSplit*)을 더하고, README_APPS_SCRIPT.md 에 그 계약(속성 두 개·office-intake-moved)을 적었다.
+// 속성이 없으면 relay 동작은 그대로다(tests/office-intake-server.unit.js · tests/office-intake-split.unit.js).
+// 이 정확한 본문(SHA-256, 줄끝 LF)만 허용한다 — 다른 OfficeIntake·README 변경은 그대로 막힌다. Code.gs 는 바꾸지 않았다.
+const approvedOfficeSplitSha256 = {
+  'apps-script/OfficeIntake.gs': 'a1e64d9ef64cc6b6208e097105ac658cdc530375dc38cac1207f71a07acc26e9',
+  'apps-script/README_APPS_SCRIPT.md': '8838fe94cd43e7295a54e053c3def9bc09f6d957f15547d28e0279040f350074'
+};
 const sha256Text = value => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 function protectedGit(args) {
   return childProcess.execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -496,6 +505,9 @@ function assertProtectedSnapshot(entries, label) {
     } else if (original.path === 'apps-script/appsscript.json') {
       assert.equal(current.text === original.text || current.text === approvedMediaManifestText, true,
         label + ': manifest must equal fixed baseline plus the exact external_request scope');
+    } else if (Object.prototype.hasOwnProperty.call(approvedOfficeSplitSha256, original.path)) {
+      assert.equal(current.text === original.text || sha256Text(current.text) === approvedOfficeSplitSha256[original.path], true,
+        label + ': legacy source must equal the fixed Task 1 baseline or the exact approved office split: ' + original.path);
     } else {
       assert.equal(current.text, original.text, label + ': legacy/commercial source must equal the fixed Task 1 baseline');
     }
@@ -529,6 +541,21 @@ for (const [name, alteredRelay] of [
     assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Watchdog.gs' ? { ...entry, text: approvedWatchdog } : entry), 'approved watch-v6');
     assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Watchdog.gs' ? { ...entry, text: approvedWatchdog + '\nvar TEST_UNAPPROVED_WATCH = 1;\n' } : entry), 'watchdog mutation'),
       /exact approved watch-v6/, 'scope mutation rejects any other Watchdog change');
+  }
+}
+{
+  // 항목 32 관리사무소 접수 분리: 승인한 두 본문은 통과, 한 글자라도 더하면 막힌다.
+  const approvedSplitTexts = Object.fromEntries(Object.keys(approvedOfficeSplitSha256).map(relativePath =>
+    [relativePath, normalizeCheckoutLines(fs.readFileSync(path.join(ROOT, relativePath), 'utf8'))]));
+  if (Object.keys(approvedSplitTexts).every(relativePath => sha256Text(approvedSplitTexts[relativePath]) === approvedOfficeSplitSha256[relativePath])) {
+    const splitSnapshot = approvedSnapshot.map(entry => Object.prototype.hasOwnProperty.call(approvedSplitTexts, entry.path) ? { ...entry, text: approvedSplitTexts[entry.path] } : entry);
+    assertProtectedSnapshot(splitSnapshot, 'approved office split');
+    for (const relativePath of Object.keys(approvedSplitTexts)) {
+      assert.throws(() => assertProtectedSnapshot(splitSnapshot.map(entry => entry.path === relativePath ? { ...entry, text: entry.text + '\nTEST-UNAPPROVED-SPLIT' } : entry), 'office split mutation'),
+        /exact approved office split/, 'scope mutation rejects any other office split change: ' + relativePath);
+    }
+    assert.throws(() => assertProtectedSnapshot(splitSnapshot.concat({ path: 'apps-script/IntakeMain.gs', mode: '100644', text: '' }), 'intake main in relay'),
+      /unapproved protected server path/, 'the separate intake entry point never enters the relay folder');
   }
 }
 assert.throws(() => assertProtectedSnapshot(approvedSnapshot.filter(entry => entry.path !== 'apps-script/Watchdog.gs'), 'deleted baseline'),

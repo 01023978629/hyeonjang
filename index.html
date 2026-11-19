@@ -338,6 +338,17 @@
   .more-empty{padding:24px 10px;text-align:center;overflow-wrap:anywhere;font-size:14px}
   .more-ai-hint{width:100%;padding:14px;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:14px}
   .more-ai-hint small{display:block;font-size:12px;color:var(--muted);margin-top:6px}
+  /* v613 ⏸ 보류 묶음 — 더보기 맨 아래(접힘) */
+  #moreSheet .more-hold-note{margin:0 12px 8px}
+  #moreSheet .more-hold-h{margin:8px 12px 6px;font-size:13px;color:var(--ink)}
+  .more-hold-item{display:flex;flex-direction:column;gap:6px;min-width:0}
+  #moreSheet .more-hold-item .more-chip{flex:1 1 auto;text-decoration:none}
+  .more-hold-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  .more-hold-why{flex:1 1 110px;min-width:0;font-size:12px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere;word-break:keep-all}
+  #moreSheet .more-unhold{flex:0 0 auto;font-size:13px;padding:6px 10px}
+  .more-hold-resetrow{padding:0 8px 10px}
+  #moreSheet .more-hold-resetrow button{width:100%}
+  .more-hold-tag{display:inline-block;font-size:11px;line-height:1.5;border-radius:8px;padding:0 5px;background:var(--paper-2);color:var(--muted);border:1px solid var(--line-soft)}
   #moreSheet section{margin-bottom:14px}
   body.a11y-big1 #moreSheet .more-chip-label{font-size:15px}body.a11y-big2 #moreSheet .more-chip-label{font-size:17px}
   body.a11y-big1 #moreSheet .more-chip-description{font-size:13px}body.a11y-big2 #moreSheet .more-chip-description{font-size:15px}
@@ -4058,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v612-photozipdrive';
+const APP_BUILD='hyeonjang-v613-tidy';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6005,6 +6016,7 @@ function openGdriveSetup(){
     show(TABS[0].id);
   }
   const root=document.getElementById('modalRoot');
+  try{if(typeof leadInboxSettingsMount==='function')leadInboxSettingsMount(root);}catch(e){}   // v613 ⭐ 기타 탭에 📬 홈페이지 문의 접수함 주소(이 기기에만)
   const cidEl=root.querySelector('#gdCid');
   const outboxButton=root.querySelector('#hjOutboxOpen');if(outboxButton)outboxButton.onclick=()=>hjOutboxView();
   const safetyButton=root.querySelector('#hjSafetyOpen');if(safetyButton)safetyButton.onclick=()=>hjDataSafetyView();   // v447
@@ -10020,6 +10032,7 @@ function openProjectSheet(openerOverride){
   const __cntSheet={};state.files.forEach(f=>{if(f&&f.project)__cntSheet[f.project]=(__cntSheet[f.project]||0)+1;});
   const __dupeSheet=aptDupeNames();   // row() 안에서 부르면 현장마다 projects 를 다시 훑는다
   const __todaySheet=hjTodaySiteNames();   // v585 📅 오늘 일정 현장 — 목록 맨 위 줄(아래 목록 순서는 그대로)
+  const __tidySheet=hjStageTidyBtnN();   // 🧹 받을 돈을 다 받은 '상담' 현장이 있을 때만 단계 정리 단추
   const row=(p,dim)=>{const n=__cntSheet[p.name]||0,selected=state.activeProject===p.name;
     const stage=hjStageLabel(p,p.stage),badge=aptUnitBadge(p,__dupeSheet);
     return `<button type="button" class="ps-row" data-psel="${escapeAttr(p.name)}" aria-pressed="${selected?'true':'false'}">
@@ -10028,7 +10041,7 @@ function openProjectSheet(openerOverride){
       ${selected?'<span class="ps-current-tag">✓ 현재 현장</span>':''}</span><span class="ps-chevron" aria-hidden="true">›</span></button>`;};
   sh.innerHTML=`<div class="ps-heading"><h4 id="projSheetTitle">현장 선택</h4><button type="button" class="ghost" id="projSheetClose" aria-label="현장 선택 닫기">✕</button></div>
     ${state.projects.length>0?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="search" id="psSearch" aria-label="현장 이름 검색" aria-describedby="psSearchHint" placeholder="🔍 보관 현장도 함께 검색" autocomplete="off" style="flex:1;min-width:0;width:100%;min-height:44px;padding:11px;font-size:15px"><button type="button" id="psSearchClear" class="ghost" hidden style="width:auto;min-width:44px;min-height:44px;white-space:nowrap">검색 지우기</button></div><p id="psSearchHint" class="hint" style="margin:0 0 6px">띄어쓰기와 관계없이 진행·보관 현장을 함께 찾습니다.</p><div id="psResultStatus" role="status" aria-live="polite" aria-atomic="true" style="font-size:13px;color:var(--muted);margin-bottom:6px"></div>`:''}
-    <button type="button" id="psLeakFilter" class="ghost" aria-pressed="${__hjLeakFilter}" style="min-height:44px;margin:0 0 8px">💧 누수</button>${hjTodaySiteStripHtml('psToday','data-ps-today',__todaySheet,state.activeProject)}<div id="psList"></div>`;
+    <button type="button" id="psLeakFilter" class="ghost" aria-pressed="${__hjLeakFilter}" style="min-height:44px;margin:0 0 8px">💧 누수</button>${__tidySheet?'<button type="button" id="psStageTidy" class="ghost" data-stage-tidy-n="'+__tidySheet+'" style="min-height:44px;margin:0 0 8px 6px">🧹 단계 정리 '+__tidySheet+'곳</button>':''}${hjTodaySiteStripHtml('psToday','data-ps-today',__todaySheet,state.activeProject)}<div id="psList"></div>`;
   const list=sh.querySelector('#psList');
   const normalize=q=>String(q||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');
   const drawList=()=>{
@@ -10047,6 +10060,7 @@ function openProjectSheet(openerOverride){
       ${q&&!active.length&&!archived.length?'<div id="psSearchEmpty" style="padding:16px 8px;font-size:14px;color:var(--muted)">일치하는 현장이 없습니다. 이름 일부로 다시 검색하거나 ‘검색 지우기’를 눌러 주세요.</div>':''}`;
   };
   sh.querySelector('#psLeakFilter').onclick=()=>{__hjLeakFilter=!__hjLeakFilter;drawList();};
+  {const st=sh.querySelector('#psStageTidy');if(st)st.onclick=()=>{close(false);hjStageTidyView();};}   // 시트를 닫고 같은 차례에 창을 연다(히스토리 항목을 이어받는다)
   drawList();
   document.body.appendChild(bd);document.body.appendChild(sh);
   const close=mobileSheetA11y(sh,bd,{opener,labelledBy:'projSheetTitle',initialFocus:'#psSearch, #projSheetClose'});
@@ -10225,6 +10239,7 @@ function render(){
   all.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();all.click();}};
   pl.appendChild(all);
   const leakFilter=document.createElement('button');leakFilter.type='button';leakFilter.id='sideLeakFilter';leakFilter.className=__hjLeakFilter?'blue':'ghost';leakFilter.textContent='💧 누수';leakFilter.style.minHeight='44px';leakFilter.setAttribute('aria-pressed',String(__hjLeakFilter));leakFilter.onclick=()=>{__hjLeakFilter=!__hjLeakFilter;render();};pl.appendChild(leakFilter);
+  try{hjStageTidySideBtn(pl);}catch(e){}   // 🧹 받을 돈을 다 받은 '상담' 현장이 있으면 '단계 정리 n곳' — 세기는 그리기 뒤로 미룬다(부팅 중 정의 전이면 건너뜀)
   const __actP=state.projects.filter(p=>!p.archived&&(!__hjLeakFilter||hjProjectKind(p)==='leak')), __arcP=state.projects.filter(p=>p.archived&&(!__hjLeakFilter||hjProjectKind(p)==='leak'));
   const __photoSide=projectPhotoCounts(state.files);
   const __cntSide={};state.files.forEach(f=>{if(f&&f.project)__cntSide[f.project]=(__cntSide[f.project]||0)+1;}); // 현장마다 files 를 다시 훑지 않는다(v257)
@@ -10336,10 +10351,11 @@ const HJ_ACTIONS=[
   {i:'🚗',n:'차량 운행일지',k:'차량 운행 주행 유류비 기름 km',run:function(){tripView(true);}},
   {i:'🧾',n:'부가세 준비',k:'부가세 세금 신고 홈택스',run:function(){vatCenterView();}},
   {i:'📊',n:'연간 결산',k:'연간 결산 매출 한해 작년',run:function(){yearReport();}},
+  {i:'🧹',n:'현장 단계 정리',k:'단계 정리 완료 준공 준공일 상담 한꺼번에 일괄',run:function(){hjStageTidyView();}},   // v613 한 번 반영한 뒤에도 남은 제안으로 돌아오는 길
   // 견적
   {i:'📦',n:'품목 세트',k:'품목 세트 템플릿 견적 자주쓰는',run:function(){hjGoTab('quotemaker');setTimeout(qsetView,200);}},
   {i:'📕',n:'단가장',k:'단가장 품목 단가 학습',run:function(){priceBookManage();}},
-  {i:'🧮',n:'새 견적서',k:'견적 작성 새 견적서 만들기',run:function(){hjGoTab('quotemaker');setTimeout(function(){const b=document.getElementById('qmNew');if(b)b.click();},250);}},
+  {i:'🧮',n:'새 견적서',k:'견적 작성 새 견적서 만들기',run:function(){hjQuoteNewOpen();}},   // v613 보류 중이면 Claude 견적 안내(hjQuoteNewHeldView)
   // 사진·고객
   {i:'⋯',n:'사진 도구',k:'사진 도구 위치 주소 복구 정리',run:function(){hjGoTab('photos');setTimeout(photoToolsView,250);}},
   {i:'🔗',n:'고객 페이지',k:'고객 페이지 공유 링크 포털',run:function(){portalListView();}},
@@ -12167,15 +12183,10 @@ function dashboardTodoHTML(){
     hjTeamDoneDocHtml()+   // v458 팀 완료 보고 → 완료보고서 초안
     hjInquiryBookedNoReplyHtml()+   // v450 방문은 잡았는데 답장 안 한 문의(아래 v386 줄 바로 뒤는 버튼 줄 — 계약 유지)
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
-    '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
-    '<button type="button" id="dashboardCaseOpen" class="ghost" onclick="casePackView()" style="min-height:44px">📰 사례 내보내기</button>'+
-    '<button type="button" id="dashboardSharedTodoOpen" class="blue" onclick="hjSharedTodoView()" style="min-height:44px">☁ 팀 공유 할일</button>'+
-    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
-    '<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button>'+
-    '<a id="dashboardCompanyTeam" class="btn ghost" href="./team.html" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px">직원 작업실 · 업무 배정·검수</a><button type="button" id="dashboardOperationsConnections" class="ghost" onclick="hjOperationsCenter()">운영 연결 점검</button></div>'+
-    '<p id="dashboardTeamSummary" style="margin:7px 0;font-size:14px">'+escapeHtml(hjTeamSummary())+'</p>'+
-    '<p class="hint" style="margin:7px 0 0">위 숫자는 이 기기의 기존 할일 집계이며 팀 공유 목록과 별도입니다. 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.</p></section>';
+    // v613 단추 줄 — ☁ 팀 공유 할일·팀 업무·인수인계·직원 작업실은 보류가 아닐 때만(dashboardTodoBtnsHTML · 18: 할 일은 현장웹 기본 할 일 하나)
+    dashboardTodoBtnsHTML()+
+    '<p id="dashboardTeamSummary" style="margin:7px 0;font-size:14px"'+(hjHeld('teamboard')?' hidden':'')+'>'+escapeHtml(hjTeamSummary())+'</p>'+
+    '<p class="hint" id="dashboardTodoHint" style="margin:7px 0 0">'+escapeHtml(dashboardTodoHintText())+'</p></section>';
 }
 function dashboardPrepLabel(s){
   if(!s)return '일정 변경됨 · 다시 확인';
@@ -17203,7 +17214,9 @@ function hjProjectActionValid(p,name,stage,max){
   if(p&&rows.length===1&&rows[0]===p&&!p.archived&&(p.stage||0)===stage&&stage<=max)return true;
   toast('현장 정보가 바뀌었어요. 다시 열어 주세요');return false;
 }
-function hjQuoteStartFor(name){
+function hjQuoteStartFor(name,pass){
+  // v613 앱 안 새 견적 작성은 보류(hjHeld('quotenew')) — 실제 견적서는 Claude 견적 만들기. [이번만 앱에서 쓰기]는 예전 그대로(단계도 그때 바꾼다)
+  if(!pass&&hjHeld('quotenew'))return hjQuoteNewHeldView(()=>hjQuoteStartFor(name,true),name);
   const q0=(state.projects||[]).find(x=>x&&x.name===name),stage=q0&&(q0.stage||0);
   if(!hjProjectActionValid(q0,name,stage,1))return;
   const start=()=>{
@@ -20503,7 +20516,8 @@ const HJ_HELP=[
   {k:'일정 알림',d:'[🔔 알림 문자] — 내일 일정별 작업자용·고객용 안내 문안 자동.',say:'내일 일정 안내 문자 뽑아줘'},
   {k:'오늘 자동 점검',d:'앱을 열면 오늘 일정·일지 미작성·미배정 사진·AS를 훑어 카드로 알려줍니다.',say:'오늘 뭐 챙겨야 해?'},
   {k:'아침 브리핑',d:'하루 한 번 앱을 처음 열면 🌅 브리핑이 자동으로 떠서 오늘 일정·챙길 일을 실행 버튼과 함께 보여줍니다. 대시보드 [🌅 브리핑]으로 다시 열 수 있어요.',say:'오늘 브리핑 보여줘'},
-  {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료일부터 공종별 보증기간) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
+  {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료일부터 공종별 보증기간) D-day. 홈페이지에서 온 A/S·하자 메일은 더보기 [📥 웹 업무 연결]에 붙여 넣고 현장을 고르면 새 현장 없이 여기로 접수됩니다.',say:'성수동 문 처짐 AS 접수해줘'},
+  {k:'홈페이지 문의 가져오기',d:'더보기 [📥 웹 업무 연결] — 홈페이지 문의 메일을 붙여 넣으면 미리보기 뒤 현장으로 등록합니다(A/S·하자는 현장을 골라 AS 관리로). 홈페이지 문의 접수함을 켠 뒤에는 [📬 접수함에서 가져오기]로 메일 없이 바로 불러오고, 등록하면 접수함에도 ‘승인’이 표시됩니다. 접수함 주소는 ⚙️ 설정 › ⭐ 기타에 기기마다 한 번 넣고, 관리 비밀번호는 저장하지 않아요.'},
   {k:'아파트 오더',d:'더보기 [🏢 아파트 오더] — 관리사무소에서 받는 세대·공용부 보수 일감. 단지 등록 → 동/호·작업 접수 → 접수·방문·진행·완료·청구·입금 흐름 → 월말 정산서 한 장으로 청구, 입금 확인 시 수금 장부에 자동 기록.',say:'신흥마을 103동 1204호 실리콘 8만원 오더 접수해줘'},
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
  {t:'⚡ 빠르게 찾기',items:[
@@ -20573,6 +20587,7 @@ const HJ_HELP=[
   {k:'AI 기능 코치',d:'더보기 [🎓 기능 코치] — 아직 안 써본 유용한 기능 3가지를 골라 추천하고, 버튼 한 번으로 바로 해볼 수 있어요.',say:'숨은 기능 추천해줘'},
   {k:'데이터 건강 검진',d:'더보기 [🧯 데이터 검진] — 연락처·완공일·견적 등 빠진 정보를 점검해 건강 점수를 매기고, 채우면 좋은 항목을 알려줍니다.',say:'데이터 점검해줘'},
   {k:'방치 현장 알림',d:'더보기 [💤 방치 현장] — 진행 중인데 2주 넘게 활동이 없는 현장을 찾아, 잊지 않게 알려주고 안부 문자를 제안합니다.',say:'방치된 현장 있어?'},
+  {k:'현장 단계 한 번에 정리',d:'PC 왼쪽 현장 목록·폰 현장 고르기의 [🧹 단계 정리 n곳] · 💤 방치 현장 창 · 기능 찾기 ‘현장 단계 정리’ — 받을 돈을 다 받은 ‘상담’ 현장을 근거 날짜(마지막 작업일 — 마지막 입금일은 근거에 함께 보여요)로 ‘완료’로 정리합니다. ☑ 체크한 줄만 바뀌고 날짜는 고칠 수 있어요(고친 줄도 체크해야 바뀌어요). 반영 전 안전판이 남고 [↩ 되돌리기]로 돌릴 수 있습니다.'},
   {k:'주간 계획',d:'더보기 [🎯 주간 계획] — 다음 7일 일정을 요일별로 정리하고, 챙길 일(팔로업·보증 등)과 AI 우선순위 조언을 함께 보여줍니다.',say:'이번 주 계획 보여줘'},
   {k:'회사 소개 페이지',d:'더보기 [🪪 회사 소개] — 회사명·연락처·실적·강점을 담은 원페이지 소개를 만듭니다. 고객에게 링크·캡처로 보내 신뢰를 주세요.',say:'회사 소개 페이지 만들어줘'},
   {k:'AS 셀프 접수 링크',d:'더보기 [📩 AS 접수 링크] — 고객이 직접 A/S를 신청하는 안내 페이지를 만듭니다. 전화·문자 신청 버튼과 안내가 담겨 있어 링크·캡처로 보내면 됩니다.',say:'AS 접수 페이지 만들어줘'},
@@ -20601,7 +20616,8 @@ const HJ_HELP=[
   {k:'계약서 초안',d:'더보기 [📝 계약서 초안] — 현장에 배정된 견적을 고르면 계약금액·지급조건(계약금'+hjPayPct('down')+'/중도금'+hjPayPct('mid')+'/잔금'+hjPayPct('bal')+')·계좌·공종별 하자보수가 채워진 공사 계약서 초안이 만들어져요. 복사해서 공사기간·특약만 채우면 됩니다.',say:'계약서 초안 만들어줘'},
   {k:'견적 일괄 배정',d:'더보기 [🎯 견적 일괄 배정] — 파일명에 현장 이름이 들어 있으면 자동으로 찾아 한 번에 배정합니다(폴더 스캔 후 자동 제안). 또 \'파일명 | 현장 | 금액\' 형식의 목록을 붙여넣어 일괄 적용할 수 있어요(복구·Cowork 정리분 반영용). 배정한 현장이 없으면 자동 생성됩니다.',say:'견적 일괄 배정 열어줘'},
   {k:'백업 센터',d:'더보기 [💾 백업 센터] — 마지막 백업 시점과 클라우드 연결 상태를 보고, 한 번에 백업하거나 구글 드라이브를 연결합니다. 일주일 이상 백업 안 하면 홈에 알림이 뜨고, 드라이브를 연결하면 자료 저장 시 자동으로 클라우드에 백업돼 폰이 고장나도 안전해요.',say:'백업 센터 열어줘'},
-  {k:'클로드 명령어 모음',d:'더보기 [🧰 클로드 명령어] — 클로드에게 붙여 넣을 명령을 사진·견적·정산·현장웹 관리로 나눠 모아 둡니다. 받은 사진 정리·카톡 보고 대조·작업내역서 반영·협력사 입금·저장 확인·앱 개발 등 15개 기본 명령이 있고, [📋 명령 복사]해서 클로드에 붙여 넣으면 됩니다. 명령을 고치거나 새로 추가할 수 있어요.',say:'클로드 명령어 모음 열어줘'},
+  {k:'클로드 명령어 모음',d:'더보기 [🧰 클로드 명령어] — 클로드에게 붙여 넣을 명령을 견적·정산·현장웹 관리로 나눠 모아 둡니다. 작업내역서 반영·협력사 입금·청구 누락 찾기·캘린더 맞추기·저장 확인·앱 개발 등을 [📋 명령 복사]해서 클로드에 붙여 넣으면 됩니다. 사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요(옮긴 예전 명령은 맨 아래 접힌 칸에 그대로). 명령을 고치거나 새로 추가할 수 있어요.',say:'클로드 명령어 모음 열어줘'},
+  {k:'보류 묶음',d:'더보기 맨 아래 [⏸ 보류 n개 보기] — 서버 연결이 없어 못 쓰는 기능(카카오 문의·고객 페이지·영업·정기관리·팀 업무·직원 작업실)과 안 쓰는 메뉴(자재 재고·자재 단가·거래처·만족도·매출 목표·현장 예산·예산 경고·납품 확인·광고 게시 기록 입력·새 견적서·AI 견적·사진 견적), 그리고 ☁ 팀 공유 할일(할 일은 ✅ 할 일 하나에)을 접어 둔 곳이에요. 매출을 작업내역서로만 셀지 고르는 칸도 📊 매출 목표 안에 있어요. 지운 것이 아니라 거기서 그대로 열 수 있고, [다시 보이기]를 누르면 원래 자리로 돌아가요(이 기기만). 서버를 연결하거나 자료가 생기면 저절로 다시 보여요. 실제 견적서는 Claude 견적 만들기(단가표 엑셀)로 만들어요.'},
   {k:'AI 자율 운영(오토파일럿)',d:'더보기 [🤖 AI 자율 운영] — 한 번 누르면 사업을 점검하고 안전한 조회·리포트는 AI가 자동 처리한 뒤, 문자·수금처럼 승인이 필요한 것만 모아 보여줍니다. 되돌리기 어려운 일은 항상 사장님 승인을 거쳐요.',say:'자율 운영 실행해줘'},
   {k:'AI 운영 브레인',d:'더보기 [🧠 AI 브레인] — 규칙 점검과 달리, AI가 진행 현장·일정·큐를 종합해 오늘 먼저 할 일 3가지를 이유와 함께 추론해 줍니다.',say:'AI 브레인 열어줘'},
   {k:'루프 성숙도 진단',d:'더보기 [🔁 루프 성숙도] — 운영 루프가 얼마나 잘 돌고 있는지 점수(0~100)로 자가진단합니다. 활성·성공률·큐관리·후속연결 4가지를 보고 등급을 매겨요.',say:'루프 성숙도 보여줘'},
@@ -20626,6 +20642,7 @@ function helpSearch(topic){
   return out;
 }
 function helpGuide(topic){
+  let holdRows=[];try{holdRows=hjHoldState().rows;}catch(e){holdRows=[];}   // v613 보류 중인 기능의 설명에 '⏸ 보류' 한 줄(설명은 예전 자리를 말한다)
   const render=(q)=>{
     q=String(q||'').trim().toLowerCase();
     let html='';let n=0;
@@ -20637,6 +20654,7 @@ function helpGuide(topic){
         '<b style="font-size:13px">'+escapeHtml(it.k)+'</b>'+
         '<div style="font-size:12.5px;color:var(--ink);line-height:1.55;margin-top:2px">'+escapeHtml(it.d)+'</div>'+
         (it.say?'<div style="font-size:12px;color:var(--clay);margin-top:3px">💬 "'+escapeHtml(it.say)+'"</div>':'')+
+        (function(){const h=hjHelpHoldNote(it,holdRows);return h?'<div data-help-hold style="font-size:12px;color:var(--muted);margin-top:3px">'+escapeHtml(h)+'</div>':'';})()+
         '</div>';});
     });
     return {html:html||'<div class="empty" style="padding:14px"><b>검색 결과가 없습니다</b>다른 단어로 찾아보세요.</div>',n};
@@ -28214,6 +28232,8 @@ async function staleProjects(){
   //   빈 현장(사진·견적·일정·수금 등 연결 기록 0건)과 60일 넘게 조용한 현장을 한 번에 '보관'한다. 보관은 지우지 않는다.
   const emptyRows=rows.filter(r=>r.empty),oldRows=rows.filter(r=>!r.empty&&r.days!==null&&r.days>=60);
   const pickN=rows.filter(r=>!r.empty).length,recN=rows.filter(r=>r.pick).length;
+  // 🧹 '상담' 현장을 돈·작업 기록으로 단계 한 번에(준공일 = 근거 날짜) — 제안이 하나라도 있으면(한 번 반영해 체크해 둘 줄이 0 이 돼도) 여기서 다시 연다
+  const tidyC=hjStageTidyCounts(),tidyN=tidyC.rows,tidyLabel=tidyC.on?tidyC.on+'곳'+(tidyC.rows>tidyC.on?' (+확인 '+(tidyC.rows-tidyC.on)+'곳)':''):'— 확인할 제안 '+tidyC.rows+'곳';
   const bulk=(emptyRows.length||oldRows.length||pickN)?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">'+
     (emptyRows.length?'<button class="moss tiny" id="stpArcEmpty" style="padding:9px 12px">📦 기록 없는 빈 현장 '+emptyRows.length+'곳 보관</button>':'')+
     (oldRows.length?'<button class="ghost tiny" id="stpArcOld" style="padding:9px 12px">📦 60일 넘게 조용한 '+oldRows.length+'곳 보관</button>':'')+
@@ -28224,6 +28244,7 @@ async function staleProjects(){
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">잊고 있진 않으세요?</div><div style="font-size:17px;font-weight:800">💤 방치 현장 '+rows.length+'곳</div><div style="font-size:12px;opacity:.95;margin-top:2px">2주 넘게 조용한 진행 현장이에요</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">진행 중인데 오래 활동이 없어요. 멈춘 건지, 잊은 건지 확인해 보세요. 끝난 현장은 완료로, 당분간 볼 일 없는 현장은 보관하면 대시보드가 가벼워져요.</div>'+
+    (tidyN?'<div data-stp-tidy style="margin:0 0 10px"><button type="button" class="moss tiny" id="stpStageTidy" style="min-height:44px;padding:9px 12px" title="받을 돈을 다 받은 ‘상담’ 현장을 근거 날짜로 완료 — 체크한 것만">🧹 돈·작업 기록으로 단계 정리 '+tidyLabel+'</button></div>':'')+
     bulk+items+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 사진을 찍거나 일정을 잡으면 활동으로 기록돼요. 완료된 현장은 완료 처리하면 목록에서 빠집니다.</div>';
   openModal('💤 방치 현장',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -28257,6 +28278,7 @@ async function staleProjects(){
     }finally{doneBusy=false;}
   };
   const ao=document.getElementById('stpArcOld');if(ao)ao.onclick=()=>arcMany(oldRows.map(r=>r.name),'60일 넘게 조용한 현장');
+  const stt=document.getElementById('stpStageTidy');if(stt)stt.onclick=()=>hjStageTidyView({back:staleProjects});
   document.querySelectorAll('#modalRoot .stpQf').forEach(b=>b.onclick=()=>quoteFollowup());   // v392 30일 넘은 견적은 팔로업 창의 '🗂 30일 지난 견적'에서 종결
   document.querySelectorAll('.stpArc').forEach(b=>b.onclick=()=>{const p=state.projects.find(x=>x.name===b.dataset.n);if(!p)return;p.archived=true;markDirty();render();toast('📦 '+p.name+' 보관 — 왼쪽 목록 [보관]에서 되돌릴 수 있어요');staleProjects();});
   // v380 방치 현장 '✅ 완료로' — 예전에는 누른 날(오늘)이 준공일이 되어, 한 달 전에 끝난 현장의 보증·AS 기간이 오늘부터 셌다.
@@ -28271,6 +28293,275 @@ async function staleProjects(){
     toast('📩 안부 문자를 준비했어요');
   });
   return {방치:rows.length};
+}
+
+/* ═══════════ 🧹 현장 단계 한 번에 정리 (분석 AD WA6) ═══════════
+   11/18 실자료: 현장 82곳 중 77곳이 단계 0(상담)이라 🛡 파수꾼의 '멈춘 현장'·보증 만료·진행률이 뜻이 없었다. 수금 32건이 모두 내역서 입금이고
+   견적 32건이 모두 수주(작업내역서)라, 받을 돈을 다 받은 현장은 근거가 이미 있다.
+   ★ 파수꾼(hjWatchScan)·보증(hjWarranty)·방치 현장은 stage 가 아니라 doneAt(준공일)을 본다. setStage 로 '완료'를 누르면 doneAt 이 오늘이 되어
+     보증 기산일이 오늘로 밀리므로, 이 창은 setStage 를 쓰지 않고 근거 날짜를 준공일로 바로 적는다(v381 방치 현장 '한꺼번에 완료'와 같은 꼴).
+   · 대상: 보관 안 한 단계 0 현장(이름이 하나뿐인 것). 보관한 현장·이미 단계가 있는 현장은 건드리지 않는다.
+   · 근거(hjStageTidyPlan — 읽기만): 돈 = projStats 의 청구(bill)+확인받은 추가공사(extra)·받은 돈(recv)·due — 청구서·입금 화면과 같은 한 곳.
+     마지막 입금일 = payLog(금액>0·오늘까지). 마지막 작업일 = 작업내역서 줄의 작업 날짜(줄에 날짜가 없으면 내역서 날짜) · 그 현장 일정(💰 수금·세금 자동·루틴·
+     상담·실측·견적 제목은 빼고, 여러 날 공정은 끝나는 날) · 작업 공정 사진(hjPhotoWorkPhases — v611 ZIP 으로 보관한 날의 작업명 포함) 가운데 가장 늦은 날(오늘까지).
+     앞으로 일정 = 같은 거름으로 오늘 뒤에 걸친 일정. 이미 적힌 준공일(doneAt·완료에서 내릴 때 남긴 doneAtPrev)이 있으면 그 날을 먼저 쓴다(setStage·v380 과 같은 차례).
+   · 규칙(hjStageTidyRule — 순수): 받을 돈을 다 받음(청구>0·받은 돈>0·due 0) → '완료' 체크, 준공일 = 마지막 작업일(작업 날짜 기록이 없으면 마지막 입금일,
+     둘 다 없으면 제안 안 함 — 마지막 입금일은 근거 글에 함께 보인다).
+     앞으로 일정이 있거나 마지막 입금 뒤에도 작업 기록이 있으면 체크를 끈다. 근거가 약한 것(일부만 입금·입금 기록 없음·금액 없이 입금만·돈 기록 없이 작업만)은
+     작업한 날이 있을 때만 체크를 끈 채 '완료'(준공일 = 마지막 작업일) — 앞으로 일정이 있으면 '시공'. 그 밖에는 빼고 이름과 까닭만 알린다.
+     남은 돈 금액은 보이지 않는다 — 2026-08-13 대표 결정(receivable-removed.check).
+   · 반영(hjStageTidyApply): 직원 모드·오래된 창 거부 → 날짜 칸 확인(빈칸·오늘 뒤면 안전판 전에 멈춤) → 안전판 '현장 단계 정리 전' 1회(실패면 무변경) →
+     줄마다 다시 본다(그 사이 지워졌거나 보관·단계·준공일이 바뀐 현장은 그대로) → stage·doneAt 만 바꾸고 markDirty(폴더·서버 저장과 리비전 충돌 처리 그대로).
+     결과 창 [↩ 되돌리기](hjStageTidyUndo) = 이번에 바꾼 현장 가운데 그 뒤로 안 바뀐 것만 원래 단계·준공일로(안전판 한 번 더). 🛡 안전판에서도 되돌릴 수 있다.
+   · 입구: 왼쪽 현장 목록(PC) #sideStageTidy · 폰 현장 선택 시트 #psStageTidy — 체크해 둘 제안이 있을 때만 '🧹 단계 정리 n곳' ·
+     💤 방치 현장 창 #stpStageTidy·기능 찾기 '현장 단계 정리' — 제안이 하나라도 있으면(체크를 끈 제안만 남아도) 연다(한 번 반영한 뒤에도 남은 제안으로 돌아오는 길). */
+const HJ_STAGE_TIDY_DONE=STAGES.length-1;
+const HJ_STAGE_TIDY_PRE_RE=/상담|실측|견적/;   // 계약 전 방문 일정 — 작업한 날로 세지 않는다
+const HJ_STAGE_TIDY_KINDS=['paid','partial','unpaid','payonly','work'];
+// f = {owed, recv, due, payN, lastPay, lastWork, workSrc, prev, next} → {kind, to(null = 제안 안 함), doneAt, src, on, why}. 화면·자료를 건드리지 않는다.
+function hjStageTidyRule(f){
+  const x=f||{},join=a=>a.filter(Boolean).join(' · '),day=v=>HJ_YMD_RE.test(String(v||''))?String(v):'';
+  const owed=Math.round(Number(x.owed)||0),recv=Math.round(Number(x.recv)||0),due=Math.round(Number(x.due)||0),payN=Math.max(0,Math.round(Number(x.payN)||0));
+  const lastPay=day(x.lastPay),lastWork=day(x.lastWork),prev=day(x.prev),next=day(x.next);
+  const workTxt=lastWork?'마지막 작업 '+hjMdDow(lastWork)+(x.workSrc?'('+x.workSrc+')':''):'';
+  const prevTxt=prev?'완료일 = 예전에 적은 준공일':'';
+  const paid=owed>0&&recv>0&&due<=0;
+  const kind=paid?'paid':owed>0&&recv>0?'partial':owed>0?'unpaid':recv>0?'payonly':(lastWork||prev)?'work':'none';
+  if(kind==='none')return {kind,to:null,why:'돈·작업 기록이 없어요'};
+  if(paid){
+    // 준공일 = 공사가 끝난 날(마지막 작업일) — 보증서 '작업완료일'·보증 기산일이다. 입금일은 근거 글로만 보이고, 작업 날짜 기록이 없을 때만 준공일로 쓴다.
+    // (11/18 실자료: 협력사 일괄 입금일 11/5·11/11 을 준공일로 쓰면 작업이 끝난 9~10월보다 최대 71일 늦어진다 — v613 검토)
+    const at=prev||lastWork||lastPay,src=prev?'prev':lastWork?'work':lastPay?'pay':'';
+    if(!at)return {kind,to:null,why:'받을 돈은 다 받았는데 입금일·작업일 기록이 없어요'};
+    const after=!prev&&!!lastPay&&!!lastWork&&lastWork>lastPay;   // 마지막 입금 뒤에도 작업 — 이어지는 공사일 수 있다
+    return {kind,to:HJ_STAGE_TIDY_DONE,doneAt:at,src,on:!next&&!after,why:join([
+      '받을 돈을 다 받았어요'+(payN?'(입금 '+payN+'건)':''),
+      prevTxt||(src==='work'?'완료일 = 마지막 작업일':'완료일 = 마지막 입금일(작업 날짜 기록 없음)'),workTxt,lastPay?'마지막 입금 '+hjMdDow(lastPay):'',
+      after?'마지막 입금 뒤에도 작업 기록이 있어요 — 확인하고 체크':'',next?'앞으로 일정 '+hjMdDow(next)+' — 이어지는 공사면 체크하지 마세요':''])};
+  }
+  const base={partial:'일부만 입금했어요'+(payN?'(입금 '+payN+'건)':''),unpaid:'청구는 있는데 입금 기록이 없어요',payonly:'입금 기록은 있는데 견적·내역서 금액이 없어요',
+    work:lastWork?'돈 기록 없이 작업 기록만 있어요':'예전에 완료로 적었다가 내린 현장이에요'}[kind];
+  if(!lastWork&&!prev)return {kind,to:null,why:base+' · 작업한 날 기록이 없어요'};
+  if(next)return {kind,to:2,doneAt:'',src:'',on:false,why:join([base,'앞으로 일정 '+hjMdDow(next)+' — 하는 중이면 체크',workTxt])};
+  return {kind,to:HJ_STAGE_TIDY_DONE,doneAt:prev||lastWork,src:prev?'prev':'work',on:false,why:join([base,'끝난 공사면 체크',prevTxt||'완료일 = 마지막 작업일',workTxt])};
+}
+// 읽기만 — {today, rows(제안), left(근거가 모자라 뺀 현장), skip:{archived, staged, dup}, on(체크해 둘 줄 수)}. opts.stats 는 검사용(기본 projStats).
+function hjStageTidyPlan(opts){
+  const o=opts||{},today=HJ_YMD_RE.test(String(o.today||''))?String(o.today):localDate(),stats=typeof o.stats==='function'?o.stats:projStats;
+  const okDay=v=>{const s=String(v||'');return HJ_YMD_RE.test(s)&&isRealIsoDate(s)&&s<=today;};
+  const all=(state.projects||[]).filter(p=>p&&typeof p.name==='string'&&p.name),seen={};
+  all.forEach(p=>{seen[p.name]=(seen[p.name]||0)+1;});
+  const out={today,rows:[],left:[],skip:{archived:0,staged:0,dup:0},on:0},want=new Map();
+  all.forEach(p=>{
+    if(p.archived){out.skip.archived++;return;}
+    if((Number(p.stage)||0)!==0){out.skip.staged++;return;}
+    if(seen[p.name]!==1){out.skip.dup++;return;}
+    want.set(p.name,p);
+  });
+  if(!want.size)return out;
+  const pay=new Map(),work=new Map(),next=new Map();
+  const bump=(n,d,src)=>{if(!want.has(n)||!okDay(d))return;const w=work.get(n);if(!w||String(d)>w.d)work.set(n,{d:String(d),src});};
+  (state.payLog||[]).forEach(r=>{if(!r||!want.has(r.project)||!(num(r.amt)>0)||!okDay(r.d))return;const x=pay.get(r.project)||{d:'',n:0};x.n++;if(String(r.d)>x.d)x.d=String(r.d);pay.set(r.project,x);});
+  (state.quotes||[]).forEach(q=>{
+    const st=q&&q.stmt;if(!st||typeof st!=='object'||!want.has(q.project))return;
+    const ds=(Array.isArray(st.lines)?st.lines:[]).map(l=>String(l&&l.d||'')).filter(okDay);
+    if(ds.length)ds.forEach(d=>bump(q.project,d,'작업내역서'));else bump(q.project,st.date,'내역서 날짜');
+  });
+  (state.schedule||[]).forEach(s=>{
+    if(!s||!want.has(s.project)||!HJ_YMD_RE.test(String(s.date||''))||!hjPrepOtherOk(s)||s.routine||HJ_STAGE_TIDY_PRE_RE.test(String(s.title||'')))return;
+    const sp=hjSchSpan(s),to=hjSchContEnded(s)?sp.from:sp.to;   // 완료 보고된 여러 날 공정은 시작일에 끝난 것
+    if(sp.from<=today)bump(s.project,to<today?to:today,'일정');
+    if(to>today){const d=sp.from>today?sp.from:to,c=next.get(s.project);if(!c||d<c)next.set(s.project,d);}
+  });
+  (state.files||[]).forEach(f=>{
+    if(!f||f.kind!=='photo'||!want.has(f.project)||!f.when||!hjPhotoWorkPhases(f).length)return;
+    const t=new Date(f.when);if(!isNaN(t.getTime()))bump(f.project,localDate(t),'작업 사진');
+  });
+  try{hjPzArchivedEach('',(n,d,c,lm)=>{if(want.has(n)&&lm&&Object.keys(lm).some(k=>hjPhotoWorkPhases({_worklabel:k}).length))bump(n,d,'작업 사진');});}catch(e){}
+  want.forEach((p,n)=>{
+    const s=stats(n)||{},pw=pay.get(n),w=work.get(n),prev=[p.doneAt,p.doneAtPrev].find(okDay)||'';
+    const f={owed:num(s.bill)+num(s.extra),recv:num(s.recv),due:num(s.due),payN:pw?pw.n:0,lastPay:pw?pw.d:'',lastWork:w?w.d:'',workSrc:w?w.src:'',prev,next:next.get(n)||''};
+    const r=hjStageTidyRule(f);
+    const row={name:n,kind:r.kind,to:r.to,doneAt:r.doneAt||'',src:r.src||'',on:!!r.on,why:r.why,lastPay:f.lastPay,lastWork:f.lastWork,workSrc:f.workSrc,next:f.next,
+      seen:{doneAt:String(p.doneAt||''),doneAtPrev:String(p.doneAtPrev||'')}};
+    (r.to==null?out.left:out.rows).push(row);
+  });
+  const ko=(a,b)=>a.name.localeCompare(b.name,'ko');
+  out.rows.sort((a,b)=>(b.on-a.on)||(HJ_STAGE_TIDY_KINDS.indexOf(a.kind)-HJ_STAGE_TIDY_KINDS.indexOf(b.kind))||(b.to-a.to)||ko(a,b));
+  out.left.sort(ko);
+  out.on=out.rows.filter(r=>r.on).length;
+  return out;
+}
+// 입구 단추 건수 — 체크해 둘 제안(받을 돈을 다 받은 현장)이 있을 때만. 직원 모드·데모는 0.
+function hjStageTidyBtnN(){
+  try{
+    if(!state||state._demo||(typeof hjStaffOn==='function'&&hjStaffOn()))return 0;
+    return hjStageTidyPlan().on;
+  }catch(e){return 0;}   // 부팅 중(아직 정의 전인 상수)에도 목록 그리기를 막지 않는다
+}
+// 💤 방치 현장 창 입구 — 체크해 둘 줄(on)과 제안 줄 전체(rows: 체크를 끈 제안 포함). 한 번 반영해 on 이 0 이 돼도 남은 제안으로 돌아오는 길. 직원 모드·데모는 0.
+function hjStageTidyCounts(){
+  try{
+    if(!state||state._demo||(typeof hjStaffOn==='function'&&hjStaffOn()))return {on:0,rows:0};
+    const p=hjStageTidyPlan();return {on:p.on,rows:p.rows.length};
+  }catch(e){return {on:0,rows:0};}
+}
+/* 왼쪽 현장 목록(PC)의 단추 — render() 마다 다시 세면 현장 82곳 실자료에서 20ms 남짓이 그리기마다 더해진다(사진 스캔 중에는 한 장면마다).
+   그래서 지난번 센 수로 그리고, 다시 세기는 마지막 그리기 HJ_STAGE_TIDY_SIDE_MS 뒤 한 번 — 수가 바뀌었을 때만 그 단추만 고친다(목록·화면은 다시 그리지 않는다).
+   폰 시트·💤 방치 현장 창은 열 때 바로 센다(누를 때 한 번). 창 안의 제안은 늘 열 때 새로 센다. */
+const HJ_STAGE_TIDY_SIDE_MS=600;
+let __hjStageTidySideN=0,__hjStageTidySideT=0;
+function hjStageTidySidePaint(pl){
+  if(!pl||!pl.isConnected)return;
+  const n=__hjStageTidySideN;let b=pl.querySelector('#sideStageTidy');
+  if(!n){if(b)b.remove();return;}
+  if(!b){
+    b=document.createElement('button');b.type='button';b.id='sideStageTidy';b.className='ghost';b.style.minHeight='44px';b.style.marginLeft='6px';
+    b.title='단계가 ‘상담’인 현장을 돈·작업 기록으로 살펴 완료(준공일 = 근거 날짜) 등을 제안합니다 — 체크한 것만 바뀌어요';b.onclick=()=>hjStageTidyView();
+    const lf=pl.querySelector('#sideLeakFilter');if(lf)lf.after(b);else pl.prepend(b);
+  }
+  b.dataset.stageTidyN=String(n);b.textContent='🧹 단계 정리 '+n+'곳';
+}
+function hjStageTidySideBtn(pl){
+  hjStageTidySidePaint(pl);
+  try{clearTimeout(__hjStageTidySideT);}catch(e){}
+  // 폰(왼쪽 목록이 숨음 — 폰 입구는 현장 시트 #psStageTidy 로 열 때 센다)이거나 목록이 화면에 없으면 다시 세지 않는다(사진 스캔·동기화 그리기마다 계산이 붙지 않게)
+  if(__mobileMode||!pl||!pl.isConnected||!pl.getClientRects().length)return;
+  __hjStageTidySideT=setTimeout(()=>{const n=hjStageTidyBtnN();if(n!==__hjStageTidySideN){__hjStageTidySideN=n;hjStageTidySidePaint(document.getElementById('projList'));}},HJ_STAGE_TIDY_SIDE_MS);
+}
+function hjStageTidyView(opts){
+  const o=opts||{};
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 현장 단계를 바꿀 수 없어요');return false;}
+  const plan=hjStageTidyPlan(),rows=plan.rows,back=typeof o.back==='function'?o.back:null;
+  const foot=[{label:'닫기',cls:'ghost',fn:closeModal}];if(back)foot.unshift({label:'‹ 뒤로',cls:'ghost',fn:()=>{closeModal();back();}});
+  const sk=plan.skip,skipTxt=[sk.archived?'보관한 현장 '+sk.archived+'곳':'',sk.staged?'이미 단계가 있는 현장 '+sk.staged+'곳':'',sk.dup?'이름이 겹치는 현장 '+sk.dup+'곳':''].filter(Boolean).join(' · ');
+  const leftHtml=plan.left.length?'<details data-stage-tidy-left="'+plan.left.length+'" style="margin-top:12px;font-size:12.5px;line-height:1.6"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center">근거가 모자라 뺀 현장 '+plan.left.length+'곳 (그대로 둡니다)</summary><ul style="margin:4px 0 0;padding-left:18px">'+
+    plan.left.map(r=>'<li data-stage-tidy-left-row="'+escapeAttr(r.name)+'"><b>'+escapeHtml(r.name)+'</b> — '+escapeHtml(r.why)+'</li>').join('')+'</ul></details>':'';
+  const intro='<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;line-height:1.6">단계가 아직 ‘상담’인 현장을 돈·작업 기록으로 살펴 제안합니다. <b>체크한 현장만</b> 바뀌어요. '+
+    '받을 돈을 다 받은 현장은 ‘완료’로 미리 체크해 두었고, 근거가 약한 현장은 체크를 꺼 두었어요. 완료일(준공일)은 보증·AS 기간이 시작되는 날이라 오늘이 아니라 근거 날짜(마지막 작업일)로 적습니다 — 날짜 칸에서 고칠 수 있어요(고친 줄도 체크해야 바뀌어요).'+
+    (skipTxt?'<br><span data-stage-tidy-skip>'+escapeHtml(skipTxt)+'은 건드리지 않아요.</span>':'')+'</div>';
+  if(!rows.length){
+    openModal('🧹 현장 단계 한 번에 정리','<div id="hjStageTidy" style="min-width:0;overflow-wrap:anywhere"><div class="empty" data-stage-tidy-empty style="padding:16px"><b>바꿀 만한 현장이 없어요</b>단계가 ‘상담’인 현장 가운데 돈·작업 기록으로 단계를 정할 수 있는 곳이 없습니다.'+(skipTxt?' ('+escapeHtml(skipTxt)+'은 그대로)':'')+'</div>'+leftHtml+'</div>',foot);
+    hjModalTapTargets();return 0;
+  }
+  const css='<style>#hjStageTidy .std-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto}#hjStageTidy .std-table th{font-size:12px;color:var(--muted);text-align:left;font-weight:700;padding:6px 4px;border-bottom:1px solid var(--line-soft)}'+
+    '#hjStageTidy .std-table td{padding:8px 4px;border-bottom:1px dashed var(--line-soft);vertical-align:top;overflow-wrap:anywhere;min-width:0}#hjStageTidy .std-name{font-weight:700}#hjStageTidy .std-why{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}'+
+    '#hjStageTidy .std-chk{width:52px;text-align:center}#hjStageTidy .std-pick{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}#hjStageTidy .std-pick input{width:22px;height:22px;margin:0}'+
+    '#hjStageTidy .stdDate{min-height:44px;font-size:16px;padding:6px 8px;border-radius:9px;border:1px solid var(--line-soft);max-width:100%;box-sizing:border-box;background:var(--paper);color:var(--ink)}'+
+    '#hjStageTidy .std-tools{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}#hjStageTidy .std-tools button{min-height:44px}'+
+    '@media (min-width:641px){#hjStageTidy .std-table td.std-name{width:22%;word-break:keep-all;overflow-wrap:break-word}#hjStageTidy .std-table td.std-stage{white-space:nowrap}}'+
+    '@media (max-width:640px){#hjStageTidy .std-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}'+
+    '#hjStageTidy .std-table,#hjStageTidy .std-table tbody,#hjStageTidy .std-table tr,#hjStageTidy .std-table td{display:block;width:100%;box-sizing:border-box}'+
+    '#hjStageTidy .std-table tr{position:relative;border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px;margin-top:8px}#hjStageTidy .std-table td{border:0;padding:3px 0}'+
+    '#hjStageTidy .std-table td.std-name{padding-right:52px}#hjStageTidy .std-table td[data-th]:not(.std-name):not(.std-chk)::before{content:attr(data-th) " ";color:var(--muted);font-size:11.5px;font-weight:400}'+
+    '#hjStageTidy .std-table td.std-chk{position:absolute;top:2px;right:2px;width:auto;padding:0}}</style>';
+  const rowHtml=(r,i)=>'<tr data-stage-tidy-row="'+escapeAttr(r.name)+'" data-kind="'+r.kind+'" data-to="'+r.to+'">'+
+    '<td class="std-name" data-th="현장">'+escapeHtml(r.name)+'</td>'+
+    '<td class="std-stage" data-th="지금 단계">'+escapeHtml(STAGES[0])+'</td>'+
+    '<td class="std-stage" data-th="제안 단계"><b>'+escapeHtml(STAGES[r.to]||'')+'</b></td>'+
+    '<td data-th="완료일과 근거">'+(r.to===HJ_STAGE_TIDY_DONE?'<input type="date" class="stdDate" data-i="'+i+'" value="'+escapeAttr(r.doneAt)+'" max="'+escapeAttr(plan.today)+'" aria-label="'+escapeAttr(r.name+' 준공일')+'">':'<span data-stage-tidy-nodate>준공일 없음(완료가 아님)</span>')+
+      '<div class="std-why">'+escapeHtml(r.why)+'</div></td>'+
+    '<td class="std-chk" data-th="반영"><label class="std-pick"><input type="checkbox" class="stdChk" data-i="'+i+'"'+(r.on?' checked':'')+' aria-label="'+escapeAttr(r.name+' — '+(STAGES[r.to]||'')+'(으)로 바꾸기')+'"></label></td></tr>';
+  const body=css+'<div id="hjStageTidy" style="min-width:0;overflow-wrap:anywhere">'+intro+
+    '<div class="std-tools"><button type="button" class="ghost tiny" id="stdPickDefault">☑ 제안대로 체크</button><button type="button" class="ghost tiny" id="stdPickNone">☐ 체크 모두 끄기</button>'+
+    '<span data-stage-tidy-count style="align-self:center;font-size:12.5px;color:var(--muted)"></span></div>'+
+    '<table class="std-table"><thead><tr><th scope="col">현장</th><th scope="col">지금 단계</th><th scope="col">제안 단계</th><th scope="col">완료일과 근거</th><th scope="col">반영</th></tr></thead><tbody>'+
+    rows.map(rowHtml).join('')+'</tbody></table>'+leftHtml+'</div>';
+  openModal('🧹 현장 단계 한 번에 정리',body,[{label:'🧹 체크한 현장 반영',cls:'clay',fn:()=>hjStageTidyApply(plan)}].concat(foot),true);
+  const root=document.getElementById('hjStageTidy');
+  if(root){
+    // 날짜를 고쳐도 체크는 저절로 켜지 않는다('체크한 것만' 바뀐다) — 체크가 꺼진 줄의 날짜를 고쳤으면 그 칸 아래에 '체크해야 반영돼요'
+    const dateHint=d=>{
+      const c=root.querySelector('.stdChk[data-i="'+d.dataset.i+'"]'),td=d.parentNode;if(!td)return;
+      let h=td.querySelector('[data-stage-tidy-datehint]');const need=!!(c&&!c.checked&&d.value&&d.value!==d.defaultValue);
+      if(need&&!h){h=document.createElement('div');h.setAttribute('data-stage-tidy-datehint','');h.className='std-why';h.style.color='var(--clay)';h.textContent='날짜를 고쳤어요 — 오른쪽 ‘반영’을 체크해야 바뀌어요';d.after(h);}
+      else if(!need&&h)h.remove();
+    };
+    const count=()=>{const n=root.querySelectorAll('.stdChk:checked').length,c=root.querySelector('[data-stage-tidy-count]');if(c)c.textContent='체크 '+n+'곳 / '+rows.length+'곳';
+      const b=[...document.querySelectorAll('#modalRoot .mfoot button')].find(x=>x.textContent.indexOf('🧹')===0);if(b)b.textContent='🧹 체크한 '+n+'곳 반영';
+      root.querySelectorAll('.stdDate').forEach(dateHint);};
+    root.querySelectorAll('.stdChk').forEach(c=>{c.onchange=count;});
+    root.querySelectorAll('.stdDate').forEach(d=>{d.onchange=()=>dateHint(d);d.oninput=()=>dateHint(d);});
+    const pd=document.getElementById('stdPickDefault');if(pd)pd.onclick=()=>{root.querySelectorAll('.stdChk').forEach(c=>{const r=rows[+c.dataset.i];c.checked=!!(r&&r.on);});count();};
+    const pn=document.getElementById('stdPickNone');if(pn)pn.onclick=()=>{root.querySelectorAll('.stdChk').forEach(c=>{c.checked=false;});count();};
+    count();
+  }
+  hjModalTapTargets();
+  return rows.length;
+}
+// plan = 창을 열 때의 계획(줄 차례 = data-i). 체크한 줄만 — 반환: 바꾼 현장 수
+async function hjStageTidyApply(plan){
+  const root=document.getElementById('hjStageTidy');if(!root||!plan)return 0;
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 현장 단계를 바꿀 수 없어요');return 0;}
+  const stale=()=>typeof __tabStale!=='undefined'&&__tabStale;
+  if(stale()){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const today=localDate(),picks=[];let bad=null;
+  root.querySelectorAll('.stdChk:checked').forEach(el=>{
+    const i=+el.dataset.i,r=plan.rows[i];if(!r)return;
+    let d='';
+    if(r.to===HJ_STAGE_TIDY_DONE){
+      const inp=root.querySelector('.stdDate[data-i="'+i+'"]');d=String(inp&&inp.value||'');
+      if(!HJ_YMD_RE.test(d)||!isRealIsoDate(d)){if(!bad)bad={el:inp,msg:'준공일을 고르세요'};return;}
+      if(d>today){if(!bad)bad={el:inp,msg:'오늘 뒤 날짜는 준공일로 쓸 수 없어요'};return;}
+    }
+    picks.push({r,d});
+  });
+  // 날짜가 틀린 줄이 하나라도 있으면 안전판도 만들지 않고 멈춘다 — 그 칸 아래에 까닭이 보인다
+  if(bad){hjFieldIssue(bad.el,bad.msg);toast('준공일을 확인해 주세요 — 아무 현장도 바꾸지 않았어요');return 0;}
+  if(!picks.length){toast('바꿀 현장을 체크하세요');return 0;}
+  const btns=[...document.querySelectorAll('#modalRoot .mfoot button')];btns.forEach(b=>b.disabled=true);
+  const unlock=()=>btns.forEach(b=>{if(b.isConnected)b.disabled=false;});
+  let snapped=false;try{snapped=await hjSnapshot('현장 단계 정리 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){unlock();toast('안전판을 만들지 못해 바꾸지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  if(stale()){unlock();toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const has=(o,k)=>Object.prototype.hasOwnProperty.call(o,k),done=[];let changed=0;
+  picks.forEach(({r,d})=>{
+    // 창을 연 뒤 지워졌거나 다른 곳(현장 화면·방치 현장·다른 기기)에서 보관·단계·준공일이 바뀐 현장은 건드리지 않는다 — 지금 적힌 것이 새것
+    const list=(state.projects||[]).filter(p=>p&&p.name===r.name),p=list[0];
+    if(list.length!==1||p.archived||(Number(p.stage)||0)!==0||String(p.doneAt||'')!==r.seen.doneAt||String(p.doneAtPrev||'')!==r.seen.doneAtPrev){changed++;return;}
+    const before={hadStage:has(p,'stage'),stage:p.stage,hadDone:has(p,'doneAt'),doneAt:p.doneAt,hadPrev:has(p,'doneAtPrev'),doneAtPrev:p.doneAtPrev};
+    p.stage=r.to;
+    if(r.to===HJ_STAGE_TIDY_DONE){p.doneAt=d;delete p.doneAtPrev;}
+    else if(p.doneAt){p.doneAtPrev=p.doneAt;p.doneAt=null;}   // 완료가 아닌 단계 — setStage 와 같이 준공일은 doneAtPrev 로
+    try{portalAutoSync(p.name);}catch(e){}
+    done.push({name:p.name,to:r.to,d,before,after:{stage:p.stage,doneAt:String(p.doneAt||'')}});
+  });
+  const tail=changed?' · 그 사이 바뀐 현장 '+changed+'곳은 그대로':'';
+  if(!done.length){unlock();toast('바꾸지 않았습니다'+tail);return 0;}
+  markDirty();closeModal();render();
+  hjStageTidyResult(done,tail);
+  toast('🧹 현장 '+done.length+'곳의 단계를 정리했어요'+tail+' — 되돌리려면 [↩ 되돌리기]');
+  return done.length;
+}
+function hjStageTidyResult(done,tail){
+  const list=done.map(x=>'<li data-stage-tidy-done="'+escapeAttr(x.name)+'"><b>'+escapeHtml(x.name)+'</b> — '+escapeHtml(STAGES[x.to]||'')+(x.to===HJ_STAGE_TIDY_DONE?' · 준공일 '+escapeHtml(x.d):'')+'</li>').join('');
+  openModal('🧹 현장 단계를 정리했어요','<div id="hjStageTidyDone" style="font-size:13px;line-height:1.6;min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 6px">현장 <b>'+done.length+'곳</b>의 단계를 바꿨어요'+escapeHtml(tail||'')+'. 저장은 평소처럼 됩니다(이 기기·폴더·서버).</p>'+
+    '<ul style="margin:0;padding-left:18px">'+list+'</ul><p class="hint" style="margin:8px 0 0">잘못 바꿨으면 [↩ 되돌리기] — 이번에 바꾼 현장 가운데 그 뒤로 안 바뀐 것만 원래대로 돌립니다. 이 창을 닫은 뒤에는 🛡 안전판 ‘현장 단계 정리 전’에서 되돌릴 수 있어요.</p></div>',
+    [{label:'↩ 되돌리기',cls:'ghost',fn:()=>hjStageTidyUndo(done)},{label:'닫기',cls:'clay',fn:closeModal}]);
+  hjModalTapTargets();
+}
+// 방금 바꾼 현장만 원래대로 — 그 뒤로 단계·준공일이 또 바뀐 현장은 그대로 둔다. 반환: 되돌린 현장 수
+async function hjStageTidyUndo(done){
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 현장 단계를 바꿀 수 없어요');return 0;}
+  if(typeof __tabStale!=='undefined'&&__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 🛡 안전판에서 되돌려 주세요');return 0;}
+  const btns=[...document.querySelectorAll('#modalRoot .mfoot button')];btns.forEach(b=>b.disabled=true);
+  let snapped=false;try{snapped=await hjSnapshot('현장 단계 정리 되돌리기 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('안전판을 만들지 못해 되돌리지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  let n=0,kept=0;
+  (Array.isArray(done)?done:[]).forEach(x=>{
+    const list=(state.projects||[]).filter(p=>p&&p.name===x.name),p=list[0];
+    if(list.length!==1||p.stage!==x.after.stage||String(p.doneAt||'')!==x.after.doneAt){kept++;return;}
+    const b=x.before;
+    if(b.hadStage)p.stage=b.stage;else delete p.stage;
+    if(b.hadDone)p.doneAt=b.doneAt;else delete p.doneAt;
+    if(b.hadPrev)p.doneAtPrev=b.doneAtPrev;else delete p.doneAtPrev;
+    try{portalAutoSync(p.name);}catch(e){}
+    n++;
+  });
+  if(n)markDirty();
+  closeModal();render();
+  toast(n?'↩ 현장 '+n+'곳을 원래 단계로 되돌렸어요'+(kept?' · 그 사이 바뀐 '+kept+'곳은 그대로':''):'되돌릴 현장이 없어요 — 그 사이 모두 바뀌었어요');
+  return n;
 }
 
 /* ═══════════ 🎯 주간 계획 AI — 다음 주 일정·우선순위 ═══════════ */
@@ -30493,8 +30784,10 @@ function hjSharedTodoView(projectName,prefill){
   openModal('☁ 팀 공유 · 오늘 할일',css+'<section id="sharedTodoView"><div class="st-actions"><button type="button" class="ghost" id="stRefresh">최신 새로고침</button><button type="button" class="ghost" id="stLocal">이 기기 기존 할일</button><button type="button" class="ghost" id="stConnect">연결 설정</button></div><p id="stStatus" role="status" aria-live="polite" data-state="loading">공유 서버 연결을 확인합니다…</p><button type="button" class="blue" id="stRetry" hidden>전송 결과 확인·다시 보내기</button><form id="stForm"><label>입력할 현장<select id="stProject" required aria-label="공유할일 현장"></select></label><label>할 일<textarea id="stText" required maxlength="500" rows="2" placeholder="예: 101동 배수관 부속 준비" aria-label="공유할일 내용"></textarea></label><div class="st-actions"><button type="submit" class="blue" id="stSave" disabled>팀에 공유하기</button><button type="button" class="ghost" id="stCancelEdit" hidden>수정 취소</button></div></form><label>목록에서 볼 현장<select id="stFilter" aria-label="공유할일 현장 필터"></select></label><p id="stSummary"></p><div id="stList"></div><details><summary style="min-height:44px">공유 범위·저장 안내</summary><p>같은 회사 서버 연결을 가진 직원이 함께 보고 수정합니다. 직원별 열람 제한이나 읽음 확인 기능은 아닙니다.</p><p>공유할일은 사진·장부와 별도로 저장합니다. 이 기기의 기존 할일은 자동 공유하거나 삭제하지 않습니다. 오프라인 입력은 공유 완료가 아니며 인터넷 연결 후 저장을 확인하세요.</p></details></section>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const s={root:document.getElementById('sharedTodoView'),url:__relay.url,token:__relay.token,device:__relay.device,project,filter:project,tasks:[],requests:new Set(),pending:null,ready:false,busy:false,loading:false,readSequence:0,key:'',edit:null,storageFailed:false};
   __hjSharedTodo=s;hjSharedTodoDraw(s);if(prefill?.text){s.root.querySelector('#stText').value=String(prefill.text).slice(0,500);hjSharedTodoStatus(s,'loading','기존 할일을 공유 초안으로 복사했습니다. 원본은 그대로이며 공유 버튼을 눌러야 전송됩니다.');}
-  const transferButton=document.createElement('button');transferButton.type='button';transferButton.className='ghost';transferButton.textContent='직원 포털 이전 초안';transferButton.onclick=()=>hjCompanySharedExport();s.root.querySelector('.st-actions').appendChild(transferButton);
-  const staffLink=document.createElement('a');staffLink.href='./team.html';staffLink.target='_blank';staffLink.rel='noopener';staffLink.textContent='직원 작업실 · 내 업무 처리';s.root.querySelector('.st-actions').appendChild(staffLink);
+  if(!hjHeld('teamroom')){   // v613 18 — 직원 작업실(서버 없음)이 보류면 그 링크·이전 초안 단추도 없다(보류 묶음에서 연다)
+    const transferButton=document.createElement('button');transferButton.type='button';transferButton.className='ghost';transferButton.textContent='직원 포털 이전 초안';transferButton.onclick=()=>hjCompanySharedExport();s.root.querySelector('.st-actions').appendChild(transferButton);
+    const staffLink=document.createElement('a');staffLink.href='./team.html';staffLink.target='_blank';staffLink.rel='noopener';staffLink.textContent='직원 작업실 · 내 업무 처리';s.root.querySelector('.st-actions').appendChild(staffLink);
+  }
   s.root.querySelector('#stLocal').onclick=()=>todoLocalView(s.root.querySelector('#stProject').value);
   s.root.querySelector('#stConnect').onclick=()=>openGdriveSetup();
   const backupButton=document.createElement('button');backupButton.type='button';backupButton.className='ghost';backupButton.id='stBackup';backupButton.textContent='공유 할일 백업·복원';backupButton.onclick=()=>window.hjSharedTodoBackupView?.();s.root.querySelector('.st-actions').appendChild(backupButton);
@@ -30570,7 +30863,7 @@ function todoLocalView(projectName){
    (이 기기 할일 = notes todo:true, 팀 업무판 = notes teamTask, 팀 공유 = 서버 sharedTodoList 읽기만).
    기존 화면(todoLocalView·hjSharedTodoView·hjTeamBoard·team.html)은 아래 링크로 그대로 산다.
    완료 보고는 그 일정의 작업일지(workLogSave)에만 남는다 — 현장 단계(setStage)는 사람이 바꾼다. */
-let __hjMyWork={seq:0,shared:null,sharedState:'',sharedAt:'',team:''};
+let __hjMyWork={seq:0,shared:null,sharedState:'',sharedAt:'',team:'',sharedOpenN:0};   // sharedOpenN — 마지막으로 읽기에 성공한 남은 공유 할일 수(⏸ 보류 판정, 읽는 중·실패에도 그대로)
 const HJ_MYWORK_SRC=Object.freeze({local:'이 기기 할일',team:'팀 업무판',shared:'팀 공유'});
 function hjMyWorkDone(s){return !!(s&&s.report&&s.report.progress==='완료');}
 function hjMyWorkSchedules(date){
@@ -30593,7 +30886,7 @@ function hjMyWorkTodos(shared){
 // 팀 공유 할일 읽기 — 기존 서버 계약(sharedTodoList) 그대로, 쓰기는 공유 화면에서만
 async function hjMyWorkSharedLoad(){
   const seq=++__hjMyWork.seq;
-  if(!relayReady()||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||''))){__hjMyWork.shared=null;__hjMyWork.sharedState='off';return;}
+  if(!relayReady()||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||''))){__hjMyWork.shared=null;__hjMyWork.sharedState='off';__hjMyWork.sharedOpenN=0;return;}
   const conn=JSON.stringify([__relay.url,__relay.token,__relay.device]);
   __hjMyWork.sharedState='loading';
   const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
@@ -30603,7 +30896,7 @@ async function hjMyWorkSharedLoad(){
     const j=await r.json();
     if(seq!==__hjMyWork.seq||conn!==JSON.stringify([__relay.url,__relay.token,__relay.device]))return;
     if(!(j&&j.ok)||j.version!==HJ_SHARED_TODO_VERSION||!Array.isArray(j.tasks)||j.tasks.length>5000||j.tasks.some(t=>!hjSharedTodoValidTask(t,false)))throw new Error('invalid');
-    __hjMyWork.shared=j.tasks;__hjMyWork.sharedState='ready';__hjMyWork.sharedAt=localStamp();
+    __hjMyWork.shared=j.tasks;__hjMyWork.sharedState='ready';__hjMyWork.sharedAt=localStamp();__hjMyWork.sharedOpenN=j.tasks.filter(t=>!t.done).length;
   }catch(e){if(seq===__hjMyWork.seq){__hjMyWork.sharedState='error';}}
   finally{clearTimeout(timer);}
 }
@@ -30613,6 +30906,15 @@ async function hjMyWorkTeamCheck(){
     const m=/apiUrl\s*:\s*['"]([^'"]*)['"]/.exec(await r.text());__hjMyWork.team=m&&/^https:\/\//.test(m[1])?'on':'off';}
   catch(e){__hjMyWork.team='error';}
 }
+// v613 18 — ☁ 팀 공유 할일 단추도 보류 묶음 규칙(남은 공유 할일 = 마지막으로 읽은 수)을 따른다. 읽은 뒤 그 단추만 제자리에서 넣거나 뺀다.
+function hjMyWorkSharedBtnHTML(){return relayReady()&&!hjHeld('sharedtodo')?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'';}
+function hjMyWorkSharedBtnSync(root){
+  const old=root.querySelector('#mwShared'),local=root.querySelector('#mwLocal'),html=hjMyWorkSharedBtnHTML();
+  if(old&&!html)old.remove();else if(!old&&html&&local)local.insertAdjacentHTML('afterend',html);
+  const sh=root.querySelector('#mwShared');if(sh)sh.onclick=()=>hjSharedTodoView();
+}
+// v613 18 — 직원 작업실(서버 없음)은 보류 묶음 규칙을 따른다. 이 창이 서버를 확인했으면(on) 보인다.
+function hjMyWorkTeamShown(){return __hjMyWork.team==='on'||!hjHeld('teamroom');}
 function hjMyWorkTeamHTML(){
   const st=__hjMyWork.team;
   const link='<a id="mwTeamOpen" class="btn ghost" href="./team.html#mine" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px">직원 작업실 · 내 업무 열기</a>';
@@ -30643,9 +30945,13 @@ function myWorkView(opts){
   opts=opts||{};
   if(opts.refresh!==false){
     __hjMyWork.sharedState=relayReady()?'loading':'off';__hjMyWork.team='';
-    // 다 읽은 뒤 할일 묶음·직원 작업실 줄만 제자리에서 바꾼다 — 창을 다시 열면 적던 기록자 이름·초점이 날아간다
-    Promise.all([hjMyWorkSharedLoad(),hjMyWorkTeamCheck()]).then(()=>{const root=document.getElementById('myWork');if(!root||!root.isConnected)return;
-      const team=root.querySelector('#mwTeam');if(team)team.innerHTML=hjMyWorkTeamHTML();
+    // 다 읽은 뒤 할일 묶음·☁ 팀 공유 할일 단추·직원 작업실 줄만 제자리에서 바꾼다 — 창을 다시 열면 적던 기록자 이름·초점이 날아간다
+    Promise.all([hjMyWorkSharedLoad(),hjMyWorkTeamCheck()]).then(()=>{try{hjHoldDashRefresh();}catch(e){}   // v613 남은 공유 할일 수가 바뀌면 대시보드 단추 줄도 제자리에서
+      const root=document.getElementById('myWork');if(!root||!root.isConnected)return;
+      hjMyWorkSharedBtnSync(root);
+      let team=root.querySelector('#mwTeam');   // v613 직원 작업실 줄은 보류가 아닐 때만(서버가 확인되면 그때 붙인다)
+      if(!team&&hjMyWorkTeamShown()){root.insertAdjacentHTML('beforeend','<h4 data-mw-teamh>🏢 직원 작업실</h4><div id="mwTeam"></div>');team=root.querySelector('#mwTeam');}
+      if(team)team.innerHTML=hjMyWorkTeamHTML();
       const box=root.querySelector('#mwTodoBox'),busy=box&&([...box.querySelectorAll('[data-mw-recrow]')].some(r=>!r.hidden)||box.contains(document.activeElement));
       if(box&&!busy){box.innerHTML=hjMyWorkTodoBoxHTML();hjMyWorkBind(root);}});
   }
@@ -30679,8 +30985,8 @@ function myWorkView(opts){
       '<button type="button" class="ghost" data-mw-matissue="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 문제 있음')+'">⚠ 문제 있음</button></div></article>').join(''):'')+
     '<div id="mwTodoBox">'+hjMyWorkTodoBoxHTML(todos)+'</div>'+
     (empty?'<div class="empty" id="mwEmpty" style="padding:14px;margin-top:10px"><b>오늘은 할 일이 없습니다</b>'+(ahead.length?'내일('+escapeHtml(tomorrow)+') 일정 '+ahead.length+'건:<ul style="text-align:left;margin:6px 0 0;padding-left:18px">'+ahead.slice(0,5).map(s=>'<li>'+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' · '+s.project:''))+'</li>').join('')+'</ul>':'내일 잡힌 일정도 없습니다.')+'</div>':'')+
-    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button></div>'+
-    '<h4>🏢 직원 작업실</h4><div id="mwTeam">'+hjMyWorkTeamHTML()+'</div></section>';
+    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+hjMyWorkSharedBtnHTML()+(hjHeld('teamboard')?'':'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button>')+'</div>'+   // v613 팀 업무판은 보류가 아닐 때만
+    (hjMyWorkTeamShown()?'<h4 data-mw-teamh>🏢 직원 작업실</h4><div id="mwTeam">'+hjMyWorkTeamHTML()+'</div>':'')+'</section>';   // v613 직원 작업실은 보류가 아닐 때만(18)
   openModal('📋 내 업무'+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length?' ('+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length)+')':''),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('myWork');
   hjMyWorkBind(root);
@@ -30711,7 +31017,7 @@ function hjMyWorkBind(root){
   root.querySelector('#mwLocal').onclick=()=>todoLocalView();
   const mc=root.querySelector('#mwClose');if(mc)mc.onclick=()=>hjDayCloseView();   // v359
   const sh=root.querySelector('#mwShared');if(sh)sh.onclick=()=>hjSharedTodoView();
-  root.querySelector('#mwBoard').onclick=()=>hjTeamBoard();
+  const mb=root.querySelector('#mwBoard');if(mb)mb.onclick=()=>hjTeamBoard();   // v613 보류면 없다
 }
 // 그 현장(·작업 이름)으로 미리 고른 사진 추가 — 갤러리에서 고르면 기존 사진 추가 확인 창(openPhotoIntake)이 그대로 연다
 function hjMyWorkPhoto(project,label){
@@ -32641,7 +32947,7 @@ const MORE_CATS=[
 // 최근 사용 기능 추적
 // 설명은 기능의 용도이며 외부 서비스 연결/실행 성공을 보장하지 않는다.
 const MORE_HELP={
-  delaycheck:'일정이 지났는데 사진·완료 보고가 없는 공정 찾기(시공 현장)',schshare:'오늘·이번 주 일정을 팀원에게 카톡·문자·캘린더 파일로 공유(담당별)',inquiry:'전화·방문 문의를 고객·연락처·지역·내용·문의 경로로 한 번에 등록하고 상담·실측 일정까지',crewweek:'이번 주·다음 주를 팀원 한 사람씩 — 일한 날·현장·빈 날·담당 겹침, 그 사람 일정 보내기',matdue:'발주한 자재가 언제 들어오는지·들어왔는지 — 오늘·지난 납품 입고 확인(현장별)',voicein:'음성으로 현장 기록 초안 만들기',cwsched:'PC Cowork 작업 예약 관리',cowork:'클로드에게 붙여 넣을 명령어 모음 — 사진 정리·카톡 대조·작업내역서 반영·입금·저장 확인·앱 개발',
+  delaycheck:'일정이 지났는데 사진·완료 보고가 없는 공정 찾기(시공 현장)',schshare:'오늘·이번 주 일정을 팀원에게 카톡·문자·캘린더 파일로 공유(담당별)',inquiry:'전화·방문 문의를 고객·연락처·지역·내용·문의 경로로 한 번에 등록하고 상담·실측 일정까지',crewweek:'이번 주·다음 주를 팀원 한 사람씩 — 일한 날·현장·빈 날·담당 겹침, 그 사람 일정 보내기',matdue:'발주한 자재가 언제 들어오는지·들어왔는지 — 오늘·지난 납품 입고 확인(현장별)',voicein:'음성으로 현장 기록 초안 만들기',cwsched:'PC Cowork 작업 예약 관리',cowork:'클로드에게 붙여 넣을 명령어 모음 — 작업내역서 반영·입금·청구 누락·캘린더 맞추기·저장 확인·앱 개발(사진·홍보는 카톡봇 관리 프로그램)',
   autopilot:'AI 작업 큐 점검과 안전 작업 실행',aiops:'AI 운영 현황과 승인 작업 확인',aibrain:'업무 요약을 AI로 분석',
   loopstatus:'자동화 진행 단계와 운영 상태 확인',ai:'기록에 관해 AI와 상담',activebrief:'오늘 할 일과 현장 요약',
   weekbrief:'이번 주 현장과 업무 요약',automode:'AI 자동 운영 범위 설정',aiquote:'공사 내용으로 견적 초안 작성',
@@ -32686,7 +32992,7 @@ const MORE_NAV_SHORTCUTS=[
   {id:'nav:mywork',tab:'__mywork',ic:'✅',label:'내 업무',description:'오늘 일정·할 일(예전 오늘 할일)'},
   {id:'nav:docs',tab:'docs',ic:'📁',label:'서류',description:'프로젝트별 문서와 파일 목록'},
   {id:'nav:estimates',tab:'estimates',ic:'🧾',label:'견적·정산',description:'견적서 검색과 프로젝트별 정산'},
-  {id:'nav:quotemaker',tab:'quotemaker',ic:'✍️',label:'견적 작성',description:'새 견적서 작성과 작성 중인 견적 이어 보기'},
+  {id:'nav:quotemaker',tab:'quotemaker',ic:'✍️',label:'견적 작성',description:'저장된 견적·내역서 보기·고치기'},   // v613 새 견적서는 보류(실제 견적서는 Claude 견적 만들기)
   {id:'nav:contacts',tab:'contacts',ic:'👤',label:'연락처',description:'고객과 거래처 전화번호 목록'},
   {id:'nav:project',tab:'project',ic:'🏗️',label:'현장별',description:'프로젝트별 사진과 공사 자료'},
   {id:'nav:aptmgmt',tab:'aptmgmt',ic:'🏢',label:'아파트 관리',description:'같은 단지끼리 묶어 보기와 동·호수 일괄 등록'}
@@ -32698,6 +33004,202 @@ const MORE_RUN_CONFIRM={
   fullxlsx:'현재 앱의 전체 장부를 엑셀 파일로 내려받습니다. 고객·공사·금액 정보가 포함되므로 보관과 공유에 주의하세요.',
   undo:'마지막 파일 이동 작업을 되돌립니다. 실행 전 현재 현장과 파일 이동 내역을 확인하세요.'
 };
+/* ═══ v613 ⏸ 보류 묶음 — 더보기 '쓰는 것만' (11/19 세 시스템 정리 23·14·18 · 분석 DA7·WA2·W5·D12·W15) ═══
+   기능 126개 가운데 자료가 쌓이는 것은 사진·내역서·수금·일정·동호수 정도다. 서버가 없어 못 쓰는 메뉴·안 쓰는 메뉴가 나란히 있어
+   대표가 같은 정보를 어디에 넣을지 헷갈렸다. 지우지 않고 '보류'로 접는다 — 더보기 분류·대시보드·견적 작성 탭·광고 탭에서 빠지고
+   더보기 맨 아래 [⏸ 보류 n개 보기]를 눌러야 보인다. 거기서 그대로 열 수 있고, [다시 보이기]를 누르면 원래 자리로 돌아간다.
+   ① 자동 보류(HJ_HOLD_AUTO) — 서버 주소·설정이 없어 쓸 수 없는 기능. 전자계약 버튼(contractFeatureAvailable)처럼 이 기기의 연결값으로 판정하고,
+      서버를 연결하면 저절로 다시 보인다. 이미 자료가 있으면(팀 업무·게시한 고객 페이지·받은 카카오 문의) 보류하지 않는다.
+      상업 승인은 따로 메뉴가 없다 — 🏢 영업·정기관리(OfficeOps) 안에 있고, 아파트 오더 안의 승인 단추는 연결 전엔 원래 잠겨 있다.
+   ② 처음 보류(HJ_HOLD_DEFAULT) — 대표가 안 쓰는 메뉴. 근거는 11/18 대표 자료(_현장.json)에서 그 기능이 쓰는 저장 칸이 0건인 것
+      (inventory·materials·suppliers/supplierMap·satisfaction·goals·adPosts 0, 현장 82곳의 budget·matOrders 0). 그 칸에 자료가 생기면 저절로 다시 보인다
+      — 자료가 있는 기능은 숨기지 않는다. 견적 셋(✍ 새 견적서·💸 AI 견적작성·📸 사진 견적)은 자료가 아니라 대표 결정(실제 견적서는 Claude 견적 만들기 ·
+      단가 정본 데이터\단가표\만물_단가표_견적기.xlsx)이라 늘 보류 — '✍ 견적 작성' 탭(저장된 견적·작업내역서 목록·편집)은 그대로다.
+   ③ 보류하지 않는 것(HJ_HOLD_NEVER) — 사진·일정·내역서/견적 목록·수금·AS·웹 업무 연결·관리사무소 접수함·아파트 관리·클로드 요청함·🧰·전자계약·AI 비서.
+      자동·처음 목록은 이 목록과 겹치지 않는다(hold-v612 검사). 계약 서버 연결(AI 키 중계 포함)은 건드리지 않는다.
+   설정은 이 기기 localStorage 'hj_more_hold' = {show:[다시 보이게 한 id]} — 즐겨찾기·최근 사용(hj_more_favorites·hj_more_recent)과 같은 자리.
+   새 최상위 저장 키를 만들지 않고(직렬화 키 그대로), 자동 판정이 기기마다 다른 연결값(IDB 의 서버 주소·토큰)을 보기 때문에 기기별이 맞다.
+   업무 자료·서버·고객 발송 변경 없음. 검색(더보기·PC 검색창)은 보류한 기능도 찾는다 — 숨긴 것이지 없앤 것이 아니다. */
+const HJ_HOLD_KEY='hj_more_hold';
+const HJ_HOLD_NEVER=Object.freeze(['photoaudit','photobundle','beforeafter','bagallery','photorep','photodefect','schshare','schedbrief','scheduleplan','delaycheck',
+  'payplan','payproof','settle','taxinv','ledgertab','vatc','asmanage','asintake','warranty','webbridge','aptorders','officework','claudeinbox','cowork',
+  'contractdraft','contractreview','ai','aiprovider','backupcenter','backups','gdrive','help']);
+// 더보기 칸이 아닌 보류 항목 — 대시보드·탭 안의 단추. open 은 보류 묶음에서 바로 여는 길(지운 것이 아니다)
+const HJ_HOLD_EXTRA=Object.freeze({
+  quotenew:{ic:'✍️',label:'새 견적서 작성',where:'✍ 견적 작성 탭 · 견적 안 쓴 현장의 [견적서 쓰기]',open:()=>hjQuoteNewDirect()},
+  teamboard:{ic:'👥',label:'팀 업무·인수인계',where:'대시보드 ✅ 오늘 현장 업무',open:()=>hjTeamBoard()},
+  teamroom:{ic:'🏢',label:'직원 작업실',where:'대시보드 ✅ 오늘 현장 업무',open:null},   // 링크(./team.html)로 그린다
+  sharedtodo:{ic:'☁',label:'팀 공유 할일',where:'대시보드 ✅ 오늘 현장 업무',open:()=>hjSharedTodoView()},
+  adpostlog:{ic:'📣',label:'광고 게시 기록 입력',where:'📣 광고 탭 [＋ 게시 기록]',open:()=>adPostAdd(((typeof AD_CH!=='undefined'&&AD_CH.find(c=>c.id===window.__adCh))||AD_CH[0]).id)}
+});
+const hjHoldNum=v=>Array.isArray(v)?v.length:(v&&typeof v==='object'?Object.keys(v).length:0);
+const hjHoldProjCount=fn=>(state.projects||[]).reduce((n,p)=>n+(p&&!p.archived?fn(p):0),0);
+// 처음 보류 — why: 보류 까닭(대표가 읽는 말), n: 그 기능의 자료 수(0 보다 크면 보류하지 않는다)
+const HJ_HOLD_DEFAULT=Object.freeze({
+  quotenew:{why:'실제 견적서는 Claude 견적 만들기(단가표 엑셀)로'},
+  aiquote:{why:'실제 견적서는 Claude 견적 만들기(단가표 엑셀)로'},
+  photoquote:{why:'실제 견적서는 Claude 견적 만들기(단가표 엑셀)로'},
+  inventory:{why:'안 쓰는 메뉴 — 자재 재고 0건',n:()=>hjHoldNum(state.inventory)},
+  materials:{why:'안 쓰는 메뉴 — 자재 단가 0건',n:()=>hjHoldNum(state.materials)},
+  matdue:{why:'안 쓰는 메뉴 — 자재 납품 기록 0건',n:()=>hjHoldProjCount(p=>hjHoldNum(p.matOrders))},
+  suppliers:{why:'안 쓰는 메뉴 — 거래처 0곳',n:()=>hjHoldNum(state.suppliers)+hjHoldNum(state.supplierMap)},
+  satisfaction:{why:'안 쓰는 메뉴 — 만족도 0건',n:()=>hjHoldNum(state.satisfaction)},
+  goal:{why:'안 쓰는 메뉴 — 매출 목표 없음',n:()=>{const g=state.goals||{};return (num(g.month)>0?1:0)+(num(g.year)>0?1:0);}},   // goals 의 salesBasis(v561 매출 기준)는 목표가 아니다
+  budget:{why:'안 쓰는 메뉴 — 현장 예산 0곳',n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)},
+  // 예산 경고는 예산이 없어도 견적의 70%(지출 목표)와 지출을 견준다(budgetAlertData) — 예산 현장 + 지금 뜨는 경고 수를 센다(지출이 쌓여 경고가 생기면 저절로 다시 보인다)
+  budgetalert:{why:'안 쓰는 메뉴 — 현장 예산 0곳 · 예산 경고 0건',n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)+(typeof budgetAlertData==='function'?budgetAlertData().length:0)},
+  adpostlog:{why:'게시 기록 0건 — 올린 곳은 카톡봇 ‘홍보’ 명령이 PC 홍보 게시 기록에 적어요',n:()=>hjHoldNum(state.adPosts)},
+  // 18 할 일 하나 — 할 일은 ✅ 할 일(현장 자료와 함께 저장돼 PC·폰이 같이 본다) 한 곳. ☁ 팀 공유 할일은 중계가 연결돼 있어도 처음엔 접는다(직원이 생기면 [다시 보이기]).
+  //   이 기기 📋 내 업무가 공유 서버에서 마지막으로 읽어 온 남은 공유 할일이 있으면 보류하지 않는다(자료가 있으면 숨기지 않는다 — 다시 여는 중·읽기 실패에도 그 수 그대로).
+  //   중계가 없으면 자동 보류가 먼저(까닭: 서버 없음).
+  sharedtodo:{why:'할 일은 ✅ 할 일 한 곳에 — 팀 공유 할일은 직원이 생기면 다시 보이기',n:()=>{const w=typeof __hjMyWork!=='undefined'?__hjMyWork:null;return w?Number(w.sharedOpenN)||0:0;}}
+});
+// 자동 보류 — '' 이면 쓸 수 있음(보이기), 아니면 보류 까닭
+function hjHoldPortalOn(){const c=state.portalCfg;return !!(c&&typeof c==='object'&&String(c.base||'').trim());}
+function hjHoldSharedOn(){return !!(relayReady()&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||'')));}
+function hjHoldTeamTasks(){try{return hjTeamList().filter(n=>hjTeamData(n).status!=='done').length;}catch(e){return 0;}}
+const HJ_HOLD_AUTO=Object.freeze({
+  // 고객 페이지 서버 주소는 현장 화면 [🔗 고객 페이지] 창의 '⚙️ 서버 설정'에서 넣는다(⚙️ 설정 창에는 그 탭이 없다)
+  kakaoin:()=>hjHoldPortalOn()||String(state.kakaoLastAt||'')?'':'카카오 문의 서버가 아직 없어요(현장 화면 [🔗 고객 페이지] › ⚙️ 서버 설정)',
+  ptlist:()=>hjHoldPortalOn()||(state.projects||[]).some(p=>p&&p.portalUrl)?'':'고객 페이지 서버가 아직 없어요(현장 화면 [🔗 고객 페이지] › ⚙️ 서버 설정)',
+  officeops:()=>__officeOps.url&&__officeOps.token?'':'영업·정기관리 서버가 연결돼 있지 않아요(상업 승인 포함 · ⚙️ 설정 › 🏢 OfficeOps 탭)',
+  teamboard:()=>hjHoldTeamState()==='on'||hjHoldTeamTasks()>0?'':(hjHoldTeamState()==='error'?'직원 작업실 연결을 확인하지 못했고 팀 업무가 0건이에요':'직원 작업실 서버가 아직 없고 팀 업무가 0건이에요'),
+  teamroom:()=>{const t=hjHoldTeamState();return t==='on'?'':t==='error'?'직원 작업실 연결을 확인하지 못했어요(인터넷 연결 확인)':t==='off'?'직원 작업실 서버가 아직 없어요':'직원 작업실 서버를 확인하는 중이에요';},
+  sharedtodo:()=>hjHoldSharedOn()?'':'팀 공유 할일 서버가 연결돼 있지 않아요 — 할 일은 ✅ 할 일 하나에'
+});
+const HJ_HOLD_IDS=Object.freeze([...new Set([...Object.keys(HJ_HOLD_AUTO),...Object.keys(HJ_HOLD_DEFAULT)])].filter(id=>!HJ_HOLD_NEVER.includes(id)));
+/* 직원 작업실 서버 — team-config.js 의 apiUrl(공개 주소만 · 대표 화면 hjMyWorkTeamCheck 와 같은 읽기). 처음 물을 때 한 번 읽고(같은 출처 GET),
+   'on' 이 되면 대시보드 단추 줄만 제자리에서 바꾼다(hjHoldDashRefresh). 읽기 전·실패는 보류(서버를 확인하지 못했다). */
+let __hjHoldTeam='',__hjHoldTeamP=null;
+function hjHoldTeamState(){if(!__hjHoldTeamP)hjHoldTeamCheck();return __hjHoldTeam;}
+function hjHoldTeamCheck(){
+  if(__hjHoldTeamP)return __hjHoldTeamP;
+  __hjHoldTeamP=(async()=>{
+    try{const r=await fetch('./team-config.js',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('http');
+      const m=/apiUrl\s*:\s*['"]([^'"]*)['"]/.exec(await r.text());__hjHoldTeam=m&&/^https:\/\//.test(m[1])?'on':'off';}
+    catch(e){__hjHoldTeam='error';}
+    try{hjHoldDashRefresh();}catch(e){}
+    return __hjHoldTeam;
+  })();
+  return __hjHoldTeamP;
+}
+function hjHoldPrefs(){
+  try{const v=JSON.parse(localStorage.getItem(HJ_HOLD_KEY)||'{}');
+    return {show:[...new Set((v&&Array.isArray(v.show)?v.show:[]).filter(id=>typeof id==='string'&&HJ_HOLD_IDS.includes(id)))]};}
+  catch(e){return {show:[]};}
+}
+function hjHoldWrite(p){try{localStorage.setItem(HJ_HOLD_KEY,JSON.stringify({show:p.show}));return true;}catch(e){toast('이 기기에 보류 설정을 저장하지 못했어요. 저장 공간을 확인하세요.');return false;}}
+// 보류 까닭 {why, auto} — why '' = 보류 아님. 자동이 먼저, 그다음 처음 보류(자료가 있으면 보류 아님)
+function hjHoldReason(id){
+  if(!HJ_HOLD_IDS.includes(id))return {why:'',auto:false};
+  const f=HJ_HOLD_AUTO[id];
+  if(f){let a='';try{a=f()||'';}catch(e){a='';}if(a)return {why:String(a),auto:true};}
+  const d=HJ_HOLD_DEFAULT[id];if(!d)return {why:'',auto:false};
+  let n=0;try{n=d.n?Number(d.n())||0:0;}catch(e){n=0;}
+  return {why:n>0?'':d.why,auto:false};
+}
+function hjHoldWhy(id){return hjHoldReason(id).why;}
+// 📖 사용설명서 한 줄 — 보류 중인 기능의 설명(예: '더보기 [📸 사진 견적]')에 지금 자리를 붙인다. rows = hjHoldState().rows · 반환 '' = 보류 아님
+const HJ_HELP_HOLD=Object.freeze({'광고 관리':'adpostlog'});   // 설명 줄 이름이 더보기 칸과 다른 것
+function hjHelpHoldNote(it,rows){
+  if(!it||!Array.isArray(rows)||!rows.length)return '';
+  for(const r of rows){
+    if(HJ_HELP_HOLD[it.k]===r.id)return '⏸ 게시 기록 손 입력은 지금 보류 중 — 더보기 맨 아래 [⏸ 보류]에서 열 수 있어요';
+    const info=moreItemInfo(r.id);if(!info)continue;
+    if(it.k===info.label||String(it.d||'').indexOf('['+info.ic+' '+info.label+']')>=0)return '⏸ 지금 보류 중 — 더보기 맨 아래 [⏸ 보류]에서 열 수 있어요';
+  }
+  return '';
+}
+function hjHeld(id){try{return !!hjHoldWhy(id)&&!hjHoldPrefs().show.includes(id);}catch(e){return false;}}   // 부팅 중 상수가 아직이면 보류 아님(예전 화면 그대로)
+function hjHoldLabel(id){const x=HJ_HOLD_EXTRA[id];if(x)return x.label;const it=moreItemInfo(id);return it?it.label:id;}
+// 지금 보류 상태 한 번에 — rows: 보류 중인 것(자동 먼저, 같은 무리 안은 HJ_HOLD_IDS 차례), shown: 다시 보이게 한 id, held: 보류 중 id 집합
+function hjHoldState(){
+  const show=hjHoldPrefs().show,rows=[],shown=[];
+  HJ_HOLD_IDS.forEach(id=>{const r=hjHoldReason(id);if(!r.why)return;if(show.includes(id))shown.push(id);else rows.push({id,why:r.why,auto:r.auto,extra:!!HJ_HOLD_EXTRA[id]});});
+  rows.sort((a,b)=>Number(b.auto)-Number(a.auto));
+  return {rows,shown,held:new Set(rows.map(r=>r.id))};
+}
+function hjHoldShow(id){
+  if(!HJ_HOLD_IDS.includes(id))return false;
+  const p=hjHoldPrefs();if(!p.show.includes(id))p.show.push(id);
+  if(!hjHoldWrite(p))return false;
+  hjHoldAfterChange();return true;
+}
+function hjHoldReset(){try{localStorage.removeItem(HJ_HOLD_KEY);}catch(e){toast('이 기기에 보류 설정을 저장하지 못했어요.');return false;}hjHoldAfterChange();return true;}
+// 보류를 바꾼 뒤 — 대시보드 단추 줄은 제자리에서, 견적 작성·광고 탭은 다시 그린다
+function hjHoldAfterChange(){try{hjHoldDashRefresh();}catch(e){}try{if(state.tab==='quotemaker'||state.tab==='ads')scheduleRender();}catch(e){}}
+function hjHoldOpen(id){
+  const x=HJ_HOLD_EXTRA[id];
+  if(x){if(x.open)return x.open();return;}
+  if(moreItemInfo(id))return moreDispatch(id);
+}
+// 더보기 맨 아래 묶음 — chip 은 더보기 칸 단추를 그리는 함수(openMoreSheetV2 안)
+function moreHoldBlockHtml(st,chip,editing){
+  const rows=st.rows,shownN=st.shown.length;
+  if(!rows.length&&!shownN)return '';
+  const item=r=>{
+    const x=HJ_HOLD_EXTRA[r.id],label=hjHoldLabel(r.id);
+    let main;
+    if(!x)main=chip(moreItemInfo(r.id));
+    else{
+      const inner='<span class="more-chip-icon" aria-hidden="true">'+x.ic+'</span><span class="more-chip-copy"><span class="more-chip-label">'+escapeHtml(label)+'</span><span class="more-chip-description">'+escapeHtml(x.where)+'</span></span>';
+      main=r.id==='teamroom'?'<a class="more-chip more-hold-open" href="./team.html" data-hold-link="teamroom" aria-label="'+escapeAttr(label+' 열기')+'">'+inner+'</a>'
+        :'<button type="button" class="more-chip more-hold-open" data-hold-open="'+escapeAttr(r.id)+'" aria-label="'+escapeAttr(label+' 열기')+'"'+(editing?' disabled':'')+'>'+inner+'</button>';
+    }
+    return '<div class="more-hold-item" data-hold-row="'+escapeAttr(r.id)+'"'+(r.auto?' data-hold-auto':'')+'>'+main+
+      '<div class="more-hold-foot"><span class="more-hold-why">'+escapeHtml(r.why)+'</span><button type="button" class="ghost more-unhold" data-more-unhold="'+escapeAttr(r.id)+'" aria-label="'+escapeAttr(label+' 다시 보이기')+'"'+(editing?' disabled':'')+'>다시 보이기</button></div></div>';
+  };
+  const auto=rows.filter(r=>r.auto),off=rows.filter(r=>!r.auto);
+  return '<details class="more-cat-block more-hold" data-cat="hold" id="moreHold"'+(st.open?' open':'')+'><summary><span aria-hidden="true">⏸</span><span id="moreHoldTitle">보류 '+rows.length+'개 보기</span><span class="more-cat-count">이 기기</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary>'+
+    '<p class="more-note more-hold-note">지운 것이 아니라 접어 둔 기능이에요. 여기서 그대로 열 수 있고, [다시 보이기]를 누르면 원래 자리(분류·대시보드·탭)로 돌아가요. 서버를 연결하거나 자료가 생기면 저절로 다시 보여요.</p>'+
+    (auto.length?'<h5 class="more-hold-h">🔌 서버 연결이 없어 접어 둔 것 '+auto.length+'</h5><div class="more-cat-grid more-hold-grid">'+auto.map(item).join('')+'</div>':'')+
+    (off.length?'<h5 class="more-hold-h">💤 안 쓰는 메뉴 '+off.length+'</h5><div class="more-cat-grid more-hold-grid">'+off.map(item).join('')+'</div>':'')+
+    (shownN?'<div class="more-hold-resetrow"><button type="button" class="ghost" data-more-holdreset'+(editing?' disabled':'')+'>↺ 처음 보류로 되돌리기 (다시 보이게 한 '+shownN+'개)</button></div>':'')+
+  '</details>';
+}
+// 대시보드 ✅ 오늘 현장 업무의 단추 줄 — 팀 공유 할일·팀 업무·직원 작업실은 보류가 아닐 때만(18: 할 일은 현장웹 기본 할 일 하나)
+function hjHoldDashSig(){return ['sharedtodo','teamboard','teamroom'].map(id=>hjHeld(id)?'1':'0').join('');}
+function dashboardTodoBtnsHTML(){
+  const shared=!hjHeld('sharedtodo'),team=!hjHeld('teamboard'),room=!hjHeld('teamroom');
+  return '<div id="dashboardTodoBtns" data-hold-sig="'+hjHoldDashSig()+'" style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
+    '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">✅ 할 일 확인·추가</button>'+
+    '<button type="button" id="dashboardCaseOpen" class="ghost" onclick="casePackView()" style="min-height:44px">📰 사례 내보내기</button>'+
+    (shared?'<button type="button" id="dashboardSharedTodoOpen" class="blue" onclick="hjSharedTodoView()" style="min-height:44px">☁ 팀 공유 할일</button>':'')+
+    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
+    (team?'<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button>':'')+
+    (room?'<a id="dashboardCompanyTeam" class="btn ghost" href="./team.html" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px">직원 작업실 · 업무 배정·검수</a>':'')+
+    '<button type="button" id="dashboardOperationsConnections" class="ghost" onclick="hjOperationsCenter()">운영 연결 점검</button></div>';
+}
+function dashboardTodoHintText(){
+  return hjHeld('sharedtodo')?'할 일은 여기 ✅ 할 일 한 곳에 적어요(현장 자료와 함께 저장). 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.'
+    :'위 숫자는 이 기기의 기존 할일 집계이며 팀 공유 목록과 별도입니다. 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.';
+}
+function hjHoldDashRefresh(){
+  const row=document.getElementById('dashboardTodoBtns');if(!row)return false;
+  if(row.dataset.holdSig===hjHoldDashSig())return false;
+  const box=document.createElement('div');box.innerHTML=dashboardTodoBtnsHTML();row.replaceWith(box.firstElementChild);
+  const sum=document.getElementById('dashboardTeamSummary');if(sum)sum.hidden=hjHeld('teamboard');
+  const hint=document.getElementById('dashboardTodoHint');if(hint)hint.textContent=dashboardTodoHintText();
+  return true;
+}
+/* 14 ✍ 새 견적서 — 단가 정본은 데이터\단가표\만물_단가표_견적기.xlsx, 실제 견적서는 Claude 견적 만들기. 앱 안 새 견적 작성은 보류(지우지 않음).
+   보류 중에 [견적서 쓰기]·검색창 '새 견적서'를 누르면 이 안내 — [이번만 앱에서 쓰기]는 예전처럼 연다. */
+function hjQuoteNewHeldView(go,name){
+  openModal('✍ 새 견적 작성은 보류 중이에요',
+    '<div id="hjQuoteHeld" style="font-size:14px;line-height:1.65">'+(name?'<p style="margin:0 0 8px"><b>'+escapeHtml(name)+'</b> 견적서</p>':'')+
+    '<p style="margin:0 0 8px">실제 견적서는 <b>Claude 견적 만들기(단가표 엑셀)</b>로 만들어요.</p>'+
+    '<p class="hint" style="margin:0 0 6px">단가 정본: 데이터\\단가표\\만물_단가표_견적기.xlsx · 클로드에게 “견적서 만들어”라고 하면 엑셀 견적서가 나와요. 만물 폴더 견적서/ 에 두면 앱이 읽어 현장에 붙여요.</p>'+
+    '<p class="hint" style="margin:0">앱 안 견적 작성은 지우지 않고 더보기 맨 아래 ‘⏸ 보류’에 넣어 두었어요.</p></div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal},{label:'이번만 앱에서 쓰기',cls:'ghost',fn:()=>{closeModal();go();}}]);
+  return false;
+}
+// 견적 작성 탭의 새 견적 — 작성 중인 견적이 있으면 덮지 않고 그 견적으로(예전 [+ 새 견적서]는 목록 화면에만 있었다)
+function hjQuoteNewDirect(){
+  state.activeProject=null;
+  if(state.editingQuote){state.tab='quotemaker';render();toast('작성 중인 견적서가 열려 있어요 — 저장하거나 [목록으로] 뒤에 새로 만드세요');return;}
+  state.tab='quotemaker';startNewQuote();
+}
+function hjQuoteNewOpen(){if(hjHeld('quotenew'))return hjQuoteNewHeldView(hjQuoteNewDirect);return hjQuoteNewDirect();}
 function moreItemInfo(action){
   for(const c of MORE_CATS){const it=c.items.find(x=>x[0]===action);if(it)return {id:action,ic:it[1],label:it[2],description:MORE_HELP[action]||c.name,category:c.name};}
   return null;
@@ -32753,12 +33255,14 @@ function openMoreSheetV2(openerOverride){
   const sheet=document.createElement('div');sheet.className='more-sheet open';sheet.id='moreSheet';
   let editing=false;
   const count=MORE_CATS.reduce((n,c)=>n+c.items.length,0);
-  const chip=(it)=>{
+  let holdSt={rows:[],shown:[],held:new Set()};   // v613 보류 묶음 — 그릴 때마다 다시 읽는다(renderLists)
+  const chip=(it,opts)=>{
     const nav=!!it.tab,favorite=!nav&&moreGetFavorites().includes(it.id);
     const pending=it.id==='aptorders'?officeIntakePending():[],overdue=pending.filter(officeIntakeOverdue).length;
     const badge=it.id==='aptorders'?'<span data-office-intake-badge class="more-pending">신규 '+pending.length+'</span>':'';
-    const accessible=it.label+(it.id==='aptorders'?', 신규 '+pending.length+'건, 24시간 이상 미확인 '+overdue+'건':'')+(editing&&!nav?', 즐겨찾기 '+(favorite?'해제':'추가'):'');
-    return '<button type="button" class="more-chip'+(favorite?' is-favorite':'')+'" data-'+(nav?'more':'moreaction')+'="'+escapeAttr(nav?it.tab:it.id)+'" aria-label="'+escapeAttr(accessible)+'"'+(editing&&!nav?' aria-pressed="'+favorite+'"':'')+(editing&&nav?' disabled':'')+'><span class="more-chip-icon" aria-hidden="true">'+it.ic+'</span><span class="more-chip-copy"><span class="more-chip-label">'+escapeHtml(it.label)+badge+'</span><span class="more-chip-description">'+escapeHtml(it.description)+'</span></span>'+(!nav?'<span class="more-star" aria-hidden="true">'+(favorite?'★':editing?'☆':'')+'</span>':'')+'</button>';
+    const heldTag=!!(opts&&opts.tag&&!nav&&holdSt.held.has(it.id));   // 검색 결과의 보류 기능 — 찾을 수는 있다
+    const accessible=it.label+(it.id==='aptorders'?', 신규 '+pending.length+'건, 24시간 이상 미확인 '+overdue+'건':'')+(heldTag?', 보류 중':'')+(editing&&!nav?', 즐겨찾기 '+(favorite?'해제':'추가'):'');
+    return '<button type="button" class="more-chip'+(favorite?' is-favorite':'')+'" data-'+(nav?'more':'moreaction')+'="'+escapeAttr(nav?it.tab:it.id)+'" aria-label="'+escapeAttr(accessible)+'"'+(editing&&!nav?' aria-pressed="'+favorite+'"':'')+(editing&&nav?' disabled':'')+'><span class="more-chip-icon" aria-hidden="true">'+it.ic+'</span><span class="more-chip-copy"><span class="more-chip-label">'+escapeHtml(it.label)+badge+'</span><span class="more-chip-description">'+(heldTag?'<span class="more-hold-tag" data-hold-tag>⏸ 보류</span> ':'')+escapeHtml(it.description)+'</span></span>'+(!nav?'<span class="more-star" aria-hidden="true">'+(favorite?'★':editing?'☆':'')+'</span>':'')+'</button>';
   };
   sheet.innerHTML='<div class="more-sheet-head"><div class="more-sheet-title"><h4 id="moreSheetTitle">더보기 <small>기능 '+count+'개</small></h4><button type="button" class="ghost" id="moreSheetClose" aria-label="더보기 닫기">✕</button></div><div class="more-search-row"><input id="moreSearch" type="search" aria-label="더보기 기능 검색" placeholder="기능 찾기 · 사진, 서류, 백업" autocomplete="off"><button type="button" id="moreSearchClear" class="ghost" aria-label="검색어 지우기" hidden>지우기</button></div><div class="more-tools-row"><span id="moreResultCount" role="status" aria-live="polite">바로가기 '+MORE_NAV_SHORTCUTS.length+'개 · 기능 '+count+'개</span><button type="button" class="ghost" id="moreFavoriteEdit" aria-pressed="false">☆ 즐겨찾기 편집</button></div></div>'+
     '<p id="moreFavoriteHint" class="more-note" hidden>기능을 눌러 즐겨찾기 6개를 선택하세요. 편집 중에는 기능이 실행되지 않습니다.</p>'+
@@ -32771,11 +33275,16 @@ function openMoreSheetV2(openerOverride){
   const search=sheet.querySelector('#moreSearch'),clear=sheet.querySelector('#moreSearchClear'),edit=sheet.querySelector('#moreFavoriteEdit');
   const renderLists=()=>{
     const cats=sheet.querySelector('#moreCategories'),expanded=[...cats.querySelectorAll('details[open]')].map(d=>d.dataset.cat);
-    const favorites=moreGetFavorites(),recent=moreGetRecent();
+    try{holdSt=hjHoldState();}catch(e){holdSt={rows:[],shown:[],held:new Set()};}   // 보류를 못 읽으면 예전처럼 다 보인다
+    const held=holdSt.held;
+    const favorites=moreGetFavorites(),recent=moreGetRecent().filter(a=>!held.has(a));   // 즐겨찾기는 대표가 고른 것이라 그대로, 최근 사용은 보류 뺌
     sheet.querySelector('#moreNav').innerHTML=MORE_NAV_SHORTCUTS.map(chip).join('');
     sheet.querySelector('#moreFavoriteList').innerHTML=favorites.length?'<div class="more-tools-grid">'+favorites.map(a=>chip(moreItemInfo(a))).join('')+'</div>':'<p class="more-note">자주 쓰는 기능을 위의 ‘즐겨찾기 편집’으로 골라 두세요.</p>';
     sheet.querySelector('#moreRecent').innerHTML=recent.length?'<h4>최근 사용</h4><div class="more-tools-grid">'+recent.map(a=>chip(moreItemInfo(a))).join('')+'</div>':'';
-    cats.innerHTML=MORE_CATS.map(c=>'<details class="more-cat-block" data-cat="'+c.id+'"'+(expanded.includes(c.id)?' open':'')+'><summary><span>'+c.ic+'</span><span>'+c.name+'</span><span class="more-cat-count">'+c.items.length+'개</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary><div class="more-cat-grid">'+c.items.map(it=>chip(moreItemInfo(it[0]))).join('')+'</div></details>').join('');
+    // v613 분류에서는 보류한 기능을 빼고, 맨 아래 [⏸ 보류 n개 보기]에 모은다(지우지 않음 — 거기서 열고 [다시 보이기])
+    cats.innerHTML=MORE_CATS.map(c=>{const items=c.items.filter(it=>!held.has(it[0]));if(!items.length)return '';
+      return '<details class="more-cat-block" data-cat="'+c.id+'"'+(expanded.includes(c.id)?' open':'')+'><summary><span>'+c.ic+'</span><span>'+c.name+'</span><span class="more-cat-count">'+items.length+'개</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary><div class="more-cat-grid">'+items.map(it=>chip(moreItemInfo(it[0]))).join('')+'</div></details>';}).join('')+
+      moreHoldBlockHtml(Object.assign({},holdSt,{open:expanded.includes('hold')}),chip,editing);
     sheet.querySelector('#moreAiHint').disabled=editing;
   };
   const renderSearch=()=>{
@@ -32783,7 +33292,7 @@ function openMoreSheetV2(openerOverride){
     clear.hidden=!search.value;main.style.display=q?'none':'';res.style.display=q?'':'none';
     const hits=q?moreSearchItems(q):[];
     sheet.querySelector('#moreResultCount').textContent=q?'검색 결과 '+hits.length+'개':'바로가기 '+MORE_NAV_SHORTCUTS.length+'개 · 기능 '+count+'개';
-    res.innerHTML=q?(hits.length?'<div class="more-tools-grid">'+hits.map(chip).join('')+'</div>':'<div class="more-empty"><b>찾는 기능이 없어요</b><p>'+escapeHtml(q)+' 대신 사진, 백업, 견적처럼 짧게 검색해 보세요.</p><button type="button" data-more-clear>전체 기능 보기</button></div>'):'';
+    res.innerHTML=q?(hits.length?'<div class="more-tools-grid">'+hits.map(it=>chip(it,{tag:true})).join('')+'</div>':'<div class="more-empty"><b>찾는 기능이 없어요</b><p>'+escapeHtml(q)+' 대신 사진, 백업, 견적처럼 짧게 검색해 보세요.</p><button type="button" data-more-clear>전체 기능 보기</button></div>'):'';
   };
   const resetSearch=()=>{search.value='';renderSearch();search.focus();sheet.scrollTop=0;};
   sheet.querySelector('#moreSheetClose').onclick=()=>closeSheet();
@@ -32796,6 +33305,17 @@ function openMoreSheetV2(openerOverride){
   sheet.addEventListener('click',event=>{
     const el=event.target.closest('button');if(!el||!sheet.contains(el))return;
     if(el.hasAttribute('data-more-clear')){resetSearch();return;}
+    // v613 보류 묶음 — [다시 보이기]·[처음 보류로]·더보기 칸이 아닌 보류 항목 열기
+    if(el.hasAttribute('data-more-unhold')||el.hasAttribute('data-more-holdreset')){
+      if(editing)return;
+      const id=el.dataset.moreUnhold,scroll=sheet.scrollTop;
+      const ok=id?hjHoldShow(id):hjHoldReset();if(!ok)return;
+      renderLists();renderSearch();sheet.scrollTop=scroll;
+      const back=sheet.querySelector('#moreHold>summary')||sheet.querySelector('#moreSearch');if(back)back.focus({preventScroll:true});
+      toast(id?'‘'+hjHoldLabel(id)+'’ — 원래 자리로 돌렸어요':'보류를 처음 목록으로 되돌렸어요');
+      return;
+    }
+    if(el.hasAttribute('data-hold-open')){if(editing)return;const id=el.dataset.holdOpen;closeSheet(false);moreRestoreOpener(opener);try{hjHoldOpen(id);}catch(e){toast('기능을 열지 못했어요. 다시 시도하세요.');}return;}
     if(el.hasAttribute('data-moreaction')){
       const a=el.dataset.moreaction;
       if(editing){
@@ -33044,6 +33564,23 @@ const CW_META={
   cw_dev:{cat:'app',o:2,prep:'명령의 [고칠 것] 칸 적기 · 화면 캡처가 있으면 함께'},
   cw_bugtest:{cat:'app',o:3,prep:'현장웹 주소만 있으면 됨'}
 };
+/* v613 22 — 명령 카드가 두 벌(🧰 · 카톡봇 관리 프로그램 「클로드 명령」)이라 같은 '사진 정리'가 다른 문장으로 들어 있었다(분석 W17).
+   관리 프로그램 카드 목록(mm-kakaobot manager_ui/screens.js 의 CLAUDE — 자주 쓰는 3: 사진 정리·프로젝트 정리·일정 정리 · 홍보 4+4 ·
+   더 할 수 있는 일 10: 봇 점검·오늘 일정·이번 주 일정·일정 추가·후보 확인·확인필요 정리·사진 되돌리기·감시 방 추가·견적 정리·월간 정리)와 하나하나 대조해
+   같은 일이 그쪽에 있는 사진 명령만 🧰 목록에서 뺀다 — 지우지 않고(저장된 명령·기본값 복원·복사 그대로) 맨 아래 접힌 '옮긴 명령'에 둔다.
+   값 = 관리 프로그램에서 같은 일을 하는 카드. 남긴 것: cw_unbilled(청구 누락 — 관리 프로그램에 없음) · cw_dupe·cw_photo(같은 카드 없음) ·
+   cw_calsync(관리 프로그램 '일정 정리'(screens.js m3)는 감시 방 일정 → 구글 캘린더 **와** '구글 캘린더에만 있는 공사 일정을 현장 앱에 넣을 수 있게 정리'까지 한다 —
+     반대 방향은 일부 겹친다. 다른 점: 이 명령은 현장웹 🔄 맞추기 창에 반영하는 문장, 관리 프로그램은 봇이 정리 — 🧰 맨 위 #cwKakaoBot 에 한 줄로 적었다) ·
+   cw_stmt('견적 정리'는 견적서 폴더 배정 — 작업내역서 반영은 여기) ·
+   cw_month(📊 월간 자료 종합 정리 — 카드·세금계산서·통장 + **현장별 수입·지출·이익**. 관리 프로그램 '월간 정리'(screens.js e10 '현장별 매출·지출·미수금 리포트')와
+     현장별 손익이 겹친다. 활성 Cowork 예약(coworkSched cw_month)이 있어 옮기지 않고 남김 — 어느 쪽을 쓸지 대표 확인 대기) · 세무·현장웹 관리 명령. */
+const CW_MOVED=Object.freeze({
+  cw_sitesort:'사진 정리 · 프로젝트 정리',   // 톡방 사진 → 현장사진/<현장> · 보고 글로 현장 짝짓기 · 없는 현장 목록
+  cw_photoin:'사진 정리 · 프로젝트 정리',    // 받은 카톡 사진 → 현장사진 · 현장 배정
+  cw_chatphoto:'사진 정리 · 프로젝트 정리',  // 감시 방 보고 글로 아직 저장 안 한(누락) 사진 · 현장 제안
+  cw_photoassign:'확인필요 정리 · 프로젝트 정리'   // 현장을 못 정한 사진 하나씩 현장 고르기
+});
+function cwMoved(t){return !!(t&&t.builtin&&Object.prototype.hasOwnProperty.call(CW_MOVED,t.id));}
 function cwCatOf(t){const m=t&&CW_META[t.id];return m?m.cat:(t&&t.builtin?'app':'mine');}
 // 분류 안 순서 — o 가 0 인 명령(맨 앞)을 '없음'(99)으로 읽지 않게. 예전 (o||99) 는 v569 cw_calsync(o:0)를 분류 맨 뒤로 보냈다.
 function cwOrderOf(t){const m=t&&CW_META[t.id];return m&&typeof m.o==='number'?m.o:99;}
@@ -33208,10 +33745,12 @@ function coworkCopyFallback(text,done){
 // 목록 화면 — v529 🧰 클로드 명령어 모음: 분류(CW_CATS)·준비물·찾기. 내가 만든 명령은 '✏️ 내 명령'.
 function coworkTasksManage(){
   const tasks=coworkTasksEnsure();const [c1,c2]=hjBrandGrad('#7c3aed','#0b4ea2');
+  const shown=tasks.filter(t=>!cwMoved(t)),moved=tasks.filter(cwMoved);   // v613 관리 프로그램이 맡는 사진 명령은 맨 아래 접힌 칸
   const row=t=>{
     const m=CW_META[t.id]||{},id=escapeAttr(t.id),q=escapeAttr([t.title,m.prep||''].join(' ').toLowerCase());   // 찾기는 이름·준비물만(분류 이름까지 넣으면 '입금'에 그 분류 전체가 걸린다)
-    return '<div class="cw-row" data-cw-row="'+id+'" data-cw-q="'+q+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
+    return '<div class="cw-row" data-cw-row="'+id+'" data-cw-q="'+q+'"'+(cwMoved(t)?' data-cw-moved':'')+' style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
       '<div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="font-size:20px" aria-hidden="true">'+escapeHtml(t.icon||'🖥')+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(t.title)+'</b>'+(t.builtin?'':'<span style="font-size:10.5px;background:#e0e7ff;color:#3730a3;padding:1px 7px;border-radius:8px;font-weight:700">내 명령</span>')+'</div>'+
+      (cwMoved(t)?'<div class="cw-moved-to" style="font-size:12px;margin:0 0 6px;line-height:1.5">관리 프로그램 카드: <b>'+escapeHtml(CW_MOVED[t.id])+'</b></div>':'')+
       (m.prep?'<div class="cw-prep" style="font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5">준비: '+escapeHtml(m.prep)+'</div>'
         :'<div class="cw-prep" style="font-size:11.5px;color:var(--muted);margin:0 0 8px;line-height:1.5;max-height:36px;overflow:hidden">'+escapeHtml(String(t.prompt||'').slice(0,90))+'…</div>')+
       '<div style="display:flex;gap:6px">'+
@@ -33222,16 +33761,23 @@ function coworkTasksManage(){
     '</div>';
   };
   const groups=CW_CATS.map(c=>{
-    const list=tasks.map((t,i)=>({t,i})).filter(x=>cwCatOf(x.t)===c.id).sort((a,b)=>(cwOrderOf(a.t)-cwOrderOf(b.t))||a.i-b.i).map(x=>x.t);
+    const list=shown.map((t,i)=>({t,i})).filter(x=>cwCatOf(x.t)===c.id).sort((a,b)=>(cwOrderOf(a.t)-cwOrderOf(b.t))||a.i-b.i).map(x=>x.t);
     if(!list.length)return '';
     return '<div class="cw-cat" data-cw-cat="'+c.id+'"><h4 style="margin:14px 0 6px;font-size:13.5px">'+c.ic+' '+escapeHtml(c.name)+' <small style="color:var(--muted);font-weight:400">'+list.length+'</small></h4>'+list.map(row).join('')+'</div>';
   }).join('');
+  // 옮긴 명령은 정해진 차례(분류 안 차례와 같은 o)로
+  const movedList=moved.map((t,i)=>({t,i})).sort((a,b)=>(cwOrderOf(a.t)-cwOrderOf(b.t))||a.i-b.i).map(x=>x.t);
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">클로드에게 붙여 넣을 명령</div><div style="font-size:18px;font-weight:800">🧰 클로드 명령어 모음</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+tasks.length+'개 · 복사해서 붙여넣기</div></div>'+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">클로드에게 붙여 넣을 명령</div><div style="font-size:18px;font-weight:800">🧰 클로드 명령어 모음</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+shown.length+'개 · 복사해서 붙여넣기</div></div>'+
+    '<div class="hint" id="cwKakaoBot" style="margin:0 0 8px;line-height:1.55;font-weight:700;color:var(--ink)">📸 사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요.'+
+      '<span data-cw-diff style="display:block;font-weight:400;color:var(--muted);font-size:12.5px;margin-top:3px">이름이 비슷한 것 — 🔄 캘린더 일정 → 현장웹 맞추기(여기): 현장웹 맞추기 창에 반영 · 「일정 정리」(관리 프로그램): 봇이 감시 방 일정을 구글 캘린더에 넣고 정리. '+
+      '📊 월간 자료 종합 정리(여기): 카드·세금계산서·통장까지 엑셀 보고서 · 「월간 정리」(관리 프로그램): 현장별 매출·지출·미수금 리포트.</span></div>'+
     '<div class="hint" id="cwHow" style="margin:0 0 10px;line-height:1.55">💡 [📋 명령 복사] → 클로드 대화창(PC의 클로드 앱 또는 claude.ai)에 붙여 넣으면 클로드가 만물 폴더·현장웹을 직접 다룹니다. PC 폴더 일은 PC의 클로드 앱이 켜져 있고 만물 폴더가 연결돼 있어야 해요. 홈택스·은행·톡클라우드 로그인은 직접 하고, 받은 파일만 맡기세요.</div>'+
     '<input id="cwFilter" type="search" placeholder="🔍 명령 찾기 (예: 사진, 입금, 저장)" aria-label="명령 찾기" autocomplete="off" style="width:100%;min-height:44px;padding:10px 12px;font-size:16px;margin:0 0 2px">'+
     (groups||'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">명령이 없어요.<br>[+ 명령 추가]로 만들거나 [기본값 복원]을 누르세요.</div>')+
     '<div id="cwNone" hidden style="text-align:center;color:var(--muted);padding:14px;font-size:12.5px">찾는 명령이 없어요. 다른 말로 찾아보세요.</div>'+
+    (movedList.length?'<details class="cw-moved" id="cwMoved" style="margin:12px 0 0;border:1px dashed var(--line-soft);border-radius:12px;padding:0 10px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;font-weight:700">📦 카톡봇 관리 프로그램으로 옮긴 명령 '+movedList.length+'개</summary>'+
+      '<p class="hint" style="margin:0 0 8px;line-height:1.5">관리 프로그램 「클로드 명령」의 카드를 쓰세요(같은 일을 봇이 함께 해요). 여기 것은 지우지 않고 남겨 둔 예전 명령이에요.</p>'+movedList.map(row).join('')+'</details>':'')+
     '<div style="display:flex;gap:7px;margin-top:10px">'+
       '<button class="clay" id="cwAdd" style="flex:1;padding:12px;font-size:13.5px">+ 명령 추가</button>'+
       '<button class="ghost" id="cwReset" style="padding:12px 14px;font-size:12px">기본값 복원</button>'+
@@ -33245,10 +33791,12 @@ function coworkTasksManage(){
   root.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
   const fi=root.querySelector('#cwFilter');
   if(fi)fi.oninput=()=>{
-    const words=fi.value.trim().toLowerCase().split(/\s+/).filter(Boolean);let shown=0;
-    root.querySelectorAll('.cw-row').forEach(r=>{const ok=words.every(w=>String(r.dataset.cwQ||'').indexOf(w)>=0);r.hidden=!ok;if(ok)shown++;});
+    const words=fi.value.trim().toLowerCase().split(/\s+/).filter(Boolean);let hit=0,movedHit=0;
+    root.querySelectorAll('.cw-row').forEach(r=>{const ok=words.every(w=>String(r.dataset.cwQ||'').indexOf(w)>=0);r.hidden=!ok;if(ok){if(r.hasAttribute('data-cw-moved'))movedHit++;else hit++;}});
     root.querySelectorAll('.cw-cat').forEach(c=>{c.hidden=!c.querySelector('.cw-row:not([hidden])');});
-    const none=root.querySelector('#cwNone');if(none)none.hidden=shown>0||!tasks.length;
+    // v613 옮긴 명령만 걸리면 — 접힌 칸은 그대로 두고 관리 프로그램을 알린다
+    const none=root.querySelector('#cwNone');if(none){none.hidden=!words.length||hit>0||!shown.length&&!movedHit;
+      none.textContent=movedHit?'여기 명령에는 없어요 — 사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요(아래 옮긴 명령 '+movedHit+'개).':'찾는 명령이 없어요. 다른 말로 찾아보세요.';}
   };
   const addBtn=root.querySelector('#cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
   const resetBtn=root.querySelector('#cwReset');if(resetBtn)resetBtn.onclick=()=>{if(confirm('기본 명령 '+coworkDefaults().length+'개를 다시 불러올까요? (내가 추가한 명령은 유지됩니다)')){const custom=(state.coworkTasks||[]).filter(t=>!t.builtin);state.coworkTasks=coworkDefaults().concat(custom);markDirty();toast('기본값을 복원했어요');rebind();}};
@@ -35285,9 +35833,10 @@ function viewAds(){
   html+=hjAdCaseHtml();
   html+=hjLeakWebLinkHtml();   // v431 누수 접수 링크
   html+=hjLeadSrcHtml();   // v379
+  const postLog=!hjHeld('adpostlog');   // v613 게시 기록 손 입력은 보류(게시 기록 정본은 PC 사례 작성/홍보_게시기록.md — 카톡봇 홍보 명령) · 자료가 생기면 다시 보인다
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
     '<button class="blue tiny" data-addraft="'+ch.id+'" style="padding:11px 16px;font-weight:700">✍️ 원고 만들기</button>'+
-    '<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:11px 16px">＋ 게시 기록</button>'+
+    (postLog?'<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:11px 16px">＋ 게시 기록</button>':'')+
     '<button class="moss tiny" data-season="1" style="padding:11px 16px;min-height:44px">🌦 계절 캠페인</button></div>';   // v448
   // 이번 달 채널 성과 요약: 게시 n건 · 문의 m건 (성과는 각 기록의 [📈]로 입력)
   const mPosts=(state.adPosts||[]).filter(function(p){return p.ch===ch.id&&String(p.date).slice(0,7)===ym;});
@@ -35302,7 +35851,8 @@ function viewAds(){
       (p.url?'<a class="ghost tiny hjAdLink" href="'+escapeAttr(p.url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:7px 9px">🔗</a>':'')+
       '<button class="ghost tiny" data-addel="'+escapeAttr(p.id)+'" style="padding:7px 9px;color:#b91c1c">🗑</button>'+
     '</div>';
-  }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.</span></div>';
+  }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">'+(postLog?'올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.'
+    :'올린 곳은 카톡봇에 \'올렸어 당근 [현장]\'처럼 말하면 PC 홍보 게시 기록에 적혀요(관리 프로그램 「클로드 명령」의 홍보 카드).')+'</span></div>';
   html+='<div class="hint" style="margin-top:12px">💡 [✍️ 원고 만들기]가 현장 자료(지역·평수·공정·기간)로 초안을 바로 써줘요. 더 다듬으려면 Cowork <b>manmul-marketing</b> 스킬 — 전/후 카드는 더보기 [📸 전/후 비교 카드]로.</div>';
   return html;
 }
@@ -40084,7 +40634,9 @@ function hjLeakRepeatBind(p,capture,restore){
     const draft=capture();hjLeakAsView(ref,{currentRef:hjLeakProjectRef(p),text:draft.input.memo,returnOnSaved:true},()=>restore(draft));
   });
 }
-/* v423 누수 AS는 같은 원인 확인 후 기존 asLog에 원자 저장한다. 다른 원인은 신규 현장을 제안만 한다. */
+/* v423 누수 AS는 같은 원인 확인 후 기존 asLog에 원자 저장한다. 다른 원인은 신규 현장을 제안만 한다.
+   v613 context.web(📥 웹 업무 연결 A/S 메일 — {inquiryId,receiptNo,note})이 있으면 같은 원자 저장에 그 메일 표시(sourceInquiryId·sourceReceiptNo)와
+   '[웹 업무 연결]' 메모를 같이 담고, 이미 접수한 메일이면 저장하지 않는다(webWorkDupeIn). 없으면 예전과 똑같다. */
 async function hjLeakAsSave(p,input,expected,context={},stillOpen){
   const ref=hjLeakProjectRef(p),currentP=context.currentRef?hjLeakProjectByRef(context.currentRef):null,currentStamp=context.currentStamp||'';
   const valid=()=>hjLeakProjectByRef(ref)===p&&hjLeakProjectStamp(p)===expected&&!__tabStale&&(!context.currentRef||(hjLeakProjectByRef(context.currentRef)===currentP&&hjLeakProjectStamp(currentP)===currentStamp))&&(!stillOpen||stillOpen());
@@ -40096,12 +40648,16 @@ async function hjLeakAsSave(p,input,expected,context={},stillOpen){
     const target=hjLeakProjectByRef(ref,draft),related=context.currentRef?hjLeakProjectByRef(context.currentRef,draft):null;
     if(!target||hjLeakProjectStamp(target)!==expected||(context.currentRef&&(!related||hjLeakProjectStamp(related)!==currentStamp)))throw new Error('접수 대상 현장이 바뀌었습니다. 다시 확인하세요.');
     draft.asLog=Array.isArray(draft.asLog)?draft.asLog:[];if(draft.asLog.some(a=>a&&a.id===id))throw new Error('이미 접수한 기록입니다. 목록을 확인하세요.');
-    const a={id,project:target.name,date,text,status:'open',leak:{prevProjectId:ref,cause,same:true}};if(coverage.itemName)a.warrantyItem=coverage.itemName;draft.asLog.push(a);return id;
+    const web=context.web&&typeof context.web==='object'&&/^webmail-[a-f0-9]{64}$/.test(String(context.web.inquiryId||''))?context.web:null;   // v613
+    if(web&&webWorkDupeIn(draft,web.inquiryId,web.receiptNo))throw new Error('이미 접수한 웹 문의입니다. AS 관리 목록을 확인하세요.');
+    const a={id,project:target.name,date,text,status:'open',leak:{prevProjectId:ref,cause,same:true}};if(coverage.itemName)a.warrantyItem=coverage.itemName;
+    if(web){a.sourceInquiryId=web.inquiryId;if(web.receiptNo)a.sourceReceiptNo=String(web.receiptNo);draft.notes=Array.isArray(draft.notes)?draft.notes:[];if(web.note&&typeof web.note==='object')draft.notes.push({...web.note,project:target.name});}
+    draft.asLog.push(a);return id;
   }});
 }
 function hjLeakAsView(ref,options={},back){
   const p=hjLeakProjectByRef(ref);if(!p||__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('현장 정보와 진행 중인 작업을 확인하세요.');return false;}
-  const expected=hjLeakProjectStamp(p),related=options.currentRef?hjLeakProjectByRef(options.currentRef):null,context={id:options.id||uid(),currentRef:options.currentRef||'',currentStamp:related?hjLeakProjectStamp(related):''};let busy=false;
+  const expected=hjLeakProjectStamp(p),related=options.currentRef?hjLeakProjectByRef(options.currentRef):null,context={id:options.id||uid(),currentRef:options.currentRef||'',currentStamp:related?hjLeakProjectStamp(related):'',web:options.web||null};let busy=false;   // v613 web = 웹 업무 연결 A/S
   const text=String(options.text||'').slice(0,2000),same=['same','different'].includes(options.same)?options.same:'';
   const body='<div id="hjLeakAs"><p><b>'+escapeHtml(p.name)+'</b><br>이전 원인: '+escapeHtml(p.leak?.detect?.cause||'원인 미확정')+'</p><label for="hjLeakAsText">증상</label><textarea id="hjLeakAsText" rows="3" maxlength="2000" style="display:block;width:100%;min-height:88px;font-size:16px">'+escapeHtml(text)+'</textarea><label for="hjLeakAsSame" style="display:block;margin-top:10px">이전 공사와 원인이 같은가요?</label><select id="hjLeakAsSame" style="width:100%;min-height:44px;font-size:16px"><option value="">확인 후 선택</option><option value="same"'+(same==='same'?' selected':'')+'>같은 원인</option><option value="different"'+(same==='different'?' selected':'')+'>다른 원인</option></select><p class="hint">다른 원인이면 새 누수 현장을 제안합니다. 확인 전에는 기록을 만들지 않습니다.</p><p id="hjLeakAsIssue" role="alert"></p></div>';
   openModal('🔧 누수 AS 접수',body,[{label:'확인 후 접수',cls:'clay',fn:async()=>{
@@ -40111,7 +40667,8 @@ function hjLeakAsView(ref,options={},back){
     try{id=await hjLeakAsSave(p,input,expected,context,()=>root.isConnected&&document.getElementById('hjLeakAs')===root);webWorkMarkDirtyAfterPersist();}
     catch(e){root.querySelector('#hjLeakAsIssue').textContent=String(e.message||e);}
     finally{busy=false;__modalCloseLocked=false;controls.forEach(x=>x.disabled=false);}
-    if(id){window.__modalOnClose=null;closeModal(true);render();if(back&&options.returnOnSaved)back();else asManage(id);toast('🔧 같은 원인 AS를 접수했어요');}
+    if(id){window.__modalOnClose=null;closeModal(true);render();if(back&&options.returnOnSaved)back();else asManage(id);toast('🔧 같은 원인 AS를 접수했어요');
+      if(context.web&&context.web.via&&typeof leadInboxAfterRegister==='function')try{leadInboxAfterRegister(context.web.via,p.name,'as');}catch(e){}}   // v613 📬 접수함에서 가져온 A/S — 저장 뒤 '승인'
   }},{label:'취소',cls:'ghost',fn:closeModal}],true);hjLeakModalStyle();hjLeakModalReturn(back);return true;
 }
 function hjLeakAsDifferentView(p,options,back){
@@ -40165,12 +40722,18 @@ function viewQuoteMaker(){
   /* v410 고객과 자재·시공비를 함께 고르는 욕실 상담을 열어도 편집 중 견적은 유지한다. */
   const hjBathLink='<button type="button" class="ghost tiny" id="qmBathroom" style="min-height:44px">🛁 욕실 상담·견적</button>';
   if(!state.editingQuote){
+    /* v613 14 — 이 탭(저장된 견적·작업내역서 목록·편집)은 그대로, [+ 새 견적서]만 보류(hjHeld('quotenew') — 더보기 맨 아래 ⏸ 보류에서 열기·다시 보이기).
+       실제 견적서는 Claude 견적 만들기(단가표 엑셀 — 단가 정본 데이터\단가표\만물_단가표_견적기.xlsx). */
+    const qNew=!hjHeld('quotenew');
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="ghost tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서(작업 날짜·위치·작업명·작업비용) 엑셀을 읽어 현장마다 견적(수주) 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
-    html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
+      ${qNew?'<button class="clay tiny" id="qmNew">+ 새 견적서</button> ':''}<button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="ghost tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서(작업 날짜·위치·작업명·작업비용) 엑셀을 읽어 현장마다 견적(수주) 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
+    html+=`<p class="hint" id="qmClaudeLine" data-qm-claude style="margin:0 0 8px">📄 실제 견적서는 <b>Claude 견적 만들기(단가표 엑셀)</b>로 — 단가 정본 데이터\\단가표\\만물_단가표_견적기.xlsx · 만든 견적서는 만물 폴더 견적서/ 에 두면 앱이 읽어 현장에 붙여요.</p>`;
+    html+=qNew?`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`
+      :`<p class="hint" data-qm-held style="margin:0 0 14px">이 탭은 저장된 견적·작업내역서를 보고 고치는 곳이에요. 앱 안 새 견적 작성은 더보기 맨 아래 ‘⏸ 보류’에 있어요.</p>`;
     html+=hjStmtLedgerHTML();   // v527 📑 작업내역서 장부(협력사에서 받을 돈 · 💰 입금 · 폴더의 내역서 바로 반영)
     if(!state.quotes.length){
-      html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
+      html+=qNew?`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`
+        :`<div class="empty"><b>앱에서 쓴 견적서가 없습니다</b>견적서 폴더의 견적서는 🧾 견적·정산 탭에 보여요. 협력사 작업내역서는 [📑 작업내역서 반영]으로 넣어요.</div>`;
       return html;
     }
     html+=`<div class="grid">`;
@@ -44376,7 +44939,7 @@ function setupDelegation(){
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
     if(d.stmtYm!==undefined){__hjStmtYm=d.stmtYm;return render();}   // v565 📑 내역서 탭 — 달 고르기
-    if(d.stmtBasis!==undefined){hjSalesBasisSet(true);return toast('📑 이제 매출은 작업내역서만 셉니다 — 📊 매출 목표 화면에서 끌 수 있어요');}
+    if(d.stmtBasis!==undefined){hjSalesBasisSet(true);return toast('📑 이제 매출은 작업내역서만 셉니다 — '+(hjHeld('goal')?'더보기 맨 아래 ⏸ 보류 › 📊 매출 목표':'📊 매출 목표 화면')+'에서 끌 수 있어요');}
     if(d.stmtGo!==undefined)return hjGoTab(d.stmtGo);
     if(d.unbilledSkip!==undefined)return hjUnbilledSkip(d.unbilledSkip,d.from,d.to);   // v566
     if(d.unbilledCopy!==undefined)return hjUnbilledCopy();
@@ -47654,9 +48217,11 @@ function hjEvidenceMonthView(ym,back){
 /* ═══ v431 공개 누수 접수(leak.html) ↔ 앱 — 문자 한 줄 파서 · 문의 등록 · 접수 체크리스트 채움 · 링크 배포 ═══
    공개 페이지는 서버가 없다. 고객 폰의 문자 앱으로 `[누수접수] 어디서=욕실·천장;언제=2~3일;…;동=유천동;시간=오전;이름=김` 한 줄이 오면
    대표가 그 문자를 붙여 넣는다(또는 사진과 함께 공유 받기). 파서는 v419 접수 체크리스트와 같은 값만 받아들이고, 모르는 값은 메모로만 남긴다.
-   파싱이 실패해도 문의는 등록된다(메모만). 접수 저장은 기존 누수 접수 화면(hjLeakIntakeView)의 저장·🚨 출동 버튼이 한다 — 여기서 두 번 저장하지 않는다. */
+   파싱이 실패해도 문의는 등록된다(메모만). 접수 저장은 기존 누수 접수 화면(hjLeakIntakeView)의 저장·🚨 출동 버튼이 한다 — 여기서 두 번 저장하지 않는다.
+   v613 손님용 누수 접수 입구는 만물인테리어 홈페이지(만물웹) leak.html 하나 — 그 폼은 Web3Forms 메일([만물인테리어 상담 신청] · 공간: 누수 · 접수 경로: leak-page)로 오고
+   📥 웹 업무 연결에 붙여 넣는다. 현장 앱 leak.html 은 홈페이지로 옮겼다는 안내 페이지(noindex)만 남았다. 이 '[누수접수]' 파서는 옛 링크로 온 문자를 읽으려고 그대로 둔다. */
 const HJ_LEAK_WEB_MARK='[누수접수]';
-const HJ_LEAK_WEB_URL='https://01023978629.github.io/hyeonjang/leak.html';
+const HJ_LEAK_WEB_URL='https://01023978629.github.io/manmool/leak.html';   // v613 만물웹 leak.html 의 canonical 그대로
 const HJ_LEAK_WEB_KEYS=Object.freeze({'어디서':'where','위치':'where','어디':'where','언제':'since','언제부터':'since','시작':'since','물양':'amount','물':'amount','이웃':'neighbor','윗집아랫집':'neighbor','윗집·아랫집':'neighbor','아랫집':'neighbor','관리사무소':'office','관리실':'office','보험':'insurance','동':'dong','동네':'dong','시간':'time','연락시간':'time','이름':'name','성함':'name'});
 function hjLeakWebParse(text){
   const raw=String(text||''),idx=raw.indexOf(HJ_LEAK_WEB_MARK);
@@ -47719,16 +48284,18 @@ function hjLeakWebIntakeView(prefill){
   refresh();
   return true;
 }
-/* 📣 광고 탭 — 누수 접수 링크·소개글(번호 없이 링크로). QR 은 v446 인코더가 들어오면 여기서 쓴다. */
-function hjLeakWebIntroText(){return '밤에 물이 새도 전화 못 하실 때 — 증상 여섯 가지 체크하고 사진 두 장만 문자로 보내 주세요. 아침에 순서대로 연락드립니다. (대전 누수·배관, 만물인테리어)\n'+HJ_LEAK_WEB_URL;}
+/* 📣 광고 탭 — 누수 접수 링크·소개글(번호 없이 링크로). QR 은 v446 인코더가 들어오면 여기서 쓴다.
+   v613 링크는 만물웹 leak.html — 소개글은 그 폼이 받는 그대로(연락처 필수·증상은 고르기·평수/예산 안 물음·사진은 회신 때 문자로·평일에 확인)만 말한다.
+   금액·동호수·협력사 이름·전화번호는 넣지 않는다(번호는 링크 페이지에 있다). */
+function hjLeakWebIntroText(){return '누수가 의심되는데 전화가 어려우실 때 — 홈페이지에 연락처와 지금 보이는 증상만 남겨 주세요. 평수·예산은 묻지 않고, 사진은 회신드릴 때 문자로 받습니다. 밤·주말에 남기셔도 평일에 순서대로 연락드립니다. (대전 누수·배관, 만물인테리어)\n'+HJ_LEAK_WEB_URL;}
 function hjLeakWebLinkHtml(){
   return '<div class="adLeakWeb" data-leakweb style="border:1px solid var(--line-soft);border-radius:13px;padding:11px 12px;margin:0 0 12px;background:var(--paper)">'+
-    '<div style="font-size:13px;font-weight:700">🔗 누수 접수 링크 <span style="font-weight:400;font-size:11.5px;color:var(--muted)">· 당근·지도·채널 소개글에 붙이는 공개 페이지</span></div>'+
+    '<div style="font-size:13px;font-weight:700">🔗 누수 접수 링크 <span style="font-weight:400;font-size:11.5px;color:var(--muted)">· 만물인테리어 홈페이지 누수 페이지 — 당근·지도·채널 소개글에 붙입니다</span></div>'+
     '<div style="font-size:12px;overflow-wrap:anywhere;margin:6px 0;color:var(--muted)">'+escapeHtml(HJ_LEAK_WEB_URL)+'</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px"><button type="button" class="blue tiny" data-leakwebcopy="url" style="min-height:44px;padding:0 12px">📋 링크 복사</button>'+
     '<button type="button" class="ghost tiny" data-leakwebcopy="intro" style="min-height:44px;padding:0 12px">✍️ 소개글 복사 (번호 없음)</button>'+
     '<a class="ghost tiny hjAdLink" href="'+escapeAttr(HJ_LEAK_WEB_URL)+'" target="_blank" rel="noopener" style="text-decoration:none;min-height:44px;display:inline-flex;align-items:center;padding:0 12px">열어 보기 ↗</a></div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:6px">QR 코드는 v446(리뷰 QR)에서 같이 들어옵니다. 받은 문자는 📞 새 문의 받기 › [📋 접수 문자 붙여넣기]로 읽습니다.</div></div>';
+    '<div data-leakweb-route style="font-size:11px;color:var(--muted);margin-top:6px">QR 코드는 v446(리뷰 QR)에서 같이 들어옵니다. 이 페이지로 온 접수는 대표 메일로 옵니다 — 메일 본문을 ⋯ 더보기 › 📥 웹 업무 연결에 붙여 넣으세요. 예전 링크로 온 [누수접수] 문자는 📞 새 문의 받기 › [📋 접수 문자 붙여넣기]로 그대로 읽습니다.</div></div>';
 }
 /* ═══ v432 📤 팀에 업무 보내기 · 📥 팀 작업 가져오기 — 팀 워크스페이스 앱과 패킷(JSON·zip)으로 잇는다 ═══
    두 앱은 서버를 공유하지 않는다(2차 API 는 v444 이후). 규격은 지시서/팀앱_연동_인터페이스.md 의 work-order.json(type hj-work-order, version 1)·
@@ -55339,11 +55906,14 @@ function webWorkClassify(space){
   if(/^(?:관리사무소(?:영업|업무|제휴|30일시험운영)?|공용부)$/.test(compact))service='office-sales';
   else if(/^(?:누수|배관|누수·배관|누수배관|누수\/배관)$/.test(compact))service='leak-pipe';
   else if(/^(?:주거|상업|리모델링|인테리어)$/.test(compact))service='interior';
-  else throw webWorkInvalid('공간 첫 항목은 주거·상업·리모델링·누수·배관·관리사무소 중 하나여야 합니다.');
+  // v613 만물웹 상담 폼 '공간 유형' <option value="A/S">A/S·하자 (시공했던 집)</option> — 값에 '·' 가 없어 '공간' 줄 첫 칸이 정확히 'A/S'(별칭 AS·하자·하자보수).
+  else if(/^(?:A\/S|AS|하자|하자보수)$/i.test(compact))service='as';
+  else throw webWorkInvalid('공간 첫 항목은 주거·상업·리모델링·누수·배관·관리사무소·A/S 중 하나여야 합니다.');
   let area='',region='';
   parts.forEach(function(value){if(!area&&/^\d+(?:\.\d+)?평$/.test(value))area=value;else region+=(region?' · ':'')+value;});
-  return {service:service,serviceLabel:service==='interior'?'인테리어':service==='leak-pipe'?'누수·배관':'관리사무소 영업',type:type,area:area,region:region};
+  return {service:service,serviceLabel:webWorkServiceLabel(service),type:type,area:area,region:region};
 }
+function webWorkServiceLabel(service){return service==='interior'?'인테리어':service==='leak-pipe'?'누수·배관':service==='as'?'A/S·하자':'관리사무소 영업';}
 function webWorkParse(text){
   if(typeof text!=='string')throw webWorkInvalid('붙여넣을 상담 내용을 확인해 주세요.');
   if(!text.trim())throw webWorkInvalid('상담 이메일 내용을 붙여넣어 주세요.');
@@ -55386,7 +55956,7 @@ function webWorkParse(text){
   const classification=webWorkClassify(fields.space);
   if(fields.privacyConsent!=='동의')throw webWorkInvalid('개인정보 수집·이용 동의가 확인된 문의만 등록할 수 있습니다.');
   if(fields.bookingStatus&&fields.bookingStatus!=='inquiry-only')throw webWorkInvalid('예약 상태 항목을 확인해 주세요.');
-  const allowedSources=classification.service==='interior'?['website']:classification.service==='leak-pipe'?['website','leak-page']:['office-pilot'];
+  const allowedSources=classification.service==='interior'||classification.service==='as'?['website']:classification.service==='leak-pipe'?['website','leak-page']:['office-pilot'];   // v613 A/S 는 홈페이지 상담 폼(website)에서만 온다
   if(!fields.intakeSource||!allowedSources.includes(fields.intakeSource))throw webWorkInvalid('접수 경로와 서비스 분류가 일치하지 않습니다.');
   if(classification.service==='interior'&&!fields.name)throw webWorkInvalid('인테리어 문의에는 이름이 필요합니다.');
   if(classification.service==='office-sales'){
@@ -55403,18 +55973,20 @@ async function webWorkSha256Hex(text){
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(text)));
   return Array.from(new Uint8Array(bytes)).map(function(value){return value.toString(16).padStart(2,'0');}).join('');
 }
-async function webWorkDraftFromText(text){
+// v613 via = 📬 문의 접수함에서 가져온 문의 표시(leadInboxDraft — {kind:'lead-inbox',leadId,receiptNo,status}). 붙여넣기는 null. 중복 ID 는 본문으로만 만든다(같은 문의를 메일로 붙여 넣어도 같은 ID).
+async function webWorkDraftFromText(text,via){
   const parsed=webWorkParse(text),hash=await webWorkSha256Hex(webWorkCanonical(parsed));
   const customerName=parsed.fields.name||parsed.fields.officeContactName||'';
-  return Object.freeze({id:'webmail-'+hash,service:parsed.service,serviceLabel:parsed.serviceLabel,type:parsed.type,area:parsed.area,region:parsed.region,customerName:customerName,sourceOrigin:parsed.fields.intakeSource||'web3forms-email',fields:Object.freeze({...parsed.fields})});
+  return Object.freeze({id:'webmail-'+hash,service:parsed.service,serviceLabel:parsed.serviceLabel,type:parsed.type,area:parsed.area,region:parsed.region,customerName:customerName,sourceOrigin:parsed.fields.intakeSource||'web3forms-email',fields:Object.freeze({...parsed.fields}),via:via||null});
 }
 function webWorkServiceCardsHtml(active){
   const items=[
     ['interior','🏠','인테리어','주거·상업·리모델링 문의'],
     ['leak-pipe','💧','누수·배관','누수·급배수·배관 문의'],
-    ['office-sales','🏢','관리사무소 영업','관리사무소 제휴·공용부 문의']
+    ['office-sales','🏢','관리사무소 영업','관리사무소 제휴·공용부 문의'],
+    ['as','🔧','A/S·하자','시공했던 집 — 현장 AS 관리로']   // v613
   ];
-  return '<div data-web-work-services style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:12px">'+items.map(function(item){
+  return '<div data-web-work-services style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:12px">'+items.map(function(item){
     const on=item[0]===active;
     return '<article data-web-work-service="'+item[0]+'" style="min-width:0;border:1.5px solid '+(on?'#2563eb':'var(--line-soft)')+';background:'+(on?'#eff6ff':'var(--paper)')+';border-radius:11px;padding:10px 7px;text-align:center"><div style="font-size:21px">'+item[1]+'</div><b style="display:block;font-size:12px;margin-top:3px;color:var(--ink)">'+escapeHtml(item[2])+'</b><span style="display:block;font-size:10px;line-height:1.35;color:var(--muted-2);margin-top:3px">'+escapeHtml(item[3])+'</span></article>';
   }).join('')+'</div>';
@@ -55439,7 +56011,8 @@ function webWorkCenterOpen(){
   const body=
     '<section class="web-work-center" aria-labelledby="webWorkIntro">'+
       webOfficeConnectionPanel()+'<button type="button" class="ghost" onclick="hjOperationsCenter()">직원·관리사무소·사진 운영 연결 점검</button>'+
-      '<p id="webWorkIntro" style="font-size:13px;line-height:1.55;margin:0 0 10px"><b>만물 홈페이지에서 온 이메일 본문</b>을 직접 붙여넣으면 인테리어·누수배관·관리사무소 영업 문의로 구분합니다. 홈페이지 <a href="'+LEAD_INBOX_URL+'" target="_blank" rel="noopener noreferrer" style="font-weight:700;display:inline-flex;align-items:center;min-height:44px;vertical-align:middle">문의 접수함 ↗</a>에서 「앱에 붙여넣을 본문 복사」로 가져온 본문도 그대로 붙여넣습니다(접수번호가 함께 남습니다).</p>'+
+      '<p id="webWorkIntro" style="font-size:13px;line-height:1.55;margin:0 0 10px"><b>만물 홈페이지에서 온 이메일 본문</b>을 직접 붙여넣으면 인테리어·누수배관·관리사무소 영업·A/S 문의로 구분합니다. A/S(시공했던 집)는 새 현장을 만들지 않고 고른 현장의 🔧 AS 관리에 접수합니다. 홈페이지 <a href="'+LEAD_INBOX_URL+'" target="_blank" rel="noopener noreferrer" style="font-weight:700;display:inline-flex;align-items:center;min-height:44px;vertical-align:middle">문의 접수함 ↗</a>에서 「앱에 붙여넣을 본문 복사」로 가져온 본문도 그대로 붙여넣습니다(접수번호가 함께 남습니다).</p>'+
+      (typeof leadInboxCenterHtml==='function'?leadInboxCenterHtml():'')+   // v613 📬 접수함에서 가져오기(대표가 누를 때만 — 여는 것만으로는 아무 요청도 없다)
       webWorkServiceCardsHtml('')+
       '<label for="webWorkPaste" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">[만물인테리어 상담 신청]으로 시작하는 본문</label>'+
       '<textarea id="webWorkPaste" maxlength="'+WEB_WORK_MAX_INPUT+'" rows="9" autocomplete="off" spellcheck="false" placeholder="[만물인테리어 상담 신청]&#10;이름: 홍길동&#10;연락처: 010-0000-0000&#10;공간: 누수 · 대전 ○○구" style="width:100%;resize:vertical;min-height:170px;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace"></textarea>'+
@@ -55482,6 +56055,7 @@ function webWorkCenterOpen(){
   const orders=document.getElementById('webWorkApartmentOpen'),settings=document.getElementById('webWorkConnectionSettings');
   if(orders)orders.onclick=function(){__webWorkDraft=null;closeModal();aptOrderManage();};
   if(settings)settings.onclick=function(){__webWorkDraft=null;closeModal();openGdriveSetup();};
+  if(typeof leadInboxCenterBind==='function')leadInboxCenterBind();   // v613
 }
 function webWorkPreviewRows(draft){
   const f=draft.fields,rows=[
@@ -55498,27 +56072,37 @@ function webWorkPreviewRows(draft){
 }
 function webWorkPreviewOpen(draft){
   if(!draft||draft!==__webWorkDraft)return;
-  const duplicate=webWorkDupe(draft.id,draft.fields.receiptNo);
+  const duplicate=webWorkDupe(draft.id,draft.fields.receiptNo),isAs=draft.service==='as';   // v613 A/S 는 현장 고르기 → AS 관리
+  const via=draft.via&&typeof leadInboxPreviewHtml==='function'?draft.via:null;   // v613 📬 접수함에서 가져온 문의 — 접수함 상태·보류·거절 칸, 거절한 문의는 등록 버튼 없음
+  const open=!duplicate&&(!via||leadInboxRegisterAllowed(via));
   const body=
     '<section class="web-work-preview">'+webWorkServiceCardsHtml(draft.service)+
-      '<p style="margin:0 0 8px;font-size:12px;line-height:1.5"><b>아래 내용만 저장 대상입니다.</b> 붙여넣은 원문과 외부 링크는 저장하지 않습니다.</p>'+
+      '<p style="margin:0 0 8px;font-size:12px;line-height:1.5"><b>아래 내용만 저장 대상입니다.</b> '+(via?'접수함 본문 원문과 외부 링크는 저장하지 않습니다.':'붙여넣은 원문과 외부 링크는 저장하지 않습니다.')+'</p>'+
       '<div data-web-work-preview style="border:1px solid var(--line-soft);border-radius:10px;padding:6px 10px">'+webWorkPreviewRows(draft)+'</div>'+
       '<p style="margin:8px 0 0;font-size:10.5px;color:var(--muted-2);overflow-wrap:anywhere">중복 확인 ID: '+escapeHtml(draft.id)+'</p>'+
-      (duplicate?'<div role="alert" style="margin-top:9px;padding:9px;border-radius:9px;background:#fef2f2;color:#991b1b;font-size:12px"><b>이미 등록된 문의입니다.</b> 같은 메일로 현장을 다시 만들지 않습니다.</div>':'')+
+      (isAs&&open?webWorkAsPickHtml(draft):'')+
+      (duplicate?'<div role="alert" style="margin-top:9px;padding:9px;border-radius:9px;background:#fef2f2;color:#991b1b;font-size:12px"><b>이미 등록된 문의입니다.</b> '+(isAs?'같은 메일로 AS를 다시 접수하지 않습니다.':'같은 메일로 현장을 다시 만들지 않습니다.')+'</div>':'')+
+      (via?leadInboxPreviewHtml(draft,duplicate):'')+
       '<div id="webWorkRegisterStatus" role="status" aria-live="polite" style="min-height:18px;margin-top:7px;font-size:12px;color:var(--muted-2)"></div>'+
     '</section>';
   const buttons=[];
-  if(!duplicate)buttons.push({label:'현장으로 등록',cls:'blue',fn:function(){webWorkRegister(draft.id);}});
-  buttons.push({label:'다시 붙여넣기',cls:'clay',fn:webWorkCenterOpen});
+  if(open)buttons.push(isAs?{label:'🔧 AS 관리에 접수',cls:'blue',fn:function(){webWorkAsRegister(draft.id);}}:{label:'현장으로 등록',cls:'blue',fn:function(){webWorkRegister(draft.id);}});
+  buttons.push(via?{label:'← 접수함 목록',cls:'clay',fn:leadInboxView}:{label:'다시 붙여넣기',cls:'clay',fn:webWorkCenterOpen});
   buttons.push({label:'닫기',cls:'ghost',fn:closeModal});
   openModal('🔎 웹 문의 미리보기',body,buttons,true);
+  if(isAs&&open)webWorkAsPickBind();
+  if(via)leadInboxPreviewBind(draft);
 }
-function webWorkDupe(inquiryId,receiptNo){
+function webWorkDupe(inquiryId,receiptNo){return webWorkDupeIn(state,inquiryId,receiptNo);}
+// v613 같은 판정을 저장 후보(draft)에도 쓴다(누수 A/S 원자 저장 안). A/S 는 새 현장 대신 AS 기록에 sourceInquiryId·sourceReceiptNo 를 남긴다.
+function webWorkDupeIn(data,inquiryId,receiptNo){
   const id=String(inquiryId||''),line='리드ID: '+id,receipt=String(receiptNo||'');
   if(!/^webmail-[a-f0-9]{64}$/.test(id))return false;
-  if(receipt&&(state.projects||[]).some(function(project){return project&&project.sourceReceiptNo===receipt;}))return true;
-  return (state.projects||[]).some(function(project){return project&&project.sourceInquiryId===id;})||
-    (state.notes||[]).some(function(note){return note&&String(note.text||'').split('\n').some(function(value){return value.trim()===line;});});
+  if(receipt&&((data.projects||[]).some(function(project){return project&&project.sourceReceiptNo===receipt;})||
+    (data.asLog||[]).some(function(item){return item&&item.sourceReceiptNo===receipt;})))return true;
+  return (data.projects||[]).some(function(project){return project&&project.sourceInquiryId===id;})||
+    (data.asLog||[]).some(function(item){return item&&item.sourceInquiryId===id;})||
+    (data.notes||[]).some(function(note){return note&&String(note.text||'').split('\n').some(function(value){return value.trim()===line;});});
 }
 function webWorkProjectName(draft){
   const part=String(draft.fields.complexName||draft.region||draft.customerName||'웹 상담').replace(/[<>]/g,'').replace(/\s+/g,' ').trim().slice(0,58);
@@ -55528,7 +56112,7 @@ function webWorkProjectName(draft){
   return name;
 }
 function webWorkNote(draft,projectName){
-  const f=draft.fields,lines=['[웹 업무 연결]','서비스: '+draft.serviceLabel,'접수경로: Web3Forms 이메일 붙여넣기','원본 접수경로: '+draft.sourceOrigin,'개인정보 동의: 동의'];
+  const f=draft.fields,lines=['[웹 업무 연결]','서비스: '+draft.serviceLabel,'접수경로: '+(draft.via?'홈페이지 문의 접수함에서 가져오기':'Web3Forms 이메일 붙여넣기'),'원본 접수경로: '+draft.sourceOrigin,'개인정보 동의: 동의'];
   [['접수번호',f.receiptNo],['단지명',f.complexName],['관리사무소 담당자',f.officeContactName],['지역',f.region],['관심 업무',f.pilotInterest],['도입 희망 시점',f.desiredStart],['공간',f.space],['증상',f.symptoms],['범위',f.scope],['예산/시기',f.budgetTime],['관심 디자인',f.design],['참고 견적',f.estimate],['신청 목적',f.inquiryPurpose],['희망 일정',f.preferredSchedule],['예약 상태',f.bookingStatus],['참고 사례',f.reference],['메모',f.memo],['우리집 사양서',f.simSpec],['우리집 한 채',f.lookSpec]].forEach(function(row){if(row[1])lines.push(row[0]+': '+row[1]);});
   lines.push('리드ID: '+draft.id);
   return {id:uid(),date:new Date().toLocaleString('ko-KR'),text:lines.join('\n'),project:projectName};
@@ -55544,6 +56128,7 @@ async function webWorkRegister(inquiryId){
   if(__webWorkRegistering)return false;
   const draft=__webWorkDraft;
   if(!draft||draft.id!==inquiryId){toast('미리보기 정보가 만료되었습니다. 다시 붙여넣어 주세요.');return false;}
+  if(draft.service==='as'){toast('A/S 문의는 새 현장을 만들지 않습니다 — 현장을 골라 AS 관리에 접수하세요.');webWorkPreviewOpen(draft);return false;}   // v613
   if(webWorkDupe(inquiryId,draft.fields.receiptNo)){toast('이미 등록된 문의입니다.');webWorkPreviewOpen(draft);return false;}
   __webWorkRegistering=true;__modalCloseLocked=true;
   const status=document.getElementById('webWorkRegisterStatus'),buttons=[...document.querySelectorAll('#modalRoot .mfoot button')];
@@ -55557,7 +56142,7 @@ async function webWorkRegister(inquiryId){
     const project={
       name:projectName,kind:draft.service==='leak-pipe'?'leak':'interior',stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},
       customer:{name:draft.customerName,phone:draft.fields.phone,addr:draft.region||''},geo:null,
-      source:'web3forms-email',sourceInquiryId:draft.id,sourceService:draft.service,sourceInquiryOrigin:draft.sourceOrigin,sourceReceiptNo:draft.fields.receiptNo||''
+      source:draft.via?'lead-inbox':'web3forms-email',sourceInquiryId:draft.id,sourceService:draft.service,sourceInquiryOrigin:draft.sourceOrigin,sourceReceiptNo:draft.fields.receiptNo||''
     };
     const priorProjects=state.projects||[],priorNotes=state.notes||[],priorActive=state.activeProject,priorDirty=state.dirty;
     rollback={projects:priorProjects,notes:priorNotes,activeProject:priorActive,dirty:priorDirty};
@@ -55565,6 +56150,7 @@ async function webWorkRegister(inquiryId){
     state.projects=priorProjects.concat([project]);state.notes=priorNotes.concat([webWorkNote(draft,projectName)]);state.activeProject=projectName;
     if(!(await guardedPersistCurrentState()))throw new Error('persist-failed');
     persisted=true;webWorkMarkDirtyAfterPersist();__webWorkDraft=null;__modalCloseLocked=false;
+    try{if(draft.via&&typeof leadInboxAfterRegister==='function')leadInboxAfterRegister(draft.via,projectName,'site');}catch(e){}   // v613 저장이 끝난 뒤에만 접수함에 '승인'
     try{closeModal(true);}catch(e){}try{render();}catch(e){}try{toast('웹 문의 “'+projectName+'” 현장 등록됨');if(project.kind==='leak')hjLeakIntakeView(projectName);}catch(e){}
     return true;
   }catch(error){
@@ -55575,7 +56161,549 @@ async function webWorkRegister(inquiryId){
     __webWorkRegistering=false;__modalCloseLocked=false;buttons.forEach(function(button){button.disabled=false;});
   }
 }
+/* ── v613 🔧 A/S·하자 메일 → 고른 현장의 AS 관리(asLog) 한 건 ──
+   만물웹 상담 폼 '공간 유형' A/S 값은 'A/S'(· 없음) → '공간' 줄 첫 칸 'A/S'(별칭 AS·하자·하자보수) → service 'as'(표시 'A/S·하자'). 접수 경로는 website 만.
+   새 현장·새 리드를 만들지 않는다. 현장 후보(webWorkAsCandidates)는 전화·고객 이름·주소/단지 낱말로 제안만 하고, 고르기 칸은 늘 '현장을 고르세요'에서 시작한다(미리 고르지 않음).
+   AS 관리는 현장 없는 AS 를 받지 않으므로(고르기 칸에 늘 현장이 있다) 고르지 않으면 '현장을 먼저 고르세요'로 막는다.
+   기록은 AS 관리 [+ 접수]와 같은 꼴 {id,project,date:이 기기 날짜,text,status:'open'} + 이 메일 표시 sourceInquiryId(·sourceReceiptNo) — 같은 메일 두 번 접수 막기(webWorkDupeIn).
+   고객 이름·전화·지역·메모는 그 현장에 붙는 '[웹 업무 연결]' 메모(리드ID 줄)에만 남긴다 — 현장의 고객 칸·주소·단계는 바꾸지 않는다. 보증은 AS 관리가 접수일 기준으로 본다(공종은 대표가 고름).
+   누수 현장은 AS 관리와 같이 v423 원인 확인 창(hjLeakAsView)으로 보낸다 — 같은 원인일 때만 그 원자 저장에 메모·표시를 같이 담는다. */
+const WEB_WORK_AS_MAX_CANDS=5;
+const WEB_WORK_AS_GENERIC=new Set(['대전','대전시','대전광역시','세종','세종시','세종특별자치시','충남','충북','충청남도','충청북도','청주','청주시','공주','공주시','논산','논산시','계룡','계룡시',
+  '아파트','빌라','주택','단독주택','다세대','상가','오피스텔','원룸','집','세대','우리집','근처','부근']);
+function webWorkAsTokens(text){
+  const out=[];
+  String(text||'').replace(/[(),·/]/g,' ').split(/\s+/).forEach(function(raw){
+    const value=raw.trim();if(value.length<2||WEB_WORK_AS_GENERIC.has(value)||/^\d+$/.test(value))return;
+    if(!out.includes(value))out.push(value);
+    const bare=value.replace(/(?:아파트|APT)$/i,'');
+    if(bare!==value&&bare.length>=2&&!WEB_WORK_AS_GENERIC.has(bare)&&!out.includes(bare))out.push(bare);
+  });
+  return out.slice(0,16);
+}
+// 읽기만. 점수: 전화(끝 8자리) 10 · 고객 이름 같음 4 · 현장 이름에 고객 이름 2 · 주소/단지 낱말 3(동·호 숫자나 '서구' 같은 넓은 구·시·군 낱말은 1). 2점 미만은 후보가 아니다.
+function webWorkAsCandidates(draft,data){
+  data=data||state;
+  const f=(draft&&draft.fields)||{},phone=String(f.phone||'').replace(/\D/g,''),tail=phone.length>=8?phone.slice(-8):'';
+  const who=String(draft&&draft.customerName||'').trim(),tokens=webWorkAsTokens(draft&&draft.region);
+  const rows=[];
+  (data.projects||[]).forEach(function(project){
+    if(!project||typeof project.name!=='string'||!project.name)return;
+    const customer=project.customer||{},reasons=[];let score=0;
+    const digits=String(customer.phone||'').replace(/\D/g,'');
+    if(tail&&digits.length>=8&&digits.slice(-8)===tail){score+=10;reasons.push('전화 같음');}
+    const customerName=String(customer.name||'').trim();
+    if(who&&customerName&&customerName===who){score+=4;reasons.push('고객 이름 같음');}
+    else if(who.length>=2&&project.name.includes(who)){score+=2;reasons.push('현장 이름에 고객 이름');}
+    const hay=(project.name+' '+String(customer.addr||'')).replace(/\s+/g,'');
+    const hits=tokens.filter(function(token){return hay.includes(token);});
+    const kept=hits.filter(function(token){return !hits.some(function(other){return other!==token&&other.includes(token);});});
+    if(kept.length){
+      kept.forEach(function(token){score+=/^\d+(?:동|호)$/.test(token)||/^[가-힣]{1,3}(?:구|시|군)$/.test(token)?1:3;});
+      reasons.push('주소·단지 '+kept.slice(0,2).join('·'));
+    }
+    if(score<2)return;
+    rows.push({name:project.name,score:score,reasons:reasons,archived:!!project.archived,done:!!project.doneAt,kind:project.kind||''});
+  });
+  rows.sort(function(a,b){return b.score-a.score||(Number(b.done)-Number(a.done))||a.name.localeCompare(b.name,'ko');});
+  return rows.slice(0,WEB_WORK_AS_MAX_CANDS);
+}
+function webWorkAsText(draft){
+  const f=(draft&&draft.fields)||{};
+  const body=[f.symptoms,f.memo].filter(Boolean).join(' / ').replace(/\s*\n\s*/g,' / ').replace(/\s+/g,' ').trim();
+  return ('[홈페이지] '+(body||'A/S 접수 — 증상은 고객에게 확인')).slice(0,2000);
+}
+function webWorkAsRecord(draft,projectName){
+  const record={id:uid(),project:projectName,date:localDate(),text:webWorkAsText(draft),status:'open',sourceInquiryId:draft.id};
+  if(draft.fields.receiptNo)record.sourceReceiptNo=draft.fields.receiptNo;
+  return record;
+}
+function webWorkAsPickHtml(draft){
+  const cands=webWorkAsCandidates(draft),picked=new Set(cands.map(function(c){return c.name;}));
+  const all=(state.projects||[]).filter(function(p){return p&&typeof p.name==='string'&&p.name;});
+  const live=all.filter(function(p){return !p.archived&&!picked.has(p.name);}),arch=all.filter(function(p){return p.archived&&!picked.has(p.name);});
+  const opt=function(value,label,extra){return '<option value="'+escapeAttr(value)+'"'+(extra||'')+'>'+escapeHtml(label)+'</option>';};
+  const options='<option value="">현장을 고르세요</option>'+
+    (cands.length?'<optgroup label="추천 — 이름·전화·주소가 맞는 현장">'+cands.map(function(c){return opt(c.name,c.name+' — '+c.reasons.join(' · ')+(c.archived?' (보관)':''),' data-web-work-as-cand="'+c.score+'"');}).join('')+'</optgroup>':'')+
+    (live.length?'<optgroup label="진행 현장">'+live.map(function(p){return opt(p.name,p.name);}).join('')+'</optgroup>':'')+
+    (arch.length?'<optgroup label="보관 현장">'+arch.map(function(p){return opt(p.name,p.name+' (보관)');}).join('')+'</optgroup>':'');
+  const hint=!all.length?'앱에 현장이 없어요 — 현장을 먼저 만든 뒤 다시 붙여 넣으세요.':
+    (cands.length?'이름·전화·주소가 맞는 현장 '+cands.length+'곳을 맨 위에 두었어요 — 맞는지 확인하고 고르세요.':'이름·전화·주소가 맞는 현장을 못 찾았어요 — 목록에서 직접 고르세요.')+' 앱에 없는 집이면 현장을 먼저 만든 뒤 다시 붙여 넣으세요.';
+  return '<div data-web-work-as style="margin-top:10px;border:1px solid var(--line-soft);border-radius:10px;padding:10px;min-width:0">'+
+    '<p style="margin:0 0 6px;font-size:12px;line-height:1.5"><b>🔧 A/S는 새 현장을 만들지 않습니다.</b> 어느 집 A/S인지 현장을 고르면 그 현장의 AS 관리에 한 건 접수합니다. 현장의 고객 칸·주소는 바꾸지 않습니다.</p>'+
+    '<label for="webWorkAsProject" style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">어느 현장의 A/S인가요?</label>'+
+    '<select id="webWorkAsProject" style="width:100%;max-width:100%;min-height:44px;font-size:16px;box-sizing:border-box">'+options+'</select>'+
+    '<p data-web-work-as-cands="'+cands.length+'" style="margin:6px 0 0;font-size:11.5px;line-height:1.5;color:var(--muted-2)">'+escapeHtml(hint)+'</p>'+
+    '<div id="webWorkAsInfo" role="status" aria-live="polite" style="min-height:16px;margin-top:6px;font-size:12px;line-height:1.5;overflow-wrap:anywhere"></div>'+
+    '<p id="webWorkAsIssue" role="alert" style="min-height:16px;margin:4px 0 0;font-size:12px;color:#b91c1c"></p>'+
+  '</div>';
+}
+// 고른 현장 한 줄 — 보증(hjWarranty, 접수일=오늘 기준 남은 날)·처리 중인 AS·누수면 원인 확인 안내. 읽기만.
+function webWorkAsInfoText(name){
+  const hits=(state.projects||[]).filter(function(p){return p&&p.name===name;});if(hits.length!==1)return '';
+  const p=hits[0],parts=[];let w=null;try{w=hjWarranty(p);}catch(e){}
+  if(w&&w.end)parts.push('🛡 보증 '+(w.dday<0?'만료 ('+w.end+')':'~'+w.end+' (D-'+w.dday+')')+(w.defaulted?' · 법정 기본 기간':''));
+  else parts.push('🛡 보증 정보 없음 — 현장 완료일을 넣으면 계산됩니다');
+  const open=(state.asLog||[]).filter(function(a){return a&&a.project===p.name&&a.status!=='done';}).length;
+  if(open)parts.push('처리 중인 AS '+open+'건');
+  if(p.kind==='leak')parts.push('💧 누수 현장 — 접수 전에 이전 원인과 같은지 확인합니다');
+  return parts.join(' · ');
+}
+function webWorkAsPickBind(){
+  const select=document.getElementById('webWorkAsProject'),info=document.getElementById('webWorkAsInfo'),issue=document.getElementById('webWorkAsIssue');
+  if(!select)return;
+  select.onchange=function(){if(issue)issue.textContent='';if(info)info.textContent=select.value?webWorkAsInfoText(select.value):'';};
+}
+async function webWorkAsRegister(inquiryId){
+  if(__webWorkRegistering)return false;
+  const draft=__webWorkDraft;
+  if(!draft||draft.id!==inquiryId||draft.service!=='as'){toast('미리보기 정보가 만료되었습니다. 다시 붙여넣어 주세요.');return false;}
+  const select=document.getElementById('webWorkAsProject'),issue=document.getElementById('webWorkAsIssue');
+  const name=select?String(select.value||''):'';
+  const say=function(message){if(issue)issue.textContent=message;try{if(select)select.focus();}catch(e){}return false;};
+  if(!name)return say('현장을 먼저 고르세요.');
+  const hits=(state.projects||[]).filter(function(p){return p&&p.name===name;});
+  if(hits.length!==1)return say('고른 현장을 찾을 수 없거나 같은 이름이 둘 이상입니다. 현장 이름을 확인하세요.');
+  if(webWorkDupe(inquiryId,draft.fields.receiptNo)){toast('이미 접수된 문의입니다.');webWorkPreviewOpen(draft);return false;}
+  if(hits[0].kind==='leak'){
+    const ref=hjLeakProjectRef(hits[0]);
+    if(!ref)return say('이 누수 현장은 🔧 AS 관리에서 직접 접수하세요(같은 이름의 현장이 있습니다).');
+    const web={inquiryId:draft.id,receiptNo:draft.fields.receiptNo||'',note:webWorkNote(draft,name),via:draft.via||null};   // via — 저장 뒤 접수함 '승인'(hjLeakAsView)
+    const opened=hjLeakAsView(ref,{text:webWorkAsText(draft),web:web},function(){__webWorkDraft=draft;webWorkPreviewOpen(draft);});
+    if(opened)__webWorkDraft=null;
+    return opened;
+  }
+  __webWorkRegistering=true;__modalCloseLocked=true;
+  const status=document.getElementById('webWorkRegisterStatus'),buttons=[...document.querySelectorAll('#modalRoot .mfoot button')];
+  buttons.forEach(function(button){button.disabled=true;});select.disabled=true;if(status)status.textContent='접수 전 안전판을 만드는 중…';
+  let rollback=null,persisted=false,hadPendingLocal=false;
+  try{
+    const snapped=await hjSnapshot('웹 업무 연결 AS 접수 전',true,true);
+    if(!snapped)throw new Error('snapshot-failed');
+    if(webWorkDupe(inquiryId,draft.fields.receiptNo)){toast('이미 접수된 문의입니다.');return false;}
+    const still=(state.projects||[]).filter(function(p){return p&&p.name===name;});
+    if(still.length!==1||still[0].kind==='leak'){if(status&&status.isConnected)status.textContent='그 사이 현장이 바뀌었습니다. 현장을 다시 고르세요.';return false;}
+    const record=webWorkAsRecord(draft,name);
+    const priorAs=state.asLog||[],priorNotes=state.notes||[],priorDirty=state.dirty;
+    rollback={asLog:priorAs,notes:priorNotes,dirty:priorDirty};
+    hadPendingLocal=!!__idbSaveTimer;clearTimeout(__idbSaveTimer);__idbSaveTimer=null;
+    state.asLog=priorAs.concat([record]);state.notes=priorNotes.concat([webWorkNote(draft,name)]);
+    if(!(await guardedPersistCurrentState()))throw new Error('persist-failed');
+    persisted=true;webWorkMarkDirtyAfterPersist();__webWorkDraft=null;__modalCloseLocked=false;
+    try{if(draft.via&&typeof leadInboxAfterRegister==='function')leadInboxAfterRegister(draft.via,name,'as');}catch(e){}   // v613
+    try{closeModal(true);}catch(e){}try{render();}catch(e){}try{toast('🔧 웹 A/S “'+name+'” AS 관리에 접수됨');asManage(record.id);}catch(e){}
+    return true;
+  }catch(error){
+    if(rollback&&!persisted){state.asLog=rollback.asLog;state.notes=rollback.notes;state.dirty=rollback.dirty;if(hadPendingLocal||rollback.dirty)try{persistLocal();}catch(e){}}
+    if(status&&status.isConnected)status.textContent='안전판 또는 이 기기 저장을 완료하지 못해 접수를 중단했습니다. 잠시 후 다시 시도하세요.';
+    return false;
+  }finally{
+    __webWorkRegistering=false;__modalCloseLocked=false;buttons.forEach(function(button){button.disabled=false;});if(select.isConnected)select.disabled=false;
+  }
+}
 /* ═══ /웹 업무 연결 센터 ═══ */
+
+/* ═══ 📬 홈페이지 문의 접수함 당겨오기 (v613 · 대표 정리 항목 28 · 분석 AD DA18·WA20) ═══
+   만물웹 apps-script-lead-inbox(Code.gs·LeadInboxPure.gs, 만물웹 97c4d0b) 서버에서 문의를 당겨 와 📥 웹 업무 연결의 **같은** 미리보기·등록 흐름
+   (webWorkParse → 미리보기 → 안전판 → 이 기기 저장)으로 넣는다. 본문은 서버 문의 줄의 message(메일과 같은 buildLeadText 본문) + '접수번호: LD-…' 한 줄 —
+   만물웹 lead-inbox.html 의 「앱에 붙여넣을 본문 복사」와 똑같은 글이라 붙여넣기와 같은 중복 ID·접수번호 중복 막기가 그대로 걸린다.
+   서버 계약: POST text/plain JSON {action,ts,payload[,sessionToken]} → {ok:true,…} | {ok:false,error}.
+     leadLogin {adminCode} → {sessionToken(64자↑), expiresAt(ms, 8시간)} · leadLogout → {loggedOut}
+     leadList {status:'신규'|'보류'|'승인'|'거절'|'전체'} → {leads:[문의 줄], total, counts}
+     leadDecide {leadId, decision:'승인'|'보류'|'거절', memo(거절은 필수·500자), requestId(UUID v4 — 같은 값은 서버가 한 번만)} → {lead[,duplicate]}
+     전이: 신규→승인·보류·거절 · 보류→승인·거절 · 거절→보류 · 승인은 끝. 오류: not-configured·invalid-credentials·rate-limited(5번 틀리면 15분)·session-expired·
+     invalid-input·invalid-transition·not-found·bad-request·server-error.
+   지키는 것
+   - 접수함 주소(IDB 'lead_inbox_url')는 **이 기기 IndexedDB 에만**, 서버가 준 세션({token,expiresAt}, 8시간)은 **이 창 메모리(__leadInbox.session)에만** —
+     state·_현장.json·중계·안전판·내보내기·브라우저 저장소에 넣지 않는다. 세션은 만물웹 lead-inbox.html 과 같이 이 창 메모리에만 두고 기기 저장소에 남기지 않는다 —
+     앱을 닫거나 새로고침하면 다시 로그인한다.
+     (이 묶음의 예전 개발판이 남긴 IDB 'lead_inbox_session' 은 부팅 때 지운다.) 로그인 창에는 비밀번호를 보낼 접수함 주소의 배포 ID 끝 6자리를 보여 준다.
+   - 관리 비밀번호는 비밀번호 칸에서 읽자마자 칸을 비우고 leadLogin 요청 한 번에만 쓴다. 어디에도 저장하지 않는다(브라우저 저장소·메모리 변수·state 모두).
+   - 받은 문의 목록(이름·전화)은 이 창들이 열려 있는 동안 메모리에만 — 창을 닫거나 등록하면 버린다.
+   - 저장(안전판 → 이 기기 저장)이 끝난 뒤에만 leadDecide '승인'(메모: 대표 메모 · 현장웹 현장 등록/AS 접수: 현장 이름). 실패해도 등록은 그대로 —
+     그 문의를 다시 열면 [✅ 접수함에 승인 표시](같은 requestId 로 다시). 보류·거절은 미리보기에서. 거절한 문의는 보류로 되돌리기 전에는 등록하지 않는다.
+   - 자동으로 부르지 않는다(대표가 [📬 접수함에서 가져오기]를 누를 때만). 세션이 만료되면 저장된 세션을 지우고 다시 로그인하라고 알린다.
+   - index.html 에는 CSP(connect-src)가 없다(GitHub Pages 메타 CSP 없음) — script.google.com 요청은 중계·계약 서버와 같이 그대로 나간다. CSP 를 더할 때는 이 주소도 넣어라. */
+const LEAD_INBOX_API_RE=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+const LEAD_INBOX_TIMEOUT_MS=15000,LEAD_INBOX_SESSION_MAX_MS=9*60*60*1000;
+const LEAD_INBOX_RECEIPT_RE=/^LD-\d{8}-\d{4,6}$/,LEAD_INBOX_UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LEAD_INBOX_NEXT=Object.freeze({'신규':['승인','보류','거절'],'보류':['승인','거절'],'거절':['보류'],'승인':[]});   // 만물웹 LeadInboxPure.gs LEAD_TRANSITIONS 와 같다
+const LEAD_INBOX_MESSAGES=Object.freeze({
+  'no-url':'접수함 주소를 설정에서 넣어 주세요 (⚙️ 설정 › ⭐ 기타 › 📬 홈페이지 문의 접수함). 그전까지는 메일 본문을 아래에 붙여 넣어 등록하세요.',
+  'bad-url':'주소 형식을 확인해 주세요 — https://script.google.com/macros/s/…/exec 꼴이어야 해요.',
+  'not-configured':'접수함 서버가 꺼져 있거나 아직 설정되지 않았어요. 문의는 메일로 계속 들어오니 메일 본문을 붙여 넣어 등록하세요.',
+  'invalid-credentials':'관리 비밀번호가 맞지 않아요. 다시 확인해 주세요.',
+  'rate-limited':'비밀번호가 여러 번 틀려 15분 동안 잠겼어요. 잠시 뒤 다시 해 주세요.',
+  'session-expired':'접수함 로그인이 만료됐어요. 관리 비밀번호로 다시 로그인해 주세요.',
+  'invalid-input':'접수함이 그 내용을 받지 않았어요. 거절은 사유 메모가 꼭 필요해요.',
+  'invalid-transition':'지금 상태에서는 그렇게 바꿀 수 없어요. 목록을 새로고침해 주세요.',
+  'not-found':'접수함에서 그 문의를 찾지 못했어요. 목록을 새로고침해 주세요.',
+  'bad-request':'요청 형식이 맞지 않아요. 접수함 주소를 확인해 주세요.',
+  'timeout':'접수함 서버 응답이 늦어요. 잠시 뒤 다시 해 주세요.',
+  'network-error':'인터넷 연결을 확인해 주세요.',
+  'http-error':'접수함 서버에 연결하지 못했어요. 접수함 주소를 확인해 주세요.',
+  'invalid-response':'접수함 서버 응답을 읽지 못했어요. 접수함 주소가 맞는지 확인해 주세요.',
+  'server-error':'접수함 서버에서 문제가 생겼어요. 잠시 뒤 다시 해 주세요.'
+});
+const __leadInbox={url:'',session:null,leads:null,counts:null,filter:'신규',loadedAt:'',busy:false,memo:{},req:{},statusById:{}};
+function leadInboxError(code){const safe=Object.prototype.hasOwnProperty.call(LEAD_INBOX_MESSAGES,code)?code:'server-error',error=new Error(LEAD_INBOX_MESSAGES[safe]);error.code=safe;return error;}
+function leadInboxMessage(error){return error&&Object.prototype.hasOwnProperty.call(LEAD_INBOX_MESSAGES,error.code)?LEAD_INBOX_MESSAGES[error.code]:LEAD_INBOX_MESSAGES['server-error'];}
+function leadInboxUrlOk(value){
+  if(typeof value!=='string'||value!==value.trim()||!LEAD_INBOX_API_RE.test(value))return false;
+  try{const url=new URL(value);return url.protocol==='https:'&&url.hostname==='script.google.com'&&!url.port&&!url.search&&!url.hash&&!url.username&&!url.password;}catch(e){return false;}
+}
+function leadInboxSessionOk(value,now){
+  now=Number.isFinite(now)?now:Date.now();
+  return !!value&&typeof value==='object'&&typeof value.token==='string'&&value.token.length>=64&&value.token.length<=256&&/^[A-Za-z0-9_.-]+$/.test(value.token)&&
+    Number.isFinite(value.expiresAt)&&value.expiresAt>now&&value.expiresAt<=now+LEAD_INBOX_SESSION_MAX_MS;
+}
+function leadInboxConfigured(){return leadInboxUrlOk(__leadInbox.url);}
+function leadInboxLive(){
+  if(__leadInbox.session&&!leadInboxSessionOk(__leadInbox.session))__leadInbox.session=null;   // 세션은 메모리에만 — 만료면 버린다
+  return !!__leadInbox.session;
+}
+// 로그인 창에 보이는 '비밀번호를 보낼 곳' — 배포 ID 끝 6자리(주소 전체는 길어서 — 대표가 보낼 곳을 눈으로 확인하게)
+function leadInboxUrlTail(url){const m=/\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/.exec(String(url||''));return m?m[1].slice(-6):'';}
+function leadInboxTime(ms){const d=new Date(ms);return isNaN(d.getTime())?'':d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});}
+function leadInboxWhen(value){const t=Date.parse(String(value||''));return Number.isFinite(t)?new Date(t).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';}
+function leadInboxUuid(){
+  try{if(typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')return crypto.randomUUID();}catch(e){}
+  const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,function(value){return value.toString(16).padStart(2,'0');}).join('');
+  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+}
+async function leadInboxBoot(){
+  try{
+    const url=await idbGet('lead_inbox_url');
+    __leadInbox.url=leadInboxUrlOk(url)?url:'';__leadInbox.session=null;   // 세션은 이어 쓰지 않는다(메모리에만) — 새로 열면 다시 로그인
+    if((await idbGet('lead_inbox_session'))!==undefined)await idbDel('lead_inbox_session');   // 예전 개발판이 IDB 에 남긴 세션 정리
+  }catch(e){}
+  return {configured:leadInboxConfigured(),session:!!__leadInbox.session};
+}
+function leadInboxForgetList(){__leadInbox.leads=null;__leadInbox.counts=null;__leadInbox.loadedAt='';}
+async function leadInboxForgetSession(){__leadInbox.session=null;__leadInbox.statusById={};leadInboxForgetList();}
+async function leadInboxSaveUrl(raw){
+  const url=String(raw==null?'':raw).trim();
+  if(!leadInboxUrlOk(url))throw leadInboxError('bad-url');
+  if(url!==__leadInbox.url)await leadInboxForgetSession();   // 다른 서버 — 옛 세션은 버린다
+  await idbSet('lead_inbox_url',url);__leadInbox.url=url;return url;
+}
+async function leadInboxClearAll(){await leadInboxForgetSession();__leadInbox.url='';try{await idbDel('lead_inbox_url');}catch(e){}}
+async function leadInboxPost(action,payload,withSession){
+  if(!leadInboxConfigured())throw leadInboxError('no-url');
+  const body={action:action,ts:Date.now(),payload:payload&&typeof payload==='object'?payload:{}};
+  if(withSession){if(!leadInboxLive())throw leadInboxError('session-expired');body.sessionToken=__leadInbox.session.token;}
+  const controller=typeof AbortController==='function'?new AbortController():null,timer=controller?setTimeout(function(){controller.abort();},LEAD_INBOX_TIMEOUT_MS):null;
+  let result;
+  try{
+    // text/plain = 단순 요청(OPTIONS 없음) — Apps Script 는 preflight 에 답하지 못한다. 쿠키·자격은 보내지 않는다.
+    const response=await fetch(__leadInbox.url,Object.assign({method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow',credentials:'omit'},controller?{signal:controller.signal}:{}));
+    if(!response||!response.ok)throw leadInboxError('http-error');
+    const text=await response.text();
+    try{result=JSON.parse(text);}catch(e){throw leadInboxError('invalid-response');}
+  }catch(error){
+    if(error&&Object.prototype.hasOwnProperty.call(LEAD_INBOX_MESSAGES,error.code))throw error;
+    throw leadInboxError(error&&error.name==='AbortError'?'timeout':'network-error');
+  }finally{if(timer)clearTimeout(timer);}
+  if(!result||typeof result!=='object'||Array.isArray(result)||typeof result.ok!=='boolean')throw leadInboxError('invalid-response');
+  if(!result.ok){
+    const code=typeof result.error==='string'?result.error:'server-error';
+    if(code==='session-expired')await leadInboxForgetSession();
+    throw leadInboxError(code);
+  }
+  return result;
+}
+// 관리 비밀번호(code)는 이 요청 한 번에만 쓴다 — 저장하지 않고, 서버가 준 세션(token·expiresAt)만 이 창 메모리에 둔다.
+async function leadInboxLogin(code){
+  code=String(code==null?'':code);
+  if(code.length<8||code.length>64||/\s/.test(code))throw leadInboxError('invalid-credentials');
+  const result=await leadInboxPost('leadLogin',{adminCode:code},false);
+  const session={token:typeof result.sessionToken==='string'?result.sessionToken:'',expiresAt:Number(result.expiresAt)};
+  if(!leadInboxSessionOk(session))throw leadInboxError('invalid-response');
+  __leadInbox.session=session;__leadInbox.statusById={};   // 이 창 메모리에만(기기 저장소에 남기지 않는다)
+  return session;
+}
+async function leadInboxLogout(){
+  if(leadInboxLive())try{await Promise.race([leadInboxPost('leadLogout',{},true),new Promise(function(resolve){setTimeout(resolve,2500);})]);}catch(e){}
+  await leadInboxForgetSession();
+}
+// 서버 문의 줄에서 화면·등록에 쓰는 칸만 글자로 꺼낸다(목록은 메모리에만).
+function leadInboxCleanLead(raw){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
+  const text=function(key,max){return String(raw[key]==null?'':raw[key]).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,max);};
+  const leadId=text('leadId',40).toLowerCase();if(!LEAD_INBOX_UUID_RE.test(leadId))return null;
+  const receipt=text('receiptNo',24),status=text('status',4);
+  return {leadId:leadId,receiptNo:LEAD_INBOX_RECEIPT_RE.test(receipt)?receipt:'',status:Object.prototype.hasOwnProperty.call(LEAD_INBOX_NEXT,status)?status:'',
+    receivedAt:text('receivedAt',60),name:text('name',60),phone:text('phone',40),service:text('service',20),type:text('type',20),region:text('region',120),
+    symptoms:text('symptoms',300),works:text('works',300),memo:text('memo',300),emailDelivered:text('emailDelivered',1),
+    message:String(raw.message==null?'':raw.message).slice(0,WEB_WORK_MAX_INPUT)};
+}
+async function leadInboxFetchList(filter){
+  const status=['신규','보류','승인','거절','전체'].includes(filter)?filter:'신규';
+  const result=await leadInboxPost('leadList',{status:status},true);
+  const leads=(Array.isArray(result.leads)?result.leads:[]).map(leadInboxCleanLead).filter(Boolean),counts={};
+  ['신규','보류','승인','거절'].forEach(function(key){const n=Number(result.counts&&result.counts[key]);counts[key]=Number.isFinite(n)&&n>0?Math.floor(n):0;});
+  __leadInbox.leads=leads;__leadInbox.counts=counts;__leadInbox.filter=status;__leadInbox.loadedAt=new Date().toISOString();__leadInbox.statusById={};   // 새로 받은 목록이 서버의 지금 상태
+  return leads;
+}
+function leadInboxFind(leadId){return (__leadInbox.leads||[]).find(function(lead){return lead.leadId===leadId;})||null;}
+function leadInboxStatusOf(via){
+  if(!via)return '';
+  const lead=leadInboxFind(via.leadId);
+  return __leadInbox.statusById[via.leadId]||(lead&&lead.status)||via.status||'';
+}
+function leadInboxRegisterAllowed(via){const status=leadInboxStatusOf(via);return status==='신규'||status==='보류'||status==='승인';}
+// 이 기기에 이미 등록한 접수번호인지(현장·AS 기록의 sourceReceiptNo — webWorkDupeIn 과 같은 칸). 읽기만.
+function leadInboxKnown(receiptNo,data){
+  const r=String(receiptNo||'');if(!LEAD_INBOX_RECEIPT_RE.test(r))return null;data=data||state;
+  const project=(data.projects||[]).find(function(p){return p&&p.sourceReceiptNo===r;});if(project)return {name:String(project.name||''),as:false};
+  const record=(data.asLog||[]).find(function(a){return a&&a.sourceReceiptNo===r;});if(record)return {name:String(record.project||''),as:true};
+  return null;
+}
+// 만물웹 lead-inbox.html 「앱에 붙여넣을 본문 복사」와 같은 글: message(메일 본문) + '접수번호: LD-…'
+function leadInboxMailText(lead){
+  const message=String(lead&&lead.message||'').replace(/\r\n?/g,'\n').replace(/\s+$/,'');
+  if(!message)throw webWorkInvalid('접수함 문의에 본문이 없어요.');
+  return lead.receiptNo?message+'\n접수번호: '+lead.receiptNo:message;
+}
+async function leadInboxDraft(lead){
+  const via=Object.freeze({kind:'lead-inbox',leadId:lead.leadId,receiptNo:lead.receiptNo,status:lead.status,receivedAt:lead.receivedAt});
+  return webWorkDraftFromText(leadInboxMailText(lead),via);
+}
+async function leadInboxDecide(via,decision,memo){
+  if(!via||!LEAD_INBOX_UUID_RE.test(String(via.leadId||''))||!['승인','보류','거절'].includes(decision))throw leadInboxError('bad-request');
+  const key=via.leadId+'|'+decision;let requestId=__leadInbox.req[key];
+  if(!LEAD_INBOX_UUID_RE.test(String(requestId||''))){requestId=leadInboxUuid();__leadInbox.req[key]=requestId;}   // 응답을 못 받은 요청을 다시 보내도 서버가 한 번만 기록한다
+  const result=await leadInboxPost('leadDecide',{leadId:via.leadId,decision:decision,memo:String(memo||'').slice(0,500),requestId:requestId},true);
+  delete __leadInbox.req[key];
+  const got=result.lead&&typeof result.lead.status==='string'?result.lead.status:'';
+  const status=Object.prototype.hasOwnProperty.call(LEAD_INBOX_NEXT,got)?got:decision;
+  __leadInbox.statusById[via.leadId]=status;const lead=leadInboxFind(via.leadId);if(lead)lead.status=status;
+  return status;
+}
+function leadInboxApproveMemo(memo,site,kind){
+  const tail=site?(kind==='as'?'현장웹 AS 접수: ':'현장웹 현장 등록: ')+String(site).slice(0,80):'현장웹에 이미 등록된 문의';
+  return ((memo?memo+' · ':'')+tail).slice(0,500);
+}
+// 📥 웹 업무 연결 등록(webWorkRegister·webWorkAsRegister·누수 hjLeakAsView)의 저장이 끝난 뒤에만 부른다. 실패해도 등록은 그대로다.
+function leadInboxAfterRegister(via,siteName,kind){
+  if(!via||via.kind!=='lead-inbox'||!LEAD_INBOX_UUID_RE.test(String(via.leadId||'')))return Promise.resolve(false);
+  const status=leadInboxStatusOf(via),memo=leadInboxApproveMemo(String(__leadInbox.memo[via.leadId]||'').trim(),siteName,kind);
+  __leadInbox.memo[via.leadId]='';leadInboxForgetList();
+  if(!(LEAD_INBOX_NEXT[status]||[]).includes('승인'))return Promise.resolve(false);   // 이미 승인(다른 기기·접수함 화면) — 접수함 표시는 그대로
+  return leadInboxDecide(via,'승인',memo).then(function(){toast('📬 접수함에도 \'승인\'으로 표시했어요');return true;},function(error){
+    toast(error&&error.code==='session-expired'?'📬 등록은 됐지만 접수함 로그인이 만료돼 \'승인\' 표시를 못 했어요 — 다시 로그인해 그 문의를 열고 [✅ 접수함에 승인 표시]를 누르세요.':
+      '📬 등록은 됐지만 접수함 \'승인\' 표시를 못 했어요 — 📥 웹 업무 연결 › 📬 접수함에서 그 문의를 열어 [✅ 접수함에 승인 표시]를 누르세요.');
+    return false;
+  });
+}
+/* ── 화면: 웹 업무 연결 버튼 · 로그인 · 목록 · 미리보기 칸 · ⚙️ 설정 칸 ── */
+function leadInboxCenterHtml(){
+  const on=leadInboxConfigured(),live=on&&leadInboxLive();
+  // 접수함 주소를 넣기 전(만물웹 접수함 서버 배포 전)에는 큰 단추 대신 한 줄 안내와 작은 단추만 — 서버 없는 기능은 앞에 크게 두지 않는다(보류 묶음 23 과 같은 뜻)
+  if(!on)return '<div id="webWorkLeadPanel" data-lead-inbox-panel="off" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:0 0 12px;min-width:0">'+
+    '<p id="webWorkLeadStatus" role="status" aria-live="polite" style="flex:1 1 220px;margin:0;font-size:12.5px;line-height:1.5;color:var(--muted-2);overflow-wrap:anywhere">📬 홈페이지 문의 접수함을 켜면 메일 붙여넣기 없이 가져올 수 있어요 — ⚙️ 설정 › ⭐ 기타</p>'+
+    '<button type="button" class="ghost tiny" id="webWorkLeadPull" style="min-height:44px">켜는 법</button></div>';
+  const hint=live?'접수함 로그인 중 · '+leadInboxTime(__leadInbox.session.expiresAt)+'까지':'관리 비밀번호로 로그인해 접수함 문의를 불러와요.';
+  return '<div id="webWorkLeadPanel" data-lead-inbox-panel="on" style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin:0 0 12px;min-width:0">'+
+    '<button type="button" class="blue" id="webWorkLeadPull" style="width:100%;min-height:44px">📬 접수함에서 가져오기</button>'+
+    '<p id="webWorkLeadStatus" role="status" aria-live="polite" style="margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--muted-2);overflow-wrap:anywhere">'+escapeHtml(hint)+'</p></div>';
+}
+function leadInboxCenterBind(){
+  leadInboxForgetList();
+  const button=document.getElementById('webWorkLeadPull'),out=document.getElementById('webWorkLeadStatus');if(!button)return;
+  button.onclick=function(){
+    if(__webWorkRegistering)return false;
+    if(!leadInboxConfigured()){if(out)out.textContent=LEAD_INBOX_MESSAGES['no-url'];return false;}   // 배포 전 — 안내만, 요청 없음
+    webWorkCancelPending();return leadInboxView();
+  };
+}
+function leadInboxView(){
+  if(__webWorkRegistering)return false;
+  __webWorkDraft=null;
+  if(!leadInboxConfigured()){toast(LEAD_INBOX_MESSAGES['no-url']);return false;}
+  if(!leadInboxLive()){leadInboxLoginView('');return true;}
+  const fresh=!__leadInbox.leads;leadInboxListOpen();if(fresh)leadInboxRefresh();
+  return true;
+}
+function leadInboxLoginView(message){
+  __webWorkDraft=null;leadInboxForgetList();
+  const body='<section class="lead-inbox-view" data-lead-inbox-login style="min-width:0">'+
+    '<p style="margin:0 0 10px;font-size:13px;line-height:1.55">만물 홈페이지 <b>문의 접수함</b>에 로그인해 들어온 문의를 불러옵니다.</p>'+
+    '<label for="leadInboxCode" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">관리 비밀번호</label>'+
+    '<input id="leadInboxCode" type="password" autocomplete="one-time-code" minlength="8" maxlength="64" spellcheck="false" autocapitalize="off" style="width:100%;max-width:100%;min-height:44px;font-size:16px;box-sizing:border-box">'+
+    '<p id="leadInboxLoginIssue" role="alert" style="min-height:18px;margin:6px 0 0;font-size:12.5px;color:var(--hj-danger-fg)">'+escapeHtml(message||'')+'</p>'+
+    '<p data-lead-inbox-dest style="margin:6px 0 0;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere">비밀번호를 보낼 곳: 설정에 넣은 접수함 주소(끝자리 <b>…'+escapeHtml(leadInboxUrlTail(__leadInbox.url))+'</b>) — 만물웹 접수함 배포 주소의 끝과 같은지 확인하세요.</p>'+
+    '<div role="note" style="margin-top:10px;padding:9px 10px;border-radius:9px;background:#f0fdf4;color:#166534;font-size:12px;line-height:1.5">비밀번호는 로그인할 때 한 번만 보내고 어디에도 저장하지 않아요. 로그인은 앱을 닫거나 새로고침하기 전까지(최대 8시간)만 이어지고, 현장 자료·백업에는 들어가지 않아요. 5번 틀리면 15분 잠겨요.</div>'+   // aside 는 폰(body.mobile-mode aside{display:none})에서 숨는다 — 안내는 div
+  '</section>';
+  openModal('📬 홈페이지 문의 접수함',body,[{label:'🔐 로그인',cls:'blue',fn:function(){leadInboxLoginSubmit();}},{label:'← 웹 업무 연결',cls:'ghost',fn:webWorkCenterOpen},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const input=document.getElementById('leadInboxCode');
+  if(input){input.onkeydown=function(event){if(event.key==='Enter'){event.preventDefault();leadInboxLoginSubmit();}};setTimeout(function(){try{if(input.isConnected)input.focus();}catch(e){}},30);}
+}
+async function leadInboxLoginSubmit(){
+  const root=document.querySelector('#modalRoot [data-lead-inbox-login]'),input=document.getElementById('leadInboxCode'),issue=document.getElementById('leadInboxLoginIssue');
+  if(!root||!input||__leadInbox.busy)return false;
+  const code=String(input.value||'');input.value='';   // 칸은 바로 비운다
+  if(code.length<8||code.length>64||/\s/.test(code)){if(issue)issue.textContent='관리 비밀번호를 확인해 주세요 (8자 이상, 띄어쓰기 없이).';try{input.focus();}catch(e){}return false;}
+  const controls=[...document.querySelectorAll('#modalRoot .mfoot button')].concat([input]);
+  __leadInbox.busy=true;controls.forEach(function(control){control.disabled=true;});if(issue)issue.textContent='로그인하는 중…';
+  let error=null;
+  try{await leadInboxLogin(code);}catch(e){error=e;}
+  finally{__leadInbox.busy=false;controls.forEach(function(control){if(control.isConnected)control.disabled=false;});}
+  const still=document.querySelector('#modalRoot [data-lead-inbox-login]')===root;
+  if(error){if(still&&issue){issue.textContent=leadInboxMessage(error);try{input.focus();}catch(e){}}return false;}
+  if(still){__leadInbox.leads=null;leadInboxView();}
+  return true;
+}
+function leadInboxRowHtml(lead){
+  const known=leadInboxKnown(lead.receiptNo),next=LEAD_INBOX_NEXT[lead.status]||[],when=leadInboxWhen(lead.receivedAt);
+  const summary=[lead.symptoms,lead.works,lead.memo].filter(Boolean).join(' / ');
+  const tone={'신규':['#dbeafe','#1e3a8a'],'보류':['#fef3c7','#92400e'],'승인':['#dcfce7','#166534'],'거절':['#f3f4f6','#374151']}[lead.status]||['#f3f4f6','#374151'];
+  const label=known&&next.includes('승인')?'✅ 접수함에 승인 표시':(known||!next.includes('승인'))?'🔎 보기':'📥 열어서 등록';
+  return '<article data-lead-inbox-row="'+escapeAttr(lead.leadId)+'" data-lead-inbox-row-status="'+escapeAttr(lead.status)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 10px;min-width:0">'+
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px 7px;font-size:13px;min-width:0"><span style="padding:1px 8px;border-radius:99px;font-size:12px;font-weight:700;background:'+tone[0]+';color:'+tone[1]+'">'+escapeHtml(lead.status||'?')+'</span>'+
+      '<span style="font-size:12px;color:var(--muted-2)">'+escapeHtml(/^(?:A\/S|AS|하자|하자보수)$/i.test(String(lead.type||'').replace(/\s+/g,''))?'A/S·하자':(lead.service||'문의'))+'</span><b style="overflow-wrap:anywhere">'+escapeHtml(lead.name||'(이름 없음)')+'</b><span style="overflow-wrap:anywhere">'+escapeHtml(lead.phone||'')+'</span></div>'+
+    '<div style="margin-top:3px;font-size:12px;color:var(--muted-2);overflow-wrap:anywhere">'+escapeHtml([lead.receiptNo,when,lead.region,lead.type].filter(Boolean).join(' · '))+'</div>'+
+    (summary?'<div style="margin-top:3px;font-size:12.5px;line-height:1.45;overflow-wrap:anywhere">'+escapeHtml(summary.length>120?summary.slice(0,120)+'…':summary)+'</div>':'')+
+    (known?'<div data-lead-inbox-known style="margin-top:4px;font-size:12px;color:var(--hj-ok-fg);overflow-wrap:anywhere">✅ 앱에 등록됨 · '+escapeHtml((known.as?'AS · ':'')+(known.name||''))+'</div>':'')+
+    (lead.emailDelivered==='N'?'<div style="margin-top:3px;font-size:12px;color:var(--hj-warn-fg)">메일 미발송 — 접수함에만 있는 문의</div>':'')+
+    '<button type="button" class="'+(label==='📥 열어서 등록'?'blue':'ghost')+'" data-lead-inbox-open="'+escapeAttr(lead.leadId)+'" aria-label="'+escapeAttr((lead.name||'이름 없음')+' '+(lead.receiptNo||'')+' '+label)+'" style="width:100%;min-height:44px;margin-top:7px">'+escapeHtml(label)+'</button>'+
+  '</article>';
+}
+function leadInboxListNote(){
+  const counts=__leadInbox.counts||{},parts=[];
+  if(__leadInbox.loadedAt)parts.push('마지막 확인 '+leadInboxTime(Date.parse(__leadInbox.loadedAt)));
+  if(counts['신규']||counts['보류'])parts.push('신규 '+(counts['신규']||0)+'건 · 보류 '+(counts['보류']||0)+'건');
+  if(__leadInbox.session)parts.push('로그인 '+leadInboxTime(__leadInbox.session.expiresAt)+'까지');
+  return parts.join(' · ');
+}
+function leadInboxListOpen(){
+  const leads=__leadInbox.leads,loading=!leads,filter=__leadInbox.filter,counts=__leadInbox.counts||{};
+  const chip=function(key){const on=key===filter,n=key!=='전체'&&counts[key]?' '+counts[key]:'';return '<button type="button" class="'+(on?'blue':'ghost')+'" data-lead-inbox-filter="'+key+'" aria-pressed="'+on+'" style="flex:1 1 0;min-width:0;min-height:44px">'+escapeHtml(key+n)+'</button>';};
+  const rows=loading?'':leads.length?leads.map(leadInboxRowHtml).join(''):'<p data-lead-inbox-empty style="margin:6px 0;font-size:13px;color:var(--muted-2)">'+escapeHtml(filter==='전체'?'접수함에 문의가 없어요.':filter+' 문의가 없어요.')+'</p>';
+  const body='<section class="lead-inbox-view" data-lead-inbox-list="'+(loading?'loading':leads.length)+'" style="min-width:0">'+
+    '<div role="group" aria-label="상태별 보기" style="display:flex;gap:6px;margin-bottom:8px">'+['신규','보류','전체'].map(chip).join('')+'</div>'+
+    '<p id="leadInboxListStatus" role="status" aria-live="polite" style="min-height:18px;margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--muted-2);overflow-wrap:anywhere">'+escapeHtml(loading?'접수함을 불러오는 중…':leadInboxListNote())+'</p>'+
+    '<div data-lead-inbox-rows style="display:grid;gap:8px;min-width:0">'+rows+'</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"><button type="button" class="ghost" id="leadInboxRefresh" style="flex:1 1 130px;min-height:44px">🔄 새로고침</button><button type="button" class="ghost" id="leadInboxLogout" style="flex:1 1 130px;min-height:44px">로그아웃</button></div>'+
+    '<div role="note" style="margin-top:10px;padding:9px 10px;border-radius:9px;background:#f0fdf4;color:#166534;font-size:12px;line-height:1.5">목록은 이 창에만 보이고 이 기기에 저장하지 않아요. [📥 열어서 등록]은 붙여넣기와 같은 미리보기를 열고, 등록하면 접수함에 \'승인\'으로 표시해요.</div>'+
+  '</section>';
+  openModal('📬 홈페이지 문의 접수함',body,[{label:'← 웹 업무 연결',cls:'ghost',fn:webWorkCenterOpen},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  window.__modalOnClose=leadInboxForgetList;   // 창을 닫으면 받은 목록(이름·전화)을 메모리에서도 버린다
+  const root=document.querySelector('#modalRoot [data-lead-inbox-list]');if(!root)return;
+  root.querySelectorAll('[data-lead-inbox-filter]').forEach(function(button){button.onclick=function(){if(__leadInbox.busy)return;__leadInbox.filter=button.dataset.leadInboxFilter;leadInboxForgetList();leadInboxListOpen();leadInboxRefresh();};});
+  root.querySelectorAll('[data-lead-inbox-open]').forEach(function(button){button.onclick=function(){leadInboxOpenLead(button.dataset.leadInboxOpen);};});
+  const refresh=root.querySelector('#leadInboxRefresh');if(refresh)refresh.onclick=function(){leadInboxRefresh();};
+  const logout=root.querySelector('#leadInboxLogout');
+  if(logout)logout.onclick=async function(){
+    if(__leadInbox.busy)return;__leadInbox.busy=true;logout.disabled=true;
+    try{await leadInboxLogout();}finally{__leadInbox.busy=false;}
+    toast('📬 접수함에서 로그아웃했어요');
+    if(document.querySelector('#modalRoot [data-lead-inbox-list]')===root)leadInboxLoginView('');
+  };
+}
+async function leadInboxRefresh(){
+  const root=document.querySelector('#modalRoot [data-lead-inbox-list]');
+  if(!root||__leadInbox.busy)return false;
+  const out=root.querySelector('#leadInboxListStatus'),controls=[...root.querySelectorAll('button')];
+  __leadInbox.busy=true;controls.forEach(function(button){button.disabled=true;});if(out)out.textContent='접수함을 불러오는 중…';
+  let error=null;
+  try{await leadInboxFetchList(__leadInbox.filter);}catch(e){error=e;}
+  finally{__leadInbox.busy=false;controls.forEach(function(button){if(button.isConnected)button.disabled=false;});}
+  const still=document.querySelector('#modalRoot [data-lead-inbox-list]')===root;
+  if(!still){leadInboxForgetList();return !error;}   // 그 사이 창을 닫았다 — 받은 목록도 버린다
+  if(!error){leadInboxListOpen();return true;}
+  if(error.code==='session-expired'){leadInboxLoginView(leadInboxMessage(error));return false;}
+  if(out)out.textContent=leadInboxMessage(error);
+  return false;
+}
+async function leadInboxOpenLead(leadId){
+  if(__leadInbox.busy||__webWorkRegistering)return false;
+  const lead=leadInboxFind(leadId),root=document.querySelector('#modalRoot [data-lead-inbox-list]'),out=document.getElementById('leadInboxListStatus');
+  if(!lead||!root){if(out)out.textContent='그 문의를 다시 찾지 못했어요. 새로고침해 주세요.';return false;}
+  let draft=null;
+  try{draft=await leadInboxDraft(lead);}
+  catch(e){
+    if(out&&out.isConnected)out.textContent=(lead.receiptNo?lead.receiptNo+' — ':'')+'본문을 읽지 못했어요: '+(e&&e.code==='web-work-invalid'?e.message:'형식을 확인할 수 없어요.')+' 홈페이지 접수함 화면에서 직접 확인해 주세요.';
+    return false;
+  }
+  if(document.querySelector('#modalRoot [data-lead-inbox-list]')!==root)return false;   // 그 사이 창이 바뀌었다
+  __webWorkDraft=draft;webWorkPreviewOpen(draft);return true;
+}
+// 미리보기(webWorkPreviewOpen) 안의 접수함 칸 — 지금 상태 · 메모 · 보류/거절/되돌리기 · (이미 등록됐는데 아직 승인 전이면) 승인 표시.
+function leadInboxPreviewHtml(draft,duplicate){
+  const via=draft.via,status=leadInboxStatusOf(via),next=LEAD_INBOX_NEXT[status]||[];
+  const resend=duplicate&&next.includes('승인'),others=next.filter(function(decision){return decision!=='승인';}),when=leadInboxWhen(via.receivedAt);
+  const say=!status?'접수함 상태를 알 수 없어요. 목록을 새로고침해 주세요.':
+    status==='거절'?'접수함에서 거절한 문의예요. 등록하려면 먼저 [↩ 보류로 되돌리기]를 누르세요.':
+    status==='승인'?(duplicate?'접수함에서도 승인된 문의예요.':'접수함에서는 이미 승인된 문의예요. 이 기기에는 없어서 등록할 수 있어요(접수함 표시는 그대로 둡니다).'):
+    duplicate?'이 기기에는 이미 등록된 문의인데 접수함은 아직 \''+status+'\'예요. [✅ 접수함에 승인 표시]로 맞추세요.':
+    '등록하면 저장이 끝난 뒤 접수함에도 \'승인\'으로 표시해요(메모: 아래 메모 · '+(draft.service==='as'?'현장웹 AS 접수: 고른 현장':'현장웹 현장 등록: 현장 이름')+'). 진행하지 않을 문의는 보류·거절로 남기세요.';
+  const label={'보류':status==='거절'?'↩ 보류로 되돌리기':'⏸ 보류','거절':'✖ 거절'};
+  return '<div data-lead-inbox-box data-lead-inbox-state="'+escapeAttr(status)+'" style="margin-top:10px;border:1px solid var(--line-soft);border-radius:10px;padding:10px;min-width:0">'+
+    '<p style="margin:0 0 6px;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere"><b>📬 홈페이지 문의 접수함</b> · '+escapeHtml(via.receiptNo||'접수번호 없음')+(when?' · '+escapeHtml(when)+' 접수':'')+' · 지금 <b data-lead-inbox-status>'+escapeHtml(status||'알 수 없음')+'</b></p>'+
+    '<p style="margin:0 0 8px;font-size:12.5px;line-height:1.5">'+escapeHtml(say)+'</p>'+
+    (resend||others.length?
+      '<label for="leadInboxMemo" style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">접수함에 남길 메모 (거절은 사유 필수)</label>'+
+      '<textarea id="leadInboxMemo" rows="2" maxlength="300" style="width:100%;max-width:100%;box-sizing:border-box;min-height:60px;font-size:16px">'+escapeHtml(__leadInbox.memo[via.leadId]||'')+'</textarea>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+
+        (resend?'<button type="button" class="moss" data-lead-inbox-decide="승인" style="flex:1 1 150px;min-height:44px">✅ 접수함에 승인 표시</button>':'')+
+        others.map(function(decision){return '<button type="button" class="ghost" data-lead-inbox-decide="'+decision+'" style="flex:1 1 110px;min-height:44px">'+label[decision]+'</button>';}).join('')+
+      '</div>':'')+
+    '<p id="leadInboxDecideStatus" role="status" aria-live="polite" style="min-height:16px;margin:6px 0 0;font-size:12px;color:var(--muted-2)"></p>'+
+  '</div>';
+}
+function leadInboxPreviewBind(draft){
+  const box=document.querySelector('#modalRoot [data-lead-inbox-box]');if(!box||!draft.via)return;
+  const memo=box.querySelector('#leadInboxMemo');
+  if(memo)memo.oninput=function(){__leadInbox.memo[draft.via.leadId]=String(memo.value||'').slice(0,300);};
+  box.querySelectorAll('[data-lead-inbox-decide]').forEach(function(button){button.onclick=function(){leadInboxDecideClick(draft,button.dataset.leadInboxDecide);};});
+  window.__modalOnClose=leadInboxForgetList;
+}
+async function leadInboxDecideClick(draft,decision){
+  const via=draft.via,box=document.querySelector('#modalRoot [data-lead-inbox-box]'),out=document.getElementById('leadInboxDecideStatus'),memoEl=document.getElementById('leadInboxMemo');
+  if(!box||!via||__leadInbox.busy||__webWorkRegistering)return false;
+  const memo=String(memoEl?memoEl.value:'').trim().slice(0,300);
+  if(decision==='거절'&&!memo){if(out)out.textContent='거절은 사유 메모가 꼭 필요해요.';try{if(memoEl)memoEl.focus();}catch(e){}return false;}
+  const known=decision==='승인'?leadInboxKnown(via.receiptNo):null;
+  const send=decision==='승인'?leadInboxApproveMemo(memo,known&&known.name,known&&known.as?'as':'site'):memo;
+  const controls=[...document.querySelectorAll('#modalRoot [data-lead-inbox-box] button,#modalRoot [data-lead-inbox-box] textarea,#modalRoot .mfoot button')];
+  __leadInbox.busy=true;controls.forEach(function(control){control.disabled=true;});if(out)out.textContent='접수함에 \''+decision+'\'(으)로 남기는 중…';
+  let error=null;
+  try{await leadInboxDecide(via,decision,send);}catch(e){error=e;}
+  finally{__leadInbox.busy=false;controls.forEach(function(control){if(control.isConnected)control.disabled=false;});}
+  const still=document.querySelector('#modalRoot [data-lead-inbox-box]')===box;
+  if(error){if(still&&out)out.textContent=leadInboxMessage(error);return false;}
+  __leadInbox.memo[via.leadId]='';toast('📬 접수함에 \''+decision+'\'(으)로 남겼어요');
+  if(!still)return true;
+  if(decision==='거절'){leadInboxForgetList();leadInboxView();return true;}   // 목록을 새로 받아 거절한 문의가 빠진 것을 보인다
+  if(__webWorkDraft===draft)webWorkPreviewOpen(draft);   // 새 상태로 다시 그린다(보류로 되돌리면 등록 버튼이 생긴다)
+  return true;
+}
+function leadInboxStateText(){return !leadInboxConfigured()?'미설정 — 접수함을 배포한 뒤 주소를 넣어 주세요':leadInboxLive()?'✅ 설정됨 · 로그인 중('+leadInboxTime(__leadInbox.session.expiresAt)+'까지)':'✅ 설정됨 · 로그인 전';}
+function leadInboxSettingsHtml(){
+  return '<div id="leadInboxSettings" data-lead-inbox-settings style="font-size:13px;line-height:1.7;border:1.5px solid var(--blueprint,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">'+
+    '<b style="font-size:14px">📬 홈페이지 문의 접수함</b>'+
+    '<p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">만물 홈페이지 문의 접수함 주소를 넣으면 📥 웹 업무 연결의 <b>[📬 접수함에서 가져오기]</b>로 문의를 메일 붙여넣기 없이 불러옵니다. 주소는 <b>이 기기에만</b> 저장되고 현장 자료·백업에는 들어가지 않아요. 관리 비밀번호는 어디에도 저장하지 않고, 로그인은 앱을 닫거나 새로고침하면 끝나요(다시 비밀번호로 로그인).</p>'+
+    '<label style="display:block;margin-bottom:6px">접수함 웹앱 주소 <input type="text" id="liUrl" value="'+escapeAttr(__leadInbox.url||'')+'" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0"><button type="button" class="clay tiny" id="liSave">💾 저장</button><button type="button" class="ghost tiny" id="liDrop">🗑 연결 지우기</button>'+
+    '<span id="liState" data-lead-inbox-state-text role="status" aria-live="polite" style="align-self:center;font-size:12px;color:var(--muted-2)">'+escapeHtml(leadInboxStateText())+'</span></div></div>';
+}
+function leadInboxSettingsMount(root){
+  const panel=root&&root.querySelector('#setPanel-etc');if(!panel||panel.querySelector('#leadInboxSettings'))return;
+  const anchor=panel.querySelector('#gdLegacy');
+  if(anchor)anchor.insertAdjacentHTML('beforebegin',leadInboxSettingsHtml());else panel.insertAdjacentHTML('beforeend',leadInboxSettingsHtml());
+  const input=panel.querySelector('#liUrl'),out=panel.querySelector('#liState'),save=panel.querySelector('#liSave'),drop=panel.querySelector('#liDrop');
+  if(save)save.onclick=async function(){
+    const raw=String(input&&input.value||'').trim();
+    if(!raw){if(out)out.textContent='주소를 넣어 주세요 — 빈 칸으로 저장하면 아무것도 바뀌지 않아요.';return;}
+    try{await leadInboxSaveUrl(raw);if(input)input.value=__leadInbox.url;if(out)out.textContent=leadInboxStateText();toast('📬 접수함 주소를 이 기기에 저장했어요');}
+    catch(e){if(out)out.textContent=leadInboxMessage(e);}
+  };
+  if(drop)drop.onclick=async function(){await leadInboxClearAll();if(input)input.value='';if(out)out.textContent=leadInboxStateText();toast('📬 접수함 연결을 이 기기에서 지웠어요');};
+}
+window.__hjLeadInboxBootDone=leadInboxBoot();
+/* ═══ /문의 접수함 당겨오기 ═══ */
 
 async function rememberDir(handle){try{await idbSet('lastDir',handle);}catch(e){}}
 async function tryRestoreDir(){
@@ -55821,6 +56949,8 @@ function hjBuildTagApply(){
   // that choice is known before scheduling legacy boot seeders, which otherwise
   // add defaults back into an intentionally empty/null paid snapshot.
   try{await Promise.resolve(window.__hjRestoreDone);}catch(e){}
+  // v613 보류 묶음 — 직원 작업실 서버(team-config.js)를 부팅 때 한 번 읽고, 연결값(중계·팀)이 다 읽힌 뒤 대시보드 단추 줄만 제자리에서 맞춘다
+  try{Promise.all([window.__hjRelayConfigDone,hjHoldTeamCheck()]).then(()=>{try{hjHoldDashRefresh();}catch(e){}},()=>{});}catch(e){}
   const suppressPaidStateSeeders=window.__hjRestoreSource==='paid-generation';
   const runConfiguredPaidAiOps=!suppressPaidStateSeeders||aiOpsExistingStateReady();
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}

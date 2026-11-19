@@ -4,6 +4,9 @@
       이미 쓰던 목록에는 빠진 것만 뒤에 붙고 고친 명령·내 명령은 그대로 (DEFAULTS)
    ② 화면: 더보기 '🧰 클로드 명령어'(찾기 '명령어') → 분류 순서 사진·견적·정산·저장·내 명령 · 분류 안 순서는 정해진 순서(옛 명령이 앞에 저장돼 있어도) ·
       준비물 줄 · 내 명령 표시 · 내가 쓴 이름·아이콘은 글자로만 (UI)
+      v613: 카톡봇 관리 프로그램 「클로드 명령」과 같은 일인 사진 명령 넷(cw_sitesort·cw_photoin·cw_chatphoto·cw_photoassign)은 분류에서 빠져 맨 아래 접힌
+      '옮긴 명령' 칸으로(지우지 않음 — 저장·기본값 그대로) · 맨 위 한 줄 '사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요' ·
+      찾기는 옮긴 명령만 걸리면 관리 프로그램을 알린다
    ③ 복사: 스킬 줄 + 명령 · {오늘} → 오늘 날짜(저장된 명령은 그대로) · '클로드에 붙여넣으세요' · 전체 보기의 준비물·복사 (COPY)
    ④ 찾기: 이름·준비물 · 여러 낱말은 모두 들어간 것 · 없으면 안내 · 지우면 다시 전부 (FILTER)
    ⑤ 스킬 명령문 카탈로그·도움말·AI 도구 이름 (CATALOG)
@@ -107,12 +110,18 @@ const withSeed = fn => '(() => { const SEED_OLD = ' + SEED_OLD.toString() + '; r
         prep: [...root.querySelectorAll('.cw-row')].filter(r => r.dataset.cwRow !== 'cw_mine1').every(r => /^준비: /.test(r.querySelector('.cw-prep').textContent)),
         mine: (root.querySelector('.cw-row[data-cw-row="cw_mine1"]') || {}).textContent || '', imgs: root.querySelectorAll('img').length, xss: window.__cwx === 1, how: (root.querySelector('#cwHow') || {}).textContent || '',
         btns: root.querySelectorAll('.cw-row .cwCopy').length,
+        moved: [...root.querySelectorAll('#cwMoved .cw-row')].map(r => r.dataset.cwRow), movedClosed: !!root.querySelector('#cwMoved') && !root.querySelector('#cwMoved').open,
+        movedTo: root.querySelectorAll('#cwMoved .cw-moved-to').length, bot: (root.querySelector('#cwKakaoBot') || {}).textContent || '',
+        botFirst: !!root.querySelector('#cwKakaoBot') && !!root.querySelector('#cwHow') && !!(root.querySelector('#cwKakaoBot').compareDocumentPosition(root.querySelector('#cwHow')) & Node.DOCUMENT_POSITION_FOLLOWING),
       };
     });
     assert(/🧰 클로드 명령어 모음/.test(ui.title), 'UI title ' + ui.title);
     assert.deepEqual(ui.cats, ['photo', 'money', 'tax', 'app', 'mine'], 'UI category order');
-    assert.deepEqual(ui.counts, [6, 4, 3, 4, 1], 'UI rows per category ' + JSON.stringify(ui.counts));
-    assert.deepEqual(ui.photo, ['cw_sitesort', 'cw_photoin', 'cw_chatphoto', 'cw_photoassign', 'cw_dupe', 'cw_photo'], 'UI fixed order inside a category even though cw_photo is saved first');
+    assert.deepEqual(ui.counts, [2, 4, 3, 4, 1], 'UI rows per category ' + JSON.stringify(ui.counts));
+    assert.deepEqual(ui.photo, ['cw_dupe', 'cw_photo'], 'UI fixed order inside a category even though cw_photo is saved first');
+    // v613 옮긴 명령 — 정해진 차례 · 접힘 · 맨 위 안내 줄 · 관리 프로그램 카드 이름
+    assert.deepEqual(ui.moved, ['cw_sitesort', 'cw_photoin', 'cw_chatphoto', 'cw_photoassign'], 'UI moved commands ' + JSON.stringify(ui.moved));
+    assert(ui.movedClosed && ui.movedTo === 4 && /사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요/.test(ui.bot) && ui.botFirst, 'UI kakaobot line ' + JSON.stringify({ bot: ui.bot, closed: ui.movedClosed, first: ui.botFirst }));
     assert.deepEqual(ui.money, ['cw_stmt', 'cw_salescheck', 'cw_pay', 'cw_unbilled']);
     assert(ui.prep && ui.btns === 18 && /내 명령/.test(ui.mine) && /통장 정리 <img src=x/.test(ui.mine) && ui.imgs === 0 && !ui.xss, 'UI prep lines, my command badge, text only ' + JSON.stringify(ui));
     assert(/클로드 대화창/.test(ui.how) && /로그인은 직접/.test(ui.how) && !/Cowork/.test(ui.how), 'UI how-to ' + ui.how);
@@ -146,15 +155,19 @@ const withSeed = fn => '(() => { const SEED_OLD = ' + SEED_OLD.toString() + '; r
     const look = q => page.evaluate(q => {
       const root = document.getElementById('modalRoot'), fi = root.querySelector('#cwFilter');
       fi.value = q; fi.dispatchEvent(new Event('input', { bubbles: true }));
-      const vis = el => !!el && el.getClientRects().length > 0;
-      return { rows: [...root.querySelectorAll('.cw-row')].filter(vis).map(r => r.dataset.cwRow), cats: [...root.querySelectorAll('.cw-cat')].filter(vis).map(c => c.dataset.cwCat), none: vis(root.querySelector('#cwNone')) };
+      // v613 접힌 <details>(옮긴 명령) 안은 요즘 크로미움에서 content-visibility:hidden 이라 getClientRects 가 상자를 준다 — checkVisibility 로 본다
+      const vis = el => !!el && (el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0);
+      return { rows: [...root.querySelectorAll('.cw-row')].filter(vis).map(r => r.dataset.cwRow), cats: [...root.querySelectorAll('.cw-cat')].filter(vis).map(c => c.dataset.cwCat), none: vis(root.querySelector('#cwNone')), noneText: root.querySelector('#cwNone').textContent };
     }, q);
-    assert.deepEqual(await look('입금'), { rows: ['cw_pay'], cats: ['money'], none: false }, 'FILTER 입금');
-    assert.deepEqual((await look('사진')).rows, ['cw_sitesort', 'cw_photoin', 'cw_chatphoto', 'cw_photoassign', 'cw_dupe', 'cw_photo'], 'FILTER 사진');
-    assert.deepEqual((await look('카톡  사진')).rows, ['cw_photoin', 'cw_chatphoto'], 'FILTER every word');
-    assert.deepEqual(await look('저장'), { rows: ['cw_save'], cats: ['app'], none: false }, 'FILTER 저장');
-    assert.deepEqual(await look('없는말zzz'), { rows: [], cats: [], none: true }, 'FILTER nothing → hint');
-    assert.equal((await look('')).rows.length, 18, 'FILTER cleared → all');
+    const pick = r => ({ rows: r.rows, cats: r.cats, none: r.none });
+    assert.deepEqual(pick(await look('입금')), { rows: ['cw_pay'], cats: ['money'], none: false }, 'FILTER 입금');
+    assert.deepEqual((await look('사진')).rows, ['cw_dupe', 'cw_photo'], 'FILTER 사진 (v613 옮긴 명령은 접힌 칸 안)');
+    const kakao = await look('카톡  사진');   // every word — 둘 다 옮긴 명령(cw_photoin·cw_chatphoto)이라 관리 프로그램을 알린다
+    assert(kakao.rows.length === 0 && kakao.none && /카톡봇 관리 프로그램 「클로드 명령」/.test(kakao.noneText) && /옮긴 명령 2개/.test(kakao.noneText), 'FILTER every word → moved hint ' + JSON.stringify(kakao));
+    assert.deepEqual(pick(await look('저장')), { rows: ['cw_save'], cats: ['app'], none: false }, 'FILTER 저장');
+    const nothing = await look('없는말zzz');
+    assert(nothing.rows.length === 0 && nothing.cats.length === 0 && nothing.none && /다른 말로 찾아보세요/.test(nothing.noneText), 'FILTER nothing → hint ' + JSON.stringify(nothing));
+    assert.equal((await look('')).rows.length, 14, 'FILTER cleared → all shown (18 − 옮긴 4)');
     await page.evaluate(() => closeModal());
   });
 
