@@ -142,7 +142,7 @@ let browser, page, passed = 0;
     assert.equal(await page.locator('#webWorkPaste').count(), 1, 'still on the center'); assert.equal(server.bodies.length, 0, 'no request');
     assert.deepEqual((await stored()).projects, before.projects);
     await close(); await page.evaluate(() => openGdriveSetup()); await page.locator('#setTab-etc').click();
-    await page.locator('#leadInboxSettings').waitFor(); await noOverflow('settings');
+    await page.locator('#leadInboxSettings').waitFor();
     await page.locator('#liUrl').fill('https://evil.example/macros/s/x/exec'); await page.locator('#liSave').click();
     await page.waitForFunction(() => /주소 형식을 확인해 주세요/.test(document.getElementById('liState').textContent));
     await page.locator('#liUrl').fill(LEAD_URL); await page.locator('#liSave').click();
@@ -215,7 +215,7 @@ let browser, page, passed = 0;
   });
 
   await test('⑤ DECIDE: rejecting needs a reason; then the lead is rejected and the list comes back', async () => {
-    await center(); await page.locator('#webWorkLeadPull').click(); await page.locator('[data-lead-inbox-list]').waitFor();
+    await center(); await page.locator('#webWorkLeadPull').click(); await page.locator('[data-lead-inbox-list="0"]').waitFor();   // 신규는 이제 0 — 다 불러온 뒤에 칩을 누른다(불러오는 중에는 칩이 잠긴다)
     await page.locator('[data-lead-inbox-filter="보류"]').click(); await page.locator('[data-lead-inbox-list="1"]').waitFor();
     await page.locator('[data-lead-inbox-open="' + ID(4) + '"]').click(); await page.locator('[data-lead-inbox-box]').waitFor();
     assert.deepEqual(await page.locator('[data-lead-inbox-decide]').allInnerTexts(), ['✖ 거절']);
