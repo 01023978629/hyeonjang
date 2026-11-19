@@ -1,5 +1,7 @@
 /* v431 공개 누수 접수 페이지(leak.html) + 앱 붙여넣기 파서 — 합성 레코드만. 외부 쓰기·업로드 0.
-   HJ_V431_BASELINE=<commit> 은 LEAKWEB_API_PRESENT 에서, HJ_V431_MUTATION=keymap(파서 키 매핑 제거) 은 LEAKWEB_PARSE_FIELDS 에서 실패해야 한다. */
+   HJ_V431_BASELINE=<commit> 은 LEAKWEB_API_PRESENT 에서, HJ_V431_MUTATION=keymap(파서 키 매핑 제거) 은 LEAKWEB_PARSE_FIELDS 에서 실패해야 한다.
+   v612 손님용 누수 접수는 만물웹 leak.html 하나 — 현장 앱 leak.html 은 '홈페이지로 옮겼어요' 안내(noindex)만, 광고 탭 링크·소개글은 만물웹 주소와 그 폼에 맞춘다.
+   옛 형식 '[누수접수]' 문자 파서·붙여넣기·공유 받기는 그대로(옛 링크로 문자가 아직 올 수 있다) — 아래 파서·붙여넣기 검사는 예전 그대로다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -37,38 +39,25 @@ let browser, passed = 0, page;
     await p.screenshot({ path: path.join(process.env.HJ_V431_SHOTS, name + '.png'), fullPage: false, animations: 'disabled' });
   }
 
-  // ── 공개 페이지 ─────────────────────────────────────────────
+  // ── 공개 페이지 (v612: 만물웹 leak.html 로 옮겼다는 안내만 — 체크리스트·문자 만들기 화면은 떼었다) ─────────────
   const pub = await context.newPage(); pub.setDefaultTimeout(15000); pub.on('pageerror', e => errors.push('leak.html: ' + e));
-  await pub.addInitScript(() => { window.__leakCopied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async t => { __leakCopied.push(t); } } }); });
   await pub.goto(PAGE, { waitUntil: 'load' });
-  await pub.waitForFunction(() => window.LeakIntake && document.querySelectorAll('.chip').length > 0);
-  await test('public page: six checklists share v419 values, required check, sms body, no price, no upload', async () => {
-    const choices = await pub.evaluate(() => LeakIntake.CHOICES);
+  await test('public page (v612): moved notice → manmool leak.html, noindex, no scripts or forms, no price, 44px, no overflow', async () => {
+    const r = await pub.evaluate(() => ({
+      robots: (document.querySelector('meta[name=robots]') || {}).content || '', go: (document.querySelector('#leakGo[data-leak-moved]') || {}).href || '',
+      scripts: document.scripts.length, sheets: document.querySelectorAll('link[rel~=stylesheet]').length, forms: document.forms.length, inputs: document.querySelectorAll('input,textarea,select').length,
+      intake: typeof window.LeakIntake, sms: document.querySelectorAll('a[href^="sms:"]').length, text: document.body.innerText }));
+    assert.equal(r.robots, 'noindex,nofollow', 'moved page is not indexed');
+    assert.equal(r.go, 'https://01023978629.github.io/manmool/leak.html', 'big button goes to the manmool leak page');
+    assert.match(r.text, /누수 접수는 만물인테리어 홈페이지로 옮겼어요/);
+    assert.equal(r.scripts, 0, 'no script'); assert.equal(r.sheets, 0, 'no stylesheet file (leak.css is no longer staged)'); assert.equal(r.forms, 0); assert.equal(r.inputs, 0, 'nothing to type or upload');
+    assert.equal(r.intake, 'undefined', 'old intake script (leak.js) is detached'); assert.equal(r.sms, 0, 'no sms intake any more');
+    assert(!/\d[\d,]*\s*원|만\s*원|최저가|무조건|100%|업계\s*1위|무료/.test(r.text), 'no price or exaggeration on the public page');
+    assert.match(r.text, /010-2397-8629/, 'phone stays as a fallback');
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-    const m = html.match(/const HJ_LEAK_INTAKE_CHOICES=Object\.freeze\(\{([\s\S]*?)\n\}\);/); assert(m, 'app intake choices found');
-    const appChoices = {}; for (const [, key, list] of m[1].matchAll(/(\w+):Object\.freeze\(\[([^\]]*)\]\)/g)) appChoices[key] = [...list.matchAll(/'([^']*)'/g)].map(x => x[1]);
-    assert.deepEqual(choices, appChoices, 'leak.js choices must equal index.html HJ_LEAK_INTAKE_CHOICES');
-    assert.equal(await pub.locator('fieldset[data-key]').count(), 7); assert.equal(await pub.locator('#whereChips .chip').count(), 8); assert.equal(await pub.locator('#timeChips .chip').count(), 4);
-    const text = await pub.evaluate(() => document.body.innerText);
-    assert(!/\d[\d,]*\s*원|만\s*원|최저가|무조건|100%|업계\s*1위|무료/.test(text), 'no price or exaggeration on the public page');
-    assert.match(text, /010-2397-8629/); assert.equal(await pub.locator('input[type=file]').count(), 0, 'no upload input');
-    assert.equal(await pub.evaluate(() => /fetch\(|XMLHttpRequest|sendBeacon|localStorage|indexedDB/.test(Array.from(document.scripts).map(s => s.src).join(' ')) ? false : true), true);
-    const js = fs.readFileSync(path.join(ROOT, 'leak.js'), 'utf8'); assert(!/fetch\(|XMLHttpRequest|sendBeacon|localStorage|indexedDB|FormData/.test(js), 'leak.js never uploads or stores');
-    assert.equal(await pub.locator('#kakaoLink').isHidden(), true, 'no fake kakao link while the channel url is empty');
-    assert.equal(await pub.evaluate(() => LeakIntake.validate()), false); assert.match(await pub.locator('#formError').innerText(), /어디서 새는지/);
-    await pub.locator('#whereChips .chip', { hasText: '욕실' }).click(); await pub.locator('#whereChips .chip', { hasText: '천장' }).click();
-    await pub.locator('#sinceChips .chip', { hasText: '2~3일' }).click(); await pub.locator('#amountChips .chip', { hasText: '똑똑 떨어짐' }).click();
-    await pub.locator('#neighborChips .chip', { hasText: '아랫집에서 연락 옴' }).click(); await pub.locator('#officeChips .chip', { hasText: '했음' }).click(); await pub.locator('#insuranceChips .chip', { hasText: '모름' }).click();
-    await pub.locator('#dong').fill('유천동'); await pub.locator('#timeChips .chip', { hasText: '오전' }).click(); await pub.locator('#name').fill('김');
-    assert.equal(await pub.evaluate(() => LeakIntake.validate()), true);
-    const href = await pub.locator('#smsLink').getAttribute('href');
-    assert(href.startsWith('sms:01023978629?body='), href);
-    const body = decodeURIComponent(href.slice('sms:01023978629?body='.length));
-    assert.equal(body, SAMPLE); assert.equal(body.split('\n')[0], SAMPLE.split('\n')[0]);
-    assert.equal(await pub.evaluate(() => LeakIntake.buildLine(LeakIntake.state)), SAMPLE.split('\n')[0]);
-    await pub.locator('#send details summary').click(); await pub.locator('#copyText').click(); await pub.waitForFunction(() => __leakCopied.length === 1);
-    assert.equal(await pub.evaluate(() => __leakCopied[0]), SAMPLE);
-    await tapOk(pub, '.chip, #smsLink, #copyText, #callTop');
+    assert(html.includes("const HJ_LEAK_WEB_URL='" + r.go + "'"), 'the ads link and the moved page point to the same manmool url');
+    for (const kept of ['leak.js', 'leak.css']) assert(fs.existsSync(path.join(ROOT, kept)), kept + ' stays in the repo (detached, not deleted)');
+    await tapOk(pub, 'a');
     assert(await pub.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'no horizontal overflow at 390px');
     await shot(pub, '01-leak-page');
   });
@@ -187,16 +176,27 @@ let browser, passed = 0, page;
   await test('ads link card, shell list unchanged, stage-pages registered, menu contract, no errors', async () => {
     await seed(); const before = await snapshot();
     await page.evaluate(() => { state.tab = 'ads'; render(); }); await page.locator('[data-leakweb]').waitFor();
-    assert.match(await page.locator('[data-leakweb]').innerText(), /leak\.html/); await tapOk(page, '[data-leakwebcopy]');
+    const card = await page.locator('[data-leakweb]').innerText();
+    assert.match(card, /manmool\/leak\.html/, 'v612 the card shows the manmool leak page'); assert.doesNotMatch(card, /hyeonjang\/leak\.html/); await tapOk(page, '[data-leakwebcopy]');
+    assert.match(await page.locator('[data-leakweb-route]').innerText(), /웹 업무 연결/, 'v612 the card says where that form arrives (mail → 📥 웹 업무 연결)');
+    assert.equal(await page.locator('[data-leakweb] a.hjAdLink').getAttribute('href'), 'https://01023978629.github.io/manmool/leak.html');
     await page.locator('[data-leakwebcopy="intro"]').click(); await page.waitForFunction(() => __v431Calls.copied.length === 1);
     const intro = await page.evaluate(() => __v431Calls.copied[0]);
-    assert(!/010[-\s.]?\d{3,4}[-\s.]?\d{4}/.test(intro.replace(/https?:\/\/\S+/g, '')), 'intro text carries no phone number'); assert.match(intro, /leak\.html$/); assert(!/\d\s*원|최저가/.test(intro));
+    assert(!/010[-\s.]?\d{3,4}[-\s.]?\d{4}/.test(intro.replace(/https?:\/\/\S+/g, '')), 'intro text carries no phone number'); assert.match(intro, /\nhttps:\/\/01023978629\.github\.io\/manmool\/leak\.html$/); assert(!/\d\s*원|최저가/.test(intro));
+    // v612 소개글은 만물웹 폼이 받는 그대로 — 연락처·증상, 사진은 회신 때 문자로. 옛 현장 앱 페이지 안내(증상 여섯 가지·사진 두 장 문자로)와 동·호수·협력사 이름은 없다.
+    assert.match(intro, /연락처/); assert.match(intro, /증상/); assert.match(intro, /사진은 회신드릴 때 문자로/);
+    assert.doesNotMatch(intro, /여섯 가지|사진 두 장|두 장만|문자로 보내 주세요|체크하고/, 'no old hyeonjang leak page wording');
+    assert.doesNotMatch(intro.replace(/https?:\/\/\S+/g, ''), /\d[\d,]*\s*원|만\s*원|\d+\s*동\s*\d+\s*호|\d+\s*호|협력/, 'no unit numbers, amounts or partner names');
     await page.locator('[data-leakwebcopy="url"]').click(); await page.waitForFunction(() => __v431Calls.copied.length === 2);
-    assert.equal(await page.evaluate(() => __v431Calls.copied[1]), 'https://01023978629.github.io/hyeonjang/leak.html');
+    assert.equal(await page.evaluate(() => __v431Calls.copied[1]), 'https://01023978629.github.io/manmool/leak.html');
+    assert.equal(await page.evaluate(() => HJ_LEAK_WEB_URL), 'https://01023978629.github.io/manmool/leak.html');
     sameSnapshot(await snapshot(), before);
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), shell = sw.match(/const SHELL_PATHS=new Set\(\[([\s\S]*?)\]\);/)[1];
     assert(!/leak\./.test(shell), 'leak page is not an app shell asset'); assert.equal((shell.match(/SCOPE_PATH/g) || []).length, 13, 'shell list unchanged');
-    const stage = fs.readFileSync(path.join(ROOT, 'scripts', 'stage-pages.mjs'), 'utf8'); for (const f of ['leak.html', 'leak.css', 'leak.js']) assert(stage.includes("'" + f + "'"), f + ' staged to Pages');
+    // v612 Pages 에는 안내 페이지 leak.html 만 — 옛 접수 화면 leak.css·leak.js 는 저장소에만 남는다
+    const stage = fs.readFileSync(path.join(ROOT, 'scripts', 'stage-pages.mjs'), 'utf8'), publicList = (stage.match(/const publicFiles = \[([\s\S]*?)\];/) || [])[1] || '';
+    assert(publicList.includes("'leak.html'"), 'leak.html (moved notice) staged to Pages');
+    for (const f of ['leak.css', 'leak.js']) { assert(!publicList.includes("'" + f + "'"), f + ' is no longer staged'); assert(fs.existsSync(path.join(ROOT, f)), f + ' kept in the repo'); }
     assert.equal(await page.evaluate(() => MORE_CATS.reduce((sum, category) => sum + category.items.length, 0)), 126);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     assert.deepEqual(errors, []); assert.equal(network.writes, 0); assert.deepEqual(await page.evaluate(() => __v431Calls.external), []);
