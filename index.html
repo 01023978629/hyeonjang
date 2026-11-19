@@ -10031,6 +10031,7 @@ function openProjectSheet(openerOverride){
   const __cntSheet={};state.files.forEach(f=>{if(f&&f.project)__cntSheet[f.project]=(__cntSheet[f.project]||0)+1;});
   const __dupeSheet=aptDupeNames();   // row() 안에서 부르면 현장마다 projects 를 다시 훑는다
   const __todaySheet=hjTodaySiteNames();   // v585 📅 오늘 일정 현장 — 목록 맨 위 줄(아래 목록 순서는 그대로)
+  const __tidySheet=hjStageTidyBtnN();   // 🧹 받을 돈을 다 받은 '상담' 현장이 있을 때만 단계 정리 단추
   const row=(p,dim)=>{const n=__cntSheet[p.name]||0,selected=state.activeProject===p.name;
     const stage=hjStageLabel(p,p.stage),badge=aptUnitBadge(p,__dupeSheet);
     return `<button type="button" class="ps-row" data-psel="${escapeAttr(p.name)}" aria-pressed="${selected?'true':'false'}">
@@ -10039,7 +10040,7 @@ function openProjectSheet(openerOverride){
       ${selected?'<span class="ps-current-tag">✓ 현재 현장</span>':''}</span><span class="ps-chevron" aria-hidden="true">›</span></button>`;};
   sh.innerHTML=`<div class="ps-heading"><h4 id="projSheetTitle">현장 선택</h4><button type="button" class="ghost" id="projSheetClose" aria-label="현장 선택 닫기">✕</button></div>
     ${state.projects.length>0?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="search" id="psSearch" aria-label="현장 이름 검색" aria-describedby="psSearchHint" placeholder="🔍 보관 현장도 함께 검색" autocomplete="off" style="flex:1;min-width:0;width:100%;min-height:44px;padding:11px;font-size:15px"><button type="button" id="psSearchClear" class="ghost" hidden style="width:auto;min-width:44px;min-height:44px;white-space:nowrap">검색 지우기</button></div><p id="psSearchHint" class="hint" style="margin:0 0 6px">띄어쓰기와 관계없이 진행·보관 현장을 함께 찾습니다.</p><div id="psResultStatus" role="status" aria-live="polite" aria-atomic="true" style="font-size:13px;color:var(--muted);margin-bottom:6px"></div>`:''}
-    <button type="button" id="psLeakFilter" class="ghost" aria-pressed="${__hjLeakFilter}" style="min-height:44px;margin:0 0 8px">💧 누수</button>${hjTodaySiteStripHtml('psToday','data-ps-today',__todaySheet,state.activeProject)}<div id="psList"></div>`;
+    <button type="button" id="psLeakFilter" class="ghost" aria-pressed="${__hjLeakFilter}" style="min-height:44px;margin:0 0 8px">💧 누수</button>${__tidySheet?'<button type="button" id="psStageTidy" class="ghost" data-stage-tidy-n="'+__tidySheet+'" style="min-height:44px;margin:0 0 8px 6px">🧹 단계 정리 '+__tidySheet+'곳</button>':''}${hjTodaySiteStripHtml('psToday','data-ps-today',__todaySheet,state.activeProject)}<div id="psList"></div>`;
   const list=sh.querySelector('#psList');
   const normalize=q=>String(q||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');
   const drawList=()=>{
@@ -10058,6 +10059,7 @@ function openProjectSheet(openerOverride){
       ${q&&!active.length&&!archived.length?'<div id="psSearchEmpty" style="padding:16px 8px;font-size:14px;color:var(--muted)">일치하는 현장이 없습니다. 이름 일부로 다시 검색하거나 ‘검색 지우기’를 눌러 주세요.</div>':''}`;
   };
   sh.querySelector('#psLeakFilter').onclick=()=>{__hjLeakFilter=!__hjLeakFilter;drawList();};
+  {const st=sh.querySelector('#psStageTidy');if(st)st.onclick=()=>{close(false);hjStageTidyView();};}   // 시트를 닫고 같은 차례에 창을 연다(히스토리 항목을 이어받는다)
   drawList();
   document.body.appendChild(bd);document.body.appendChild(sh);
   const close=mobileSheetA11y(sh,bd,{opener,labelledBy:'projSheetTitle',initialFocus:'#psSearch, #projSheetClose'});
@@ -10236,6 +10238,7 @@ function render(){
   all.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();all.click();}};
   pl.appendChild(all);
   const leakFilter=document.createElement('button');leakFilter.type='button';leakFilter.id='sideLeakFilter';leakFilter.className=__hjLeakFilter?'blue':'ghost';leakFilter.textContent='💧 누수';leakFilter.style.minHeight='44px';leakFilter.setAttribute('aria-pressed',String(__hjLeakFilter));leakFilter.onclick=()=>{__hjLeakFilter=!__hjLeakFilter;render();};pl.appendChild(leakFilter);
+  try{hjStageTidySideBtn(pl);}catch(e){}   // 🧹 받을 돈을 다 받은 '상담' 현장이 있으면 '단계 정리 n곳' — 세기는 그리기 뒤로 미룬다(부팅 중 정의 전이면 건너뜀)
   const __actP=state.projects.filter(p=>!p.archived&&(!__hjLeakFilter||hjProjectKind(p)==='leak')), __arcP=state.projects.filter(p=>p.archived&&(!__hjLeakFilter||hjProjectKind(p)==='leak'));
   const __photoSide=projectPhotoCounts(state.files);
   const __cntSide={};state.files.forEach(f=>{if(f&&f.project)__cntSide[f.project]=(__cntSide[f.project]||0)+1;}); // 현장마다 files 를 다시 훑지 않는다(v257)
@@ -28223,6 +28226,7 @@ async function staleProjects(){
   //   빈 현장(사진·견적·일정·수금 등 연결 기록 0건)과 60일 넘게 조용한 현장을 한 번에 '보관'한다. 보관은 지우지 않는다.
   const emptyRows=rows.filter(r=>r.empty),oldRows=rows.filter(r=>!r.empty&&r.days!==null&&r.days>=60);
   const pickN=rows.filter(r=>!r.empty).length,recN=rows.filter(r=>r.pick).length;
+  const tidyN=hjStageTidyBtnN();   // 🧹 받을 돈을 다 받은 '상담' 현장 — 돈·작업 기록으로 단계를 한 번에(준공일 = 근거 날짜)
   const bulk=(emptyRows.length||oldRows.length||pickN)?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">'+
     (emptyRows.length?'<button class="moss tiny" id="stpArcEmpty" style="padding:9px 12px">📦 기록 없는 빈 현장 '+emptyRows.length+'곳 보관</button>':'')+
     (oldRows.length?'<button class="ghost tiny" id="stpArcOld" style="padding:9px 12px">📦 60일 넘게 조용한 '+oldRows.length+'곳 보관</button>':'')+
@@ -28233,6 +28237,7 @@ async function staleProjects(){
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">잊고 있진 않으세요?</div><div style="font-size:17px;font-weight:800">💤 방치 현장 '+rows.length+'곳</div><div style="font-size:12px;opacity:.95;margin-top:2px">2주 넘게 조용한 진행 현장이에요</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">진행 중인데 오래 활동이 없어요. 멈춘 건지, 잊은 건지 확인해 보세요. 끝난 현장은 완료로, 당분간 볼 일 없는 현장은 보관하면 대시보드가 가벼워져요.</div>'+
+    (tidyN?'<div data-stp-tidy style="margin:0 0 10px"><button type="button" class="moss tiny" id="stpStageTidy" style="min-height:44px;padding:9px 12px" title="받을 돈을 다 받은 ‘상담’ 현장을 근거 날짜로 완료 — 체크한 것만">🧹 돈·작업 기록으로 단계 정리 '+tidyN+'곳</button></div>':'')+
     bulk+items+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 사진을 찍거나 일정을 잡으면 활동으로 기록돼요. 완료된 현장은 완료 처리하면 목록에서 빠집니다.</div>';
   openModal('💤 방치 현장',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -28266,6 +28271,7 @@ async function staleProjects(){
     }finally{doneBusy=false;}
   };
   const ao=document.getElementById('stpArcOld');if(ao)ao.onclick=()=>arcMany(oldRows.map(r=>r.name),'60일 넘게 조용한 현장');
+  const stt=document.getElementById('stpStageTidy');if(stt)stt.onclick=()=>hjStageTidyView({back:staleProjects});
   document.querySelectorAll('#modalRoot .stpQf').forEach(b=>b.onclick=()=>quoteFollowup());   // v392 30일 넘은 견적은 팔로업 창의 '🗂 30일 지난 견적'에서 종결
   document.querySelectorAll('.stpArc').forEach(b=>b.onclick=()=>{const p=state.projects.find(x=>x.name===b.dataset.n);if(!p)return;p.archived=true;markDirty();render();toast('📦 '+p.name+' 보관 — 왼쪽 목록 [보관]에서 되돌릴 수 있어요');staleProjects();});
   // v380 방치 현장 '✅ 완료로' — 예전에는 누른 날(오늘)이 준공일이 되어, 한 달 전에 끝난 현장의 보증·AS 기간이 오늘부터 셌다.
@@ -28280,6 +28286,254 @@ async function staleProjects(){
     toast('📩 안부 문자를 준비했어요');
   });
   return {방치:rows.length};
+}
+
+/* ═══════════ 🧹 현장 단계 한 번에 정리 (분석 AD WA6) ═══════════
+   11/18 실자료: 현장 82곳 중 77곳이 단계 0(상담)이라 🛡 파수꾼의 '멈춘 현장'·보증 만료·진행률이 뜻이 없었다. 수금 32건이 모두 내역서 입금이고
+   견적 32건이 모두 수주(작업내역서)라, 받을 돈을 다 받은 현장은 근거가 이미 있다.
+   ★ 파수꾼(hjWatchScan)·보증(hjWarranty)·방치 현장은 stage 가 아니라 doneAt(준공일)을 본다. setStage 로 '완료'를 누르면 doneAt 이 오늘이 되어
+     보증 기산일이 오늘로 밀리므로, 이 창은 setStage 를 쓰지 않고 근거 날짜를 준공일로 바로 적는다(v381 방치 현장 '한꺼번에 완료'와 같은 꼴).
+   · 대상: 보관 안 한 단계 0 현장(이름이 하나뿐인 것). 보관한 현장·이미 단계가 있는 현장은 건드리지 않는다.
+   · 근거(hjStageTidyPlan — 읽기만): 돈 = projStats 의 청구(bill)+확인받은 추가공사(extra)·받은 돈(recv)·due — 청구서·입금 화면과 같은 한 곳.
+     마지막 입금일 = payLog(금액>0·오늘까지). 마지막 작업일 = 작업내역서 줄의 작업 날짜(줄에 날짜가 없으면 내역서 날짜) · 그 현장 일정(💰 수금·세금 자동·루틴·
+     상담·실측·견적 제목은 빼고, 여러 날 공정은 끝나는 날) · 작업 공정 사진(hjPhotoWorkPhases — v611 ZIP 으로 보관한 날의 작업명 포함) 가운데 가장 늦은 날(오늘까지).
+     앞으로 일정 = 같은 거름으로 오늘 뒤에 걸친 일정. 이미 적힌 준공일(doneAt·완료에서 내릴 때 남긴 doneAtPrev)이 있으면 그 날을 먼저 쓴다(setStage·v380 과 같은 차례).
+   · 규칙(hjStageTidyRule — 순수): 받을 돈을 다 받음(청구>0·받은 돈>0·due 0) → '완료' 체크, 준공일 = 마지막 입금일(없으면 마지막 작업일, 둘 다 없으면 제안 안 함).
+     앞으로 일정이 있거나 마지막 입금 뒤에도 작업 기록이 있으면 체크를 끈다. 근거가 약한 것(일부만 입금·입금 기록 없음·금액 없이 입금만·돈 기록 없이 작업만)은
+     작업한 날이 있을 때만 체크를 끈 채 '완료'(준공일 = 마지막 작업일) — 앞으로 일정이 있으면 '시공'. 그 밖에는 빼고 이름과 까닭만 알린다.
+     남은 돈 금액은 보이지 않는다 — 2026-08-13 대표 결정(receivable-removed.check).
+   · 반영(hjStageTidyApply): 직원 모드·오래된 창 거부 → 날짜 칸 확인(빈칸·오늘 뒤면 안전판 전에 멈춤) → 안전판 '현장 단계 정리 전' 1회(실패면 무변경) →
+     줄마다 다시 본다(그 사이 지워졌거나 보관·단계·준공일이 바뀐 현장은 그대로) → stage·doneAt 만 바꾸고 markDirty(폴더·서버 저장과 리비전 충돌 처리 그대로).
+     결과 창 [↩ 되돌리기](hjStageTidyUndo) = 이번에 바꾼 현장 가운데 그 뒤로 안 바뀐 것만 원래 단계·준공일로(안전판 한 번 더). 🛡 안전판에서도 되돌릴 수 있다.
+   · 입구: 왼쪽 현장 목록(PC) #sideStageTidy · 폰 현장 선택 시트 #psStageTidy — 체크해 둘 제안이 있을 때만 '🧹 단계 정리 n곳' · 💤 방치 현장 창 #stpStageTidy. */
+const HJ_STAGE_TIDY_DONE=STAGES.length-1;
+const HJ_STAGE_TIDY_PRE_RE=/상담|실측|견적/;   // 계약 전 방문 일정 — 작업한 날로 세지 않는다
+const HJ_STAGE_TIDY_KINDS=['paid','partial','unpaid','payonly','work'];
+// f = {owed, recv, due, payN, lastPay, lastWork, workSrc, prev, next} → {kind, to(null = 제안 안 함), doneAt, src, on, why}. 화면·자료를 건드리지 않는다.
+function hjStageTidyRule(f){
+  const x=f||{},join=a=>a.filter(Boolean).join(' · '),day=v=>HJ_YMD_RE.test(String(v||''))?String(v):'';
+  const owed=Math.round(Number(x.owed)||0),recv=Math.round(Number(x.recv)||0),due=Math.round(Number(x.due)||0),payN=Math.max(0,Math.round(Number(x.payN)||0));
+  const lastPay=day(x.lastPay),lastWork=day(x.lastWork),prev=day(x.prev),next=day(x.next);
+  const workTxt=lastWork?'마지막 작업 '+hjMdDow(lastWork)+(x.workSrc?'('+x.workSrc+')':''):'';
+  const prevTxt=prev?'완료일 = 예전에 적은 준공일':'';
+  const paid=owed>0&&recv>0&&due<=0;
+  const kind=paid?'paid':owed>0&&recv>0?'partial':owed>0?'unpaid':recv>0?'payonly':(lastWork||prev)?'work':'none';
+  if(kind==='none')return {kind,to:null,why:'돈·작업 기록이 없어요'};
+  if(paid){
+    const at=prev||lastPay||lastWork,src=prev?'prev':lastPay?'pay':lastWork?'work':'';
+    if(!at)return {kind,to:null,why:'받을 돈은 다 받았는데 입금일·작업일 기록이 없어요'};
+    const after=src==='pay'&&lastWork>lastPay;   // 마지막 입금 뒤에도 작업 — 이어지는 공사일 수 있다
+    return {kind,to:HJ_STAGE_TIDY_DONE,doneAt:at,src,on:!next&&!after,why:join([
+      '받을 돈을 다 받았어요'+(payN?'(입금 '+payN+'건)':''),
+      prevTxt||(src==='pay'?'완료일 = 마지막 입금일':'완료일 = 마지막 작업일(입금 날짜 기록 없음)'),workTxt,
+      after?'마지막 입금 뒤에도 작업 기록이 있어요 — 확인하고 체크':'',next?'앞으로 일정 '+hjMdDow(next)+' — 이어지는 공사면 체크하지 마세요':''])};
+  }
+  const base={partial:'일부만 입금했어요'+(payN?'(입금 '+payN+'건)':''),unpaid:'청구는 있는데 입금 기록이 없어요',payonly:'입금 기록은 있는데 견적·내역서 금액이 없어요',
+    work:lastWork?'돈 기록 없이 작업 기록만 있어요':'예전에 완료로 적었다가 내린 현장이에요'}[kind];
+  if(!lastWork&&!prev)return {kind,to:null,why:base+' · 작업한 날 기록이 없어요'};
+  if(next)return {kind,to:2,doneAt:'',src:'',on:false,why:join([base,'앞으로 일정 '+hjMdDow(next)+' — 하는 중이면 체크',workTxt])};
+  return {kind,to:HJ_STAGE_TIDY_DONE,doneAt:prev||lastWork,src:prev?'prev':'work',on:false,why:join([base,'끝난 공사면 체크',prevTxt||'완료일 = 마지막 작업일',workTxt])};
+}
+// 읽기만 — {today, rows(제안), left(근거가 모자라 뺀 현장), skip:{archived, staged, dup}, on(체크해 둘 줄 수)}. opts.stats 는 검사용(기본 projStats).
+function hjStageTidyPlan(opts){
+  const o=opts||{},today=HJ_YMD_RE.test(String(o.today||''))?String(o.today):localDate(),stats=typeof o.stats==='function'?o.stats:projStats;
+  const okDay=v=>{const s=String(v||'');return HJ_YMD_RE.test(s)&&isRealIsoDate(s)&&s<=today;};
+  const all=(state.projects||[]).filter(p=>p&&typeof p.name==='string'&&p.name),seen={};
+  all.forEach(p=>{seen[p.name]=(seen[p.name]||0)+1;});
+  const out={today,rows:[],left:[],skip:{archived:0,staged:0,dup:0},on:0},want=new Map();
+  all.forEach(p=>{
+    if(p.archived){out.skip.archived++;return;}
+    if((Number(p.stage)||0)!==0){out.skip.staged++;return;}
+    if(seen[p.name]!==1){out.skip.dup++;return;}
+    want.set(p.name,p);
+  });
+  if(!want.size)return out;
+  const pay=new Map(),work=new Map(),next=new Map();
+  const bump=(n,d,src)=>{if(!want.has(n)||!okDay(d))return;const w=work.get(n);if(!w||String(d)>w.d)work.set(n,{d:String(d),src});};
+  (state.payLog||[]).forEach(r=>{if(!r||!want.has(r.project)||!(num(r.amt)>0)||!okDay(r.d))return;const x=pay.get(r.project)||{d:'',n:0};x.n++;if(String(r.d)>x.d)x.d=String(r.d);pay.set(r.project,x);});
+  (state.quotes||[]).forEach(q=>{
+    const st=q&&q.stmt;if(!st||typeof st!=='object'||!want.has(q.project))return;
+    const ds=(Array.isArray(st.lines)?st.lines:[]).map(l=>String(l&&l.d||'')).filter(okDay);
+    if(ds.length)ds.forEach(d=>bump(q.project,d,'작업내역서'));else bump(q.project,st.date,'내역서 날짜');
+  });
+  (state.schedule||[]).forEach(s=>{
+    if(!s||!want.has(s.project)||!HJ_YMD_RE.test(String(s.date||''))||!hjPrepOtherOk(s)||s.routine||HJ_STAGE_TIDY_PRE_RE.test(String(s.title||'')))return;
+    const sp=hjSchSpan(s),to=hjSchContEnded(s)?sp.from:sp.to;   // 완료 보고된 여러 날 공정은 시작일에 끝난 것
+    if(sp.from<=today)bump(s.project,to<today?to:today,'일정');
+    if(to>today){const d=sp.from>today?sp.from:to,c=next.get(s.project);if(!c||d<c)next.set(s.project,d);}
+  });
+  (state.files||[]).forEach(f=>{
+    if(!f||f.kind!=='photo'||!want.has(f.project)||!f.when||!hjPhotoWorkPhases(f).length)return;
+    const t=new Date(f.when);if(!isNaN(t.getTime()))bump(f.project,localDate(t),'작업 사진');
+  });
+  try{hjPzArchivedEach('',(n,d,c,lm)=>{if(want.has(n)&&lm&&Object.keys(lm).some(k=>hjPhotoWorkPhases({_worklabel:k}).length))bump(n,d,'작업 사진');});}catch(e){}
+  want.forEach((p,n)=>{
+    const s=stats(n)||{},pw=pay.get(n),w=work.get(n),prev=[p.doneAt,p.doneAtPrev].find(okDay)||'';
+    const f={owed:num(s.bill)+num(s.extra),recv:num(s.recv),due:num(s.due),payN:pw?pw.n:0,lastPay:pw?pw.d:'',lastWork:w?w.d:'',workSrc:w?w.src:'',prev,next:next.get(n)||''};
+    const r=hjStageTidyRule(f);
+    const row={name:n,kind:r.kind,to:r.to,doneAt:r.doneAt||'',src:r.src||'',on:!!r.on,why:r.why,lastPay:f.lastPay,lastWork:f.lastWork,workSrc:f.workSrc,next:f.next,
+      seen:{doneAt:String(p.doneAt||''),doneAtPrev:String(p.doneAtPrev||'')}};
+    (r.to==null?out.left:out.rows).push(row);
+  });
+  const ko=(a,b)=>a.name.localeCompare(b.name,'ko');
+  out.rows.sort((a,b)=>(b.on-a.on)||(HJ_STAGE_TIDY_KINDS.indexOf(a.kind)-HJ_STAGE_TIDY_KINDS.indexOf(b.kind))||(b.to-a.to)||ko(a,b));
+  out.left.sort(ko);
+  out.on=out.rows.filter(r=>r.on).length;
+  return out;
+}
+// 입구 단추 건수 — 체크해 둘 제안(받을 돈을 다 받은 현장)이 있을 때만. 직원 모드·데모는 0.
+function hjStageTidyBtnN(){
+  try{
+    if(!state||state._demo||(typeof hjStaffOn==='function'&&hjStaffOn()))return 0;
+    return hjStageTidyPlan().on;
+  }catch(e){return 0;}   // 부팅 중(아직 정의 전인 상수)에도 목록 그리기를 막지 않는다
+}
+/* 왼쪽 현장 목록(PC)의 단추 — render() 마다 다시 세면 현장 82곳 실자료에서 20ms 남짓이 그리기마다 더해진다(사진 스캔 중에는 한 장면마다).
+   그래서 지난번 센 수로 그리고, 다시 세기는 마지막 그리기 HJ_STAGE_TIDY_SIDE_MS 뒤 한 번 — 수가 바뀌었을 때만 그 단추만 고친다(목록·화면은 다시 그리지 않는다).
+   폰 시트·💤 방치 현장 창은 열 때 바로 센다(누를 때 한 번). 창 안의 제안은 늘 열 때 새로 센다. */
+const HJ_STAGE_TIDY_SIDE_MS=600;
+let __hjStageTidySideN=0,__hjStageTidySideT=0;
+function hjStageTidySidePaint(pl){
+  if(!pl||!pl.isConnected)return;
+  const n=__hjStageTidySideN;let b=pl.querySelector('#sideStageTidy');
+  if(!n){if(b)b.remove();return;}
+  if(!b){
+    b=document.createElement('button');b.type='button';b.id='sideStageTidy';b.className='ghost';b.style.minHeight='44px';b.style.marginLeft='6px';
+    b.title='단계가 ‘상담’인 현장을 돈·작업 기록으로 살펴 완료(준공일 = 근거 날짜) 등을 제안합니다 — 체크한 것만 바뀌어요';b.onclick=()=>hjStageTidyView();
+    const lf=pl.querySelector('#sideLeakFilter');if(lf)lf.after(b);else pl.prepend(b);
+  }
+  b.dataset.stageTidyN=String(n);b.textContent='🧹 단계 정리 '+n+'곳';
+}
+function hjStageTidySideBtn(pl){
+  hjStageTidySidePaint(pl);
+  try{clearTimeout(__hjStageTidySideT);}catch(e){}
+  __hjStageTidySideT=setTimeout(()=>{const n=hjStageTidyBtnN();if(n!==__hjStageTidySideN){__hjStageTidySideN=n;hjStageTidySidePaint(document.getElementById('projList'));}},HJ_STAGE_TIDY_SIDE_MS);
+}
+function hjStageTidyView(opts){
+  const o=opts||{};
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 현장 단계를 바꿀 수 없어요');return false;}
+  const plan=hjStageTidyPlan(),rows=plan.rows,back=typeof o.back==='function'?o.back:null;
+  const foot=[{label:'닫기',cls:'ghost',fn:closeModal}];if(back)foot.unshift({label:'‹ 뒤로',cls:'ghost',fn:()=>{closeModal();back();}});
+  const sk=plan.skip,skipTxt=[sk.archived?'보관한 현장 '+sk.archived+'곳':'',sk.staged?'이미 단계가 있는 현장 '+sk.staged+'곳':'',sk.dup?'이름이 겹치는 현장 '+sk.dup+'곳':''].filter(Boolean).join(' · ');
+  const leftHtml=plan.left.length?'<details data-stage-tidy-left="'+plan.left.length+'" style="margin-top:12px;font-size:12.5px;line-height:1.6"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center">근거가 모자라 뺀 현장 '+plan.left.length+'곳 (그대로 둡니다)</summary><ul style="margin:4px 0 0;padding-left:18px">'+
+    plan.left.map(r=>'<li data-stage-tidy-left-row="'+escapeAttr(r.name)+'"><b>'+escapeHtml(r.name)+'</b> — '+escapeHtml(r.why)+'</li>').join('')+'</ul></details>':'';
+  const intro='<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;line-height:1.6">단계가 아직 ‘상담’인 현장을 돈·작업 기록으로 살펴 제안합니다. <b>체크한 현장만</b> 바뀌어요. '+
+    '받을 돈을 다 받은 현장은 ‘완료’로 미리 체크해 두었고, 근거가 약한 현장은 체크를 꺼 두었어요. 완료일(준공일)은 보증·AS 기간이 시작되는 날이라 오늘이 아니라 근거 날짜로 적습니다 — 날짜 칸에서 고칠 수 있어요.'+
+    (skipTxt?'<br><span data-stage-tidy-skip>'+escapeHtml(skipTxt)+'은 건드리지 않아요.</span>':'')+'</div>';
+  if(!rows.length){
+    openModal('🧹 현장 단계 한 번에 정리','<div id="hjStageTidy" style="min-width:0;overflow-wrap:anywhere"><div class="empty" data-stage-tidy-empty style="padding:16px"><b>바꿀 만한 현장이 없어요</b>단계가 ‘상담’인 현장 가운데 돈·작업 기록으로 단계를 정할 수 있는 곳이 없습니다.'+(skipTxt?' ('+escapeHtml(skipTxt)+'은 그대로)':'')+'</div>'+leftHtml+'</div>',foot);
+    hjModalTapTargets();return 0;
+  }
+  const css='<style>#hjStageTidy .std-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto}#hjStageTidy .std-table th{font-size:12px;color:var(--muted);text-align:left;font-weight:700;padding:6px 4px;border-bottom:1px solid var(--line-soft)}'+
+    '#hjStageTidy .std-table td{padding:8px 4px;border-bottom:1px dashed var(--line-soft);vertical-align:top;overflow-wrap:anywhere;min-width:0}#hjStageTidy .std-name{font-weight:700}#hjStageTidy .std-why{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}'+
+    '#hjStageTidy .std-chk{width:52px;text-align:center}#hjStageTidy .std-pick{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}#hjStageTidy .std-pick input{width:22px;height:22px;margin:0}'+
+    '#hjStageTidy .stdDate{min-height:44px;font-size:16px;padding:6px 8px;border-radius:9px;border:1px solid var(--line-soft);max-width:100%;box-sizing:border-box;background:var(--paper);color:var(--ink)}'+
+    '#hjStageTidy .std-tools{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}#hjStageTidy .std-tools button{min-height:44px}'+
+    '@media (min-width:641px){#hjStageTidy .std-table td.std-name{width:22%;word-break:keep-all;overflow-wrap:break-word}#hjStageTidy .std-table td.std-stage{white-space:nowrap}}'+
+    '@media (max-width:640px){#hjStageTidy .std-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}'+
+    '#hjStageTidy .std-table,#hjStageTidy .std-table tbody,#hjStageTidy .std-table tr,#hjStageTidy .std-table td{display:block;width:100%;box-sizing:border-box}'+
+    '#hjStageTidy .std-table tr{position:relative;border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px;margin-top:8px}#hjStageTidy .std-table td{border:0;padding:3px 0}'+
+    '#hjStageTidy .std-table td.std-name{padding-right:52px}#hjStageTidy .std-table td[data-th]:not(.std-name):not(.std-chk)::before{content:attr(data-th) " ";color:var(--muted);font-size:11.5px;font-weight:400}'+
+    '#hjStageTidy .std-table td.std-chk{position:absolute;top:2px;right:2px;width:auto;padding:0}}</style>';
+  const rowHtml=(r,i)=>'<tr data-stage-tidy-row="'+escapeAttr(r.name)+'" data-kind="'+r.kind+'" data-to="'+r.to+'">'+
+    '<td class="std-name" data-th="현장">'+escapeHtml(r.name)+'</td>'+
+    '<td class="std-stage" data-th="지금 단계">'+escapeHtml(STAGES[0])+'</td>'+
+    '<td class="std-stage" data-th="제안 단계"><b>'+escapeHtml(STAGES[r.to]||'')+'</b></td>'+
+    '<td data-th="완료일과 근거">'+(r.to===HJ_STAGE_TIDY_DONE?'<input type="date" class="stdDate" data-i="'+i+'" value="'+escapeAttr(r.doneAt)+'" max="'+escapeAttr(plan.today)+'" aria-label="'+escapeAttr(r.name+' 준공일')+'">':'<span data-stage-tidy-nodate>준공일 없음(완료가 아님)</span>')+
+      '<div class="std-why">'+escapeHtml(r.why)+'</div></td>'+
+    '<td class="std-chk" data-th="반영"><label class="std-pick"><input type="checkbox" class="stdChk" data-i="'+i+'"'+(r.on?' checked':'')+' aria-label="'+escapeAttr(r.name+' — '+(STAGES[r.to]||'')+'(으)로 바꾸기')+'"></label></td></tr>';
+  const body=css+'<div id="hjStageTidy" style="min-width:0;overflow-wrap:anywhere">'+intro+
+    '<div class="std-tools"><button type="button" class="ghost tiny" id="stdPickDefault">☑ 제안대로 체크</button><button type="button" class="ghost tiny" id="stdPickNone">☐ 체크 모두 끄기</button>'+
+    '<span data-stage-tidy-count style="align-self:center;font-size:12.5px;color:var(--muted)"></span></div>'+
+    '<table class="std-table"><thead><tr><th scope="col">현장</th><th scope="col">지금 단계</th><th scope="col">제안 단계</th><th scope="col">완료일과 근거</th><th scope="col">반영</th></tr></thead><tbody>'+
+    rows.map(rowHtml).join('')+'</tbody></table>'+leftHtml+'</div>';
+  openModal('🧹 현장 단계 한 번에 정리',body,[{label:'🧹 체크한 현장 반영',cls:'clay',fn:()=>hjStageTidyApply(plan)}].concat(foot),true);
+  const root=document.getElementById('hjStageTidy');
+  if(root){
+    const count=()=>{const n=root.querySelectorAll('.stdChk:checked').length,c=root.querySelector('[data-stage-tidy-count]');if(c)c.textContent='체크 '+n+'곳 / '+rows.length+'곳';
+      const b=[...document.querySelectorAll('#modalRoot .mfoot button')].find(x=>x.textContent.indexOf('🧹')===0);if(b)b.textContent='🧹 체크한 '+n+'곳 반영';};
+    root.querySelectorAll('.stdChk').forEach(c=>{c.onchange=count;});
+    root.querySelectorAll('.stdDate').forEach(d=>{d.onchange=()=>{const c=root.querySelector('.stdChk[data-i="'+d.dataset.i+'"]');if(c&&d.value&&!c.checked){c.checked=true;count();}};});   // 날짜를 고치면 그 줄을 쓰겠다는 뜻
+    const pd=document.getElementById('stdPickDefault');if(pd)pd.onclick=()=>{root.querySelectorAll('.stdChk').forEach(c=>{const r=rows[+c.dataset.i];c.checked=!!(r&&r.on);});count();};
+    const pn=document.getElementById('stdPickNone');if(pn)pn.onclick=()=>{root.querySelectorAll('.stdChk').forEach(c=>{c.checked=false;});count();};
+    count();
+  }
+  hjModalTapTargets();
+  return rows.length;
+}
+// plan = 창을 열 때의 계획(줄 차례 = data-i). 체크한 줄만 — 반환: 바꾼 현장 수
+async function hjStageTidyApply(plan){
+  const root=document.getElementById('hjStageTidy');if(!root||!plan)return 0;
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 현장 단계를 바꿀 수 없어요');return 0;}
+  const stale=()=>typeof __tabStale!=='undefined'&&__tabStale;
+  if(stale()){toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const today=localDate(),picks=[];let bad=null;
+  root.querySelectorAll('.stdChk:checked').forEach(el=>{
+    const i=+el.dataset.i,r=plan.rows[i];if(!r)return;
+    let d='';
+    if(r.to===HJ_STAGE_TIDY_DONE){
+      const inp=root.querySelector('.stdDate[data-i="'+i+'"]');d=String(inp&&inp.value||'');
+      if(!HJ_YMD_RE.test(d)||!isRealIsoDate(d)){if(!bad)bad={el:inp,msg:'준공일을 고르세요'};return;}
+      if(d>today){if(!bad)bad={el:inp,msg:'오늘 뒤 날짜는 준공일로 쓸 수 없어요'};return;}
+    }
+    picks.push({r,d});
+  });
+  // 날짜가 틀린 줄이 하나라도 있으면 안전판도 만들지 않고 멈춘다 — 그 칸 아래에 까닭이 보인다
+  if(bad){hjFieldIssue(bad.el,bad.msg);toast('준공일을 확인해 주세요 — 아무 현장도 바꾸지 않았어요');return 0;}
+  if(!picks.length){toast('바꿀 현장을 체크하세요');return 0;}
+  const btns=[...document.querySelectorAll('#modalRoot .mfoot button')];btns.forEach(b=>b.disabled=true);
+  const unlock=()=>btns.forEach(b=>{if(b.isConnected)b.disabled=false;});
+  let snapped=false;try{snapped=await hjSnapshot('현장 단계 정리 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){unlock();toast('안전판을 만들지 못해 바꾸지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  if(stale()){unlock();toast('오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요');return 0;}
+  const has=(o,k)=>Object.prototype.hasOwnProperty.call(o,k),done=[];let changed=0;
+  picks.forEach(({r,d})=>{
+    // 창을 연 뒤 지워졌거나 다른 곳(현장 화면·방치 현장·다른 기기)에서 보관·단계·준공일이 바뀐 현장은 건드리지 않는다 — 지금 적힌 것이 새것
+    const list=(state.projects||[]).filter(p=>p&&p.name===r.name),p=list[0];
+    if(list.length!==1||p.archived||(Number(p.stage)||0)!==0||String(p.doneAt||'')!==r.seen.doneAt||String(p.doneAtPrev||'')!==r.seen.doneAtPrev){changed++;return;}
+    const before={hadStage:has(p,'stage'),stage:p.stage,hadDone:has(p,'doneAt'),doneAt:p.doneAt,hadPrev:has(p,'doneAtPrev'),doneAtPrev:p.doneAtPrev};
+    p.stage=r.to;
+    if(r.to===HJ_STAGE_TIDY_DONE){p.doneAt=d;delete p.doneAtPrev;}
+    else if(p.doneAt){p.doneAtPrev=p.doneAt;p.doneAt=null;}   // 완료가 아닌 단계 — setStage 와 같이 준공일은 doneAtPrev 로
+    try{portalAutoSync(p.name);}catch(e){}
+    done.push({name:p.name,to:r.to,d,before,after:{stage:p.stage,doneAt:String(p.doneAt||'')}});
+  });
+  const tail=changed?' · 그 사이 바뀐 현장 '+changed+'곳은 그대로':'';
+  if(!done.length){unlock();toast('바꾸지 않았습니다'+tail);return 0;}
+  markDirty();closeModal();render();
+  hjStageTidyResult(done,tail);
+  toast('🧹 현장 '+done.length+'곳의 단계를 정리했어요'+tail+' — 되돌리려면 [↩ 되돌리기]');
+  return done.length;
+}
+function hjStageTidyResult(done,tail){
+  const list=done.map(x=>'<li data-stage-tidy-done="'+escapeAttr(x.name)+'"><b>'+escapeHtml(x.name)+'</b> — '+escapeHtml(STAGES[x.to]||'')+(x.to===HJ_STAGE_TIDY_DONE?' · 준공일 '+escapeHtml(x.d):'')+'</li>').join('');
+  openModal('🧹 현장 단계를 정리했어요','<div id="hjStageTidyDone" style="font-size:13px;line-height:1.6;min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 6px">현장 <b>'+done.length+'곳</b>의 단계를 바꿨어요'+escapeHtml(tail||'')+'. 저장은 평소처럼 됩니다(이 기기·폴더·서버).</p>'+
+    '<ul style="margin:0;padding-left:18px">'+list+'</ul><p class="hint" style="margin:8px 0 0">잘못 바꿨으면 [↩ 되돌리기] — 이번에 바꾼 현장 가운데 그 뒤로 안 바뀐 것만 원래대로 돌립니다. 이 창을 닫은 뒤에는 🛡 안전판 ‘현장 단계 정리 전’에서 되돌릴 수 있어요.</p></div>',
+    [{label:'↩ 되돌리기',cls:'ghost',fn:()=>hjStageTidyUndo(done)},{label:'닫기',cls:'clay',fn:closeModal}]);
+  hjModalTapTargets();
+}
+// 방금 바꾼 현장만 원래대로 — 그 뒤로 단계·준공일이 또 바뀐 현장은 그대로 둔다. 반환: 되돌린 현장 수
+async function hjStageTidyUndo(done){
+  if(typeof hjStaffOn==='function'&&hjStaffOn()){toast('👷 직원 모드에서는 현장 단계를 바꿀 수 없어요');return 0;}
+  if(typeof __tabStale!=='undefined'&&__tabStale){toast('오래된 창이에요 — 새로고침한 뒤 🛡 안전판에서 되돌려 주세요');return 0;}
+  const btns=[...document.querySelectorAll('#modalRoot .mfoot button')];btns.forEach(b=>b.disabled=true);
+  let snapped=false;try{snapped=await hjSnapshot('현장 단계 정리 되돌리기 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('안전판을 만들지 못해 되돌리지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  let n=0,kept=0;
+  (Array.isArray(done)?done:[]).forEach(x=>{
+    const list=(state.projects||[]).filter(p=>p&&p.name===x.name),p=list[0];
+    if(list.length!==1||p.stage!==x.after.stage||String(p.doneAt||'')!==x.after.doneAt){kept++;return;}
+    const b=x.before;
+    if(b.hadStage)p.stage=b.stage;else delete p.stage;
+    if(b.hadDone)p.doneAt=b.doneAt;else delete p.doneAt;
+    if(b.hadPrev)p.doneAtPrev=b.doneAtPrev;else delete p.doneAtPrev;
+    try{portalAutoSync(p.name);}catch(e){}
+    n++;
+  });
+  if(n)markDirty();
+  closeModal();render();
+  toast(n?'↩ 현장 '+n+'곳을 원래 단계로 되돌렸어요'+(kept?' · 그 사이 바뀐 '+kept+'곳은 그대로':''):'되돌릴 현장이 없어요 — 그 사이 모두 바뀌었어요');
+  return n;
 }
 
 /* ═══════════ 🎯 주간 계획 AI — 다음 주 일정·우선순위 ═══════════ */
