@@ -32,6 +32,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   page.on('dialog', d => d.accept());
   await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); } catch (e) {} });
+  await page.clock.setFixedTime(new Date('2026-11-05T10:00:00+09:00'));   // 시계도 11/5 로 — localDate 만 고정하면 실제 시계로 세는 staleProjectData(R4 '14일 방치')가 11/19 부터 떨어졌다
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1400);
   await page.evaluate(() => {
