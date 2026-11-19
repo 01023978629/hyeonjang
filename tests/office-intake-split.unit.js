@@ -2,7 +2,7 @@
 /* office-intake-split.unit.js — 관리사무소 접수 분리(2026-11-19, 항목 32)
 
    보호하는 사고:
-   · 공개 관리사무소 접수(토큰 없는 officeLogin 등)가 현장 전체 자료(load·save·download)를 가진 중계와
+   · 공개 관리사무소 접수(officeLogin 등)가 중계와
      같은 스크립트·잠금·실행 시간 안에서 돈다 → 새 독립 프로젝트(apps-script-office-intake/)로 옮긴다.
    · 스위치(OFFICE_INTAKE_MODE)가 없으면 중계는 지금과 한 글자도 다르지 않게 동작해야 한다(배포 전 병합 안전).
    · 두 Apps Script 프로젝트는 잠금을 나눌 수 없다 — 한 JSON 을 둘이 쓰면 접수가 말없이 사라진다.

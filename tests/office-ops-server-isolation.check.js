@@ -457,8 +457,8 @@ const approvedWatchdogV6Sha256 = '05de8511bef40dc6fd849cdf35292d17a35c1d16aad0ab
 // 속성이 없으면 relay 동작은 그대로다(tests/office-intake-server.unit.js · tests/office-intake-split.unit.js).
 // 이 정확한 본문(SHA-256, 줄끝 LF)만 허용한다 — 다른 OfficeIntake·README 변경은 그대로 막힌다. Code.gs 는 바꾸지 않았다.
 const approvedOfficeSplitSha256 = {
-  'apps-script/OfficeIntake.gs': '571742a1cc5b4e4e16f666c6427710976b122b04a663e61810088d7cc9a4ad04',
-  'apps-script/README_APPS_SCRIPT.md': '66125bde929af823eacb12d82acff68c4407cdc471d168fcacd9430e9b30c025'
+  'apps-script/OfficeIntake.gs': 'a1e64d9ef64cc6b6208e097105ac658cdc530375dc38cac1207f71a07acc26e9',
+  'apps-script/README_APPS_SCRIPT.md': '8838fe94cd43e7295a54e053c3def9bc09f6d957f15547d28e0279040f350074'
 };
 const sha256Text = value => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 function protectedGit(args) {

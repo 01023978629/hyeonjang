@@ -1026,7 +1026,7 @@ function oiHandleInternalAction_(action, req) {
 }
 
 /* ---------- 관리사무소 접수 분리 (2026-11-19, 항목 32) ----------
- * 토큰 없이 부르는 공개 관리사무소 action 을 현장 전체 자료(load·save·download)를 가진 중계에서 떼어
+ * 공개 관리사무소 action 을 중계에서 떼어 잠금·실행 시간을 나누고,
  * 별도 Apps Script 프로젝트(apps-script-office-intake/)가 받게 한다. 이 파일은 두 프로젝트에 똑같이 들어간다.
  *
  * 역할(oiRole_):

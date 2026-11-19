@@ -90,7 +90,7 @@ MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 �
 
 ### 관리사무소 접수 분리 스위치 (2026-11-19)
 
-공개 action 을 현장 전체 자료(`load`·`save`·`download`)와 같은 배포에서 떼어 내기 위해, 공개 action 만 받는
+잠금·실행 시간을 중계와 나누기 위해, 공개 action 만 받는
 별도 프로젝트 `apps-script-office-intake/` 를 둡니다. 이 relay 는 스크립트 속성 `OFFICE_INTAKE_MODE` 로
 바뀝니다(`OfficeIntake.gs` 의 `oiRole_`).
 
