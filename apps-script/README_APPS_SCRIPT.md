@@ -88,11 +88,29 @@ MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 �
 바이트를 다시 검증합니다. 관리사무소가 접수할 때 올린 자기 사진은 기존
 `request.photos` 소유 집합으로만 사용하며 completion manifest에 섞지 않습니다.
 
+### 관리사무소 접수 분리 스위치 (2026-11-19)
+
+공개 action 을 현장 전체 자료(`load`·`save`·`download`)와 같은 배포에서 떼어 내기 위해, 공개 action 만 받는
+별도 프로젝트 `apps-script-office-intake/` 를 둡니다. 이 relay 는 스크립트 속성 `OFFICE_INTAKE_MODE` 로
+바뀝니다(`OfficeIntake.gs` 의 `oiRole_`).
+
+- 속성이 없거나 정확한 문자열 `external` 이 아니면 지금과 똑같습니다(배포 전에 병합해도 안전).
+- `OFFICE_INTAKE_MODE=external` + `OFFICE_INTAKE_STORE_ID`(접수 프로젝트의 공개 저장 파일 ID)이면 공개 action 8개를
+  lock·Drive 전에 `office-intake-moved` 로 거절하고, 내부 action 7개는 그대로 `APP_TOKEN` 뒤에서 동작하되
+  저장소를 바깥 두 파일(`관리사무소접수_공개.json` = 접수 프로젝트만 씀, `관리사무소접수_내부.json` = 이 relay 만 씀)에서
+  DriveApp 으로 읽어 합칩니다. `officeInbox` 응답 모양은 같습니다. 저장 파일 ID 가 없거나 읽을 수 없으면 예전
+  파일로 돌아가지 않고 `server-error` 로 멈춥니다.
+- 단지 목록(`OFFICE_CONFIG_JSON`)은 이 relay 속성에만 두고, 내부 파일을 쓸 때마다 사본을 같이 적습니다.
+  접수 프로젝트는 같은 `OFFICE_SESSION_SECRET` 으로 PIN 해시와 세션을 확인합니다.
+- 설계·저장 규칙·상태 합치기는 `apps-script-office-intake/README.md`, 대표 설치·되돌리기 순서는
+  `docs/office-intake-split-20261119.md`.
+
 ### Public response codes
 
 공개 action의 응답은 `{ok:false,error,message}` 형식입니다. 아래 코드는
 관리사무소 브라우저에 반환될 수 있는 값입니다.
 
+`office-intake-moved`(relay 스위치 `OFFICE_INTAKE_MODE=external` — 접수 프로젝트 주소로 옮겨짐) ·
 `office-disabled`(feature flag가 exact string `1`이 아님) ·
 `invalid-credentials`(없는/중지된 단지나 잘못된 PIN 포함) ·
 `rate-limited`(10분 동안 office별 5회, unknown slug 전체 12회, 전체 실패 50회) · `session-expired`(만료·폐기·서명
@@ -165,6 +183,8 @@ Calendar 생성이 실패해도 성공한 접수·영수증은 보존되며, `ca
 | `OFFICE_SESSION_SECRET` | office 세션·PIN HMAC 서명 키(충분히 긴 무작위 값) | office 기능 on 전 |
 | `OFFICE_CONFIG_JSON` | office 목록·slug·활성 상태·PIN hash/salt·sessionVersion | office 기능 on 전 |
 | `OFFICE_STORE_FILE` | 루트 Drive에 둘 접수 저장 파일명 | 선택(기본 `관리사무소접수.json`) |
+| `OFFICE_INTAKE_MODE` | 관리사무소 접수 분리 스위치. 정확한 문자열 `external` 일 때만 켜짐 | 선택(없으면 지금 그대로) — 접수 프로젝트 배포 뒤 |
+| `OFFICE_INTAKE_STORE_ID` | 접수 프로젝트의 공개 저장 파일 ID(`setupOfficeIntake` 실행 기록) | 스위치를 켤 때 같이 |
 
 `OFFICE_CONFIG_JSON`에는 평문 PIN을 저장하지 않습니다. 최초 office는 내부
 `officeAdminUpsert`로 등록하고, `officeRotatePin`이 반환하는 PIN을 안전한

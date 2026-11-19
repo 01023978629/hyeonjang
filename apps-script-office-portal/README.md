@@ -1,3 +1,7 @@
+> **옛 판 — 정본은 manmool/apps-script-office-portal (2026-11-19부터). 여기 고치지 마세요.**
+> 관리사무소 포털 서버 소스는 만물웹 저장소 `apps-script-office-portal/` 에서만 고치고 배포합니다.
+> 이 폴더의 파일은 기록과 기존 검사(`tests/office-portal-*.unit.js`)를 위해 지우지 않고 남겨 둡니다.
+
 # 관리사무소 포털 Apps Script 백엔드
 
 현장 웹·만물 공개 사이트와 분리해 배포하는 개인 계정 기반 포털 API입니다. 정적 GitHub Pages 프런트는 신뢰 경계가 아니며, 단지 범위·사용자 상태·역할·권한·세션 버전은 모든 보호 action에서 서버가 다시 확인합니다.
