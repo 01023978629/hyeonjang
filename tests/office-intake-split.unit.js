@@ -523,7 +523,13 @@ for (const key of ['OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'DRIVE_FOLD
 const usedKeys = new Set([...(intakeMain + read(path.join(RELAY_DIR, 'OfficeIntake.gs'))).matchAll(/getProperty\('([A-Z][A-Z0-9_]*)'\)/g)].map(m => m[1]));
 for (const key of usedKeys) if (key !== 'OFFICE_CONFIG_JSON' && key !== 'OFFICE_STORE_FILE') assert.ok(intakeReadme.includes(key), 'README 가 코드가 읽는 속성을 빠뜨리지 않는다: ' + key);
 const portalReadme = read(path.join(ROOT, 'apps-script-office-portal', 'README.md'));
-assert.match(portalReadme.split('\n').slice(0, 6).join('\n'), /옛 판[\s\S]*manmool\/apps-script-office-portal[\s\S]*2026-11-19[\s\S]*고치지 마세요/, '현장웹의 포털 소스는 옛 판 표시');
+// 11/19 바뀜: 만물웹 저장소로 옮기는 일은 보안 검토가 끝날 때까지 미뤘다 — 지금 정본은 대표 PC 의 외부 작업본이다.
+// 맨 위 몇 줄이 '옛 판·고치지 마세요'와 지금 정본·미룬 날을 말하는지, 아직 옮기지 않은 만물웹을 정본이라 하지 않는지 본다.
+const portalTop = portalReadme.split('\n').slice(0, 6).join('\n');
+assert.match(portalTop, /옛 판[\s\S]*고치지 마세요/, '현장웹의 포털 소스는 옛 판 표시');
+assert.match(portalTop, /정본은[\s\S]*외부 작업본[\s\S]*manmool-sites-portal[\\\/]apps-script-office-portal/, '지금 정본 = 대표 PC 외부 작업본');
+assert.match(portalTop, /보안 검토[\s\S]*미뤘[\s\S]*2026-11-19/, '만물웹으로 옮기기는 보안 검토 뒤로 미룸(11/19)');
+assert.doesNotMatch(portalTop, /정본은 manmool\//, '아직 옮기지 않은 만물웹 저장소를 정본이라 하지 않는다');
 for (const name of ['Code.gs', 'PortalPure.gs', 'appsscript.json']) assert.ok(fs.existsSync(path.join(ROOT, 'apps-script-office-portal', name)), '옛 판 파일은 지우지 않는다: ' + name);
 console.log('PASS  12 DOCS — 배포 안내 순서·값 없음 · README 속성 · 포털 옛 판 표시');
 

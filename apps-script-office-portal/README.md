@@ -1,5 +1,6 @@
-> **옛 판 — 정본은 manmool/apps-script-office-portal (2026-11-19부터). 여기 고치지 마세요.**
-> 관리사무소 포털 서버 소스는 만물웹 저장소 `apps-script-office-portal/` 에서만 고치고 배포합니다.
+> **옛 판 — 여기 고치지 마세요.** 관리사무소 포털 서버 소스의 지금 정본은 대표 PC 의 외부 작업본
+> (`문서\New project\manmool-sites-portal\apps-script-office-portal`)입니다. 고치고 배포하는 일은 그 작업본에서만 합니다.
+> 만물웹 저장소로 옮기는 일은 보안 검토가 끝날 때까지 미뤘습니다(2026-11-19).
 > 이 폴더의 파일은 기록과 기존 검사(`tests/office-portal-*.unit.js`)를 위해 지우지 않고 남겨 둡니다.
 
 # 관리사무소 포털 Apps Script 백엔드
