@@ -7,8 +7,8 @@
    지키는 것:
      ① 이름 변경 확인 창이 실제로 바뀌는 범위(저장소별 건수)를 말한다
      ② 저장소마다 1건씩 심은 기록이 이름 변경 뒤 옛 이름 0건·새 이름 N건 — 다른 현장 기록·식별자가 다른 오더는 그대로,
-        이 폰 localStorage(hj_calc_log·hj_calc_cart)도 포함, 바꾸기 전 안전판(hj_snaps)이 찍힌다
-     ③ serializeData→applyData 왕복 뒤에도 유지(파생 견적 파일 포함 — 매출 est 가 새 이름에 있다)
+        이 폰 localStorage(hj_calc_log·hj_calc_cart)도 포함, 바꾸기 전 안전판(hj_snaps)이 찍힌다 · v614 현장 칸 formerNames = ['가상A']
+     ③ serializeData→applyData 왕복 뒤에도 유지(파생 견적 파일 포함 — 매출 est 가 새 이름에 있다 · v614 formerNames 도)
      ④ 안전판을 못 찍으면 아무것도 바꾸지 않는다
      ⑤ 삭제 확인 창이 연결된 기록 건수를 보여 주고, 삭제 뒤 기록은 지워지지 않고 '(삭제됨) 이름 · 날짜' 로 남는다
         (사진·서류는 미배정, 일정은 연결 해제 — 예전과 같다)
@@ -134,6 +134,8 @@ const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]]))
   assert(same(neighbor, { files: 1, payLog: 1 }), '② 이웃 현장 기록은 그대로: ' + JSON.stringify(neighbor));
   assert(await page.evaluate(() => state.aptOrders.find(o => o.id === 'afA').project === '가상A'), '② 식별자가 다른 오더는 안 옮긴다');
   assert(await page.evaluate(() => state.editingQuote.project === '가상B'), '② 작성 중 견적도 새 이름(저장하면 옛 이름이 되살아나지 않게)');
+  const former = await page.evaluate(() => state.projects.find(p => p.name === '가상B').formerNames);
+  assert(JSON.stringify(former) === '["가상A"]', '② v614 바꾸기 전 이름을 현장 칸 formerNames 에 남긴다(카톡봇 별칭): ' + JSON.stringify(former));
   await page.evaluate(() => { state.editingQuote = null; });
   const snaps = await page.evaluate(async () => ((await idbGetStrict('hj_snaps')) || []).map(s => s.label));
   assert(snaps.includes('현장명 변경 전 — 가상A'), '② 바꾸기 전 안전판: ' + JSON.stringify(snaps));
@@ -149,6 +151,8 @@ const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]]))
   const rt = await page.evaluate(() => __countRefs('가상B'));
   assert(same(rt, expectNew), '③ 왕복 뒤에도 새 이름: ' + JSON.stringify(rt));
   assert(same(await page.evaluate(() => __countRefs('가상A')), { aptOrders: 1 }), '③ 왕복 뒤 옛 이름 되살아남 없음');
+  const formerRt = await page.evaluate(() => state.projects.find(p => p.name === '가상B').formerNames);
+  assert(JSON.stringify(formerRt) === '["가상A"]', '③ v614 formerNames 도 왕복 뒤 그대로: ' + JSON.stringify(formerRt));
   const est = await page.evaluate(() => ({ b: projStats('가상B').est, a: projStats('가상A').est }));
   assert(est.b === estBefore && est.a === 0, '③ 파생 견적 파일이 새 이름 매출에 남는다: ' + JSON.stringify(est));
   console.log('PASS ③ serializeData→applyData 왕복 뒤에도 유지(파생 견적 파일 포함)');
