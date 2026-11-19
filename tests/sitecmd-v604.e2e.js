@@ -1,7 +1,7 @@
 /* v604 🧰 클로드 명령어 '🗂 톡방·구글 포토 사진 → 현장사진·현장 정리' — 대표가 11/12·11/13 두 번 맡긴 일을 기본 명령으로.
    '현장 웹 캘린더를 보고 톡서랍 톡방·구글 포토 사진을 현장사진에 저장하고 현장별로 정리, 위치 정보가 없는 것은 주소로' — 그때마다 손으로 쓴 명령을 건넸다.
    복사할 때 앱이 최근 일정표({최근일정})·현장 목록({현장목록})을 채워 준다(읽기만 — 저장된 명령은 그대로). 합성 자료, 시계 2026-11-16(월) 고정, 바깥 쓰기 0.
-   ① 기본 명령 17개 — cw_sitesort: 사진 분류 맨 앞(o:0 이 화면에서도 맨 앞 — v569 cw_calsync 도) · 준비물 · 스킬 줄 · 할 일(일정표·톡서랍·구글 포토·현장사진/<현장 이름>/·
+   ① 기본 명령 17개 — cw_sitesort: 사진 분류 맨 앞(o:0 이 화면에서도 맨 앞 — v569 cw_calsync 도 · v612 부터는 '카톡봇 관리 프로그램으로 옮긴 명령' 칸의 맨 앞) · 준비물 · 스킬 줄 · 할 일(일정표·톡서랍·구글 포토·현장사진/<현장 이름>/·
       위치 없으면 톡방 주소·확인필요)·지킬 것(옮기기만·_현장.json 으로 현장을 만들지 않음·'＋ 새 현장' 화면 셋·자동 로그인 안 함·백업·앱 파일) ·
       쓰던 목록에는 빠진 것만 뒤에 붙음 (DEFAULT)
    ② 채우기 — {최근일정}: 14일 전 ~ 3일 뒤(경계 포함) · 날짜·시각 순 · 여러 날 공정의 이어지는 날 · 💰·세금 자동·개인 일정 빠짐 · 제목의 출입 번호 토막·전화번호 가림 ·
@@ -147,12 +147,14 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
       });
       assert.deepEqual([m.n, m.head, m.added, m.card, m.mine], [18, ['cw_card', 'cw_tax', 'cw_photo', 'cw_bugtest', 'cw_month', 'cw_mine1'], true, '고친 카드 명령 {오늘}', '내 명령 본문 {최근일정}'], '쓰던 목록 ' + JSON.stringify(m));
       assert.ok(m.slot.includes('{최근일정}') && m.slot.includes('{현장목록}'), '붙은 명령은 자리 글자 그대로 저장');
-      // 화면 — 분류 안 순서(o:0 이 맨 앞)
-      await page.evaluate(() => coworkTasksManage());
+      // 화면 — 분류 안 순서(o:0 이 맨 앞). v612 cw_sitesort 는 카톡봇 관리 프로그램('사진 정리'·'프로젝트 정리')이 맡아 맨 아래 접힌 '옮긴 명령'으로 —
+      // 그 칸 안에서도 o:0 이 맨 앞이고(지우지 않음), 펼치면 준비물 줄·44px 단추 그대로
+      await page.evaluate(() => { coworkTasksManage(); document.getElementById('cwMoved').open = true; });
       await page.waitForSelector('#modalRoot .cw-cat');
       const ui = await page.evaluate(() => { const root = document.getElementById('modalRoot'), ids = c => [...root.querySelectorAll('.cw-cat[data-cw-cat="' + c + '"] .cw-row')].map(x => x.dataset.cwRow);
-        const row = root.querySelector('.cw-row[data-cw-row="cw_sitesort"]'); return { photo: ids('photo'), app: ids('app'), prep: row ? row.querySelector('.cw-prep').textContent : '', btn: row ? Math.round(row.querySelector('.cwCopy').getBoundingClientRect().height) : 0 }; });
-      assert.deepEqual(ui.photo, ['cw_sitesort', 'cw_photoin', 'cw_chatphoto', 'cw_photoassign', 'cw_dupe', 'cw_photo'], '사진 분류 순서 ' + JSON.stringify(ui.photo));
+        const row = root.querySelector('.cw-row[data-cw-row="cw_sitesort"]'); return { photo: ids('photo'), moved: [...root.querySelectorAll('#cwMoved .cw-row')].map(x => x.dataset.cwRow), app: ids('app'), prep: row ? row.querySelector('.cw-prep').textContent : '', btn: row ? Math.round(row.querySelector('.cwCopy').getBoundingClientRect().height) : 0 }; });
+      assert.deepEqual(ui.photo, ['cw_dupe', 'cw_photo'], '사진 분류 순서 ' + JSON.stringify(ui.photo));
+      assert.deepEqual(ui.moved, ['cw_sitesort', 'cw_photoin', 'cw_chatphoto', 'cw_photoassign'], '옮긴 명령 순서(o:0 맨 앞) ' + JSON.stringify(ui.moved));
       assert.equal(ui.app[0], 'cw_calsync', '현장웹 분류 맨 앞(v569 의도) ' + JSON.stringify(ui.app));
       assert.ok(/^준비: PC 크롬에 톡서랍/.test(ui.prep) && ui.btn >= 44, '준비물 줄·단추 ' + JSON.stringify(ui));
       await page.evaluate(() => closeModal(true));
@@ -198,7 +200,7 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
 
     await test('③ 복사 — 🧰 창·전체 보기에 채운 글 · 저장된 명령·저장본은 그대로 (COPY)', async () => {
       await page.evaluate(SEED);
-      await page.evaluate(() => { coworkTasksEnsure(); coworkTasksManage(); });
+      await page.evaluate(() => { coworkTasksEnsure(); coworkTasksManage(); document.getElementById('cwMoved').open = true; });   // v612 옮긴 명령 칸(접힘)을 펼쳐 복사
       await page.waitForSelector('#modalRoot .cw-row[data-cw-row="cw_sitesort"] .cwCopy');
       const before = await page.evaluate(stable);
       await page.evaluate(() => { window.__copied = []; });
@@ -235,7 +237,7 @@ const stable = () => { const d = serializeData(); delete d.savedAt; return JSON.
     await test('④ 폰 390 — 가로 넘침 없음 · 단추 44px · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)', async () => {
       const phone = await open(390);
       await phone.page.evaluate(SEED);
-      await phone.page.evaluate(() => { coworkTasksEnsure(); coworkTasksManage(); });
+      await phone.page.evaluate(() => { coworkTasksEnsure(); coworkTasksManage(); document.getElementById('cwMoved').open = true; });   // v612 펼친 옮긴 명령 칸도 44px·넘침 0
       await phone.page.waitForSelector('#modalRoot .cw-row[data-cw-row="cw_sitesort"]');
       const measure = () => phone.page.evaluate(() => { const root = document.getElementById('modalRoot'), modal = root.querySelector('.modal') || root;
         return { over: document.documentElement.scrollWidth - document.documentElement.clientWidth, modalOver: modal.scrollWidth - modal.clientWidth,

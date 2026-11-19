@@ -50,7 +50,8 @@ let chromium;try{({chromium}=require('/opt/node22/lib/node_modules/playwright'))
   assert(r.frozenOutputs,'HTML and link use the same frozen unit period');assert.match(r.sameAmountChanged,/재검토/,'equal total with recategorization is stale');
   await page.evaluate(()=>hjUnitLifecycleView('TEST_APARTMENT','unit-a'));assert(await page.locator('#lifeDone').isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   await page.evaluate(()=>hjCostReviewView('TEST_APARTMENT'));assert(await page.locator('#costReview').isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-  assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(dashboardTodoHTML(),'text/html').querySelector('#dashboardCompanyTeam').getAttribute('href')),'./team.html');
+  // v612 직원 작업실 링크는 서버 주소(team-config.js apiUrl)가 비면 보류 — 기본은 없고, 다시 보이게 하면 같은 주소로 돌아온다
+  assert.equal(await page.evaluate(()=>{const link=()=>new DOMParser().parseFromString(dashboardTodoHTML(),'text/html').querySelector('#dashboardCompanyTeam');const held=link();localStorage.setItem('hj_more_hold',JSON.stringify({show:['teamroom']}));const shown=link();localStorage.removeItem('hj_more_hold');return (held?'shown':'held')+' '+(shown&&shown.getAttribute('href'));}),'held ./team.html');
   await context.close();console.log('PASS operations-review: unit isolation/date/history, frozen warranty, stale costs, validation, snapshot fail, serialization, mobile');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

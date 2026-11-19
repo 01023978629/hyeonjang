@@ -164,10 +164,11 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const out = await page.evaluate(() => {
       openMoreSheetV2();
       const sheet = document.getElementById('moreSheet');
-      const details = [...sheet.querySelectorAll('details.more-cat-block')];
+      // v612 맨 아래 ⏸ 보류 묶음(details.more-hold)은 분류가 아니다 — 따로 센다(접힌 채로 시작)
+      const details = [...sheet.querySelectorAll('details.more-cat-block:not(.more-hold)')], hold = sheet.querySelector('details.more-hold');
       const summarySmall = details.map(d => d.querySelector('summary').getBoundingClientRect().height).filter(h => h < 44).length;
       return {
-        categories: details.length,
+        categories: details.length, holdLast: !!hold && !hold.open && hold === [...sheet.querySelectorAll('#moreCategories > details')].pop(),
         open: details.filter(d => d.open).length,
         scrollHeight: sheet.scrollHeight,
         summarySmall,
@@ -176,6 +177,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     });
     assert(out.categories === 6, '카테고리는 6개여야 함: ' + out.categories);
     assert(out.open === 0, '처음에는 모든 카테고리가 접혀 있어야 함: ' + out.open);
+    assert(out.holdLast, '보류 묶음은 맨 아래에 접힌 채로 있어야 함');
     // v550 하단에서 빠진 대시보드·내 업무가 바로가기 맨 앞에 들어와(6→8개) 바로가기가 한 줄 늘었다(약 +90px). 다 펼치면 수천 px 라 이 기준은 여전히 '접힘'을 가른다.
     assert(out.scrollHeight < 1150, '처음부터 전체 108개가 펼쳐져 너무 김: ' + out.scrollHeight + 'px');
     assert(out.summarySmall === 0 && out.searchH >= 44, '카테고리·검색도 44px 터치 높이를 지켜야 함');
