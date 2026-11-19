@@ -7,7 +7,7 @@
    ⑤ DECIDE    보류 문의 거절: 사유 없으면 요청 없음 → 사유 넣으면 거절·목록으로
    ⑥ EXPIRED   서버 세션이 끝나면 [새로고침] → 로그인 창 '만료' · 메모리 세션 지움
    ⑦ PRIVACY   관리 비밀번호는 leadLogin 요청 본문 한 곳에만 — localStorage·sessionStorage·IndexedDB 모든 값·직렬화 자료·화면 어디에도 없다 ·
-               세션 토큰은 이 창 메모리에만 — IndexedDB·localStorage·sessionStorage·직렬화 자료에 없음(현장웹·만물웹이 같은 출처 — v613 검토) · 바깥 쓰기는 가짜 접수함 주소뿐 · 페이지 오류 0
+               세션 토큰은 이 창 메모리에만 — IndexedDB·localStorage·sessionStorage·직렬화 자료에 없음(v613 검토) · 바깥 쓰기는 가짜 접수함 주소뿐 · 페이지 오류 0
    HJ_V612L_BASELINE=<commit> 은 ① 에서 실패해야 한다(기준선 5a87511 에는 접수함 버튼이 없다). */
 'use strict';
 const assert = require('node:assert/strict');

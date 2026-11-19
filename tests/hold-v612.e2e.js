@@ -5,13 +5,14 @@
    ② 다시 보이기 — [다시 보이기] 누르면 그 기능이 원래 분류로·묶음 수 줄어듦·설정 {show:[id]} · [처음 보류로 되돌리기] · 대시보드 단추 줄은 제자리에서 바뀜 (UNHOLD)
    ③ 자동 — 고객 페이지 주소·OfficeOps 주소+토큰이 있으면 그 기능이 분류로 돌아온다 · 중계(Apps Script)가 있어도 ☁ 팀 공유 할일은 접힌 채(할 일 하나 — v613 검토) (AUTO)
    ④ 할 일 하나 — 대시보드는 ✅ 할 일만(☁ 팀 공유 할일·팀 업무·직원 작업실 없음, 팀 업무 줄 숨김) · 열린 팀 업무가 있으면 팀 업무 단추 ·
-      내 업무 창 팀 업무판·🏢 직원 작업실 줄, 팀 공유 할일 창의 직원 작업실 링크·포털 이전 단추도 같은 규칙 · 📖 사용설명서는 보류 기능에 '⏸ 보류' 한 줄 (TODO)
+      내 업무 창 팀 업무판·🏢 직원 작업실 줄, 팀 공유 할일 창의 직원 작업실 링크·포털 이전 단추도 같은 규칙 · 📖 사용설명서는 보류 기능에 '⏸ 보류' 한 줄 ·
+      남은 공유 할일을 내 업무가 읽어 오면 내 업무 [☁ 팀 공유 할일]·대시보드 단추가 제자리에서 생기고 다시 열어도(읽는 중) 그대로, 다 끝내면 빠진다 (TODO)
    ⑤ 견적 — '✍ 견적 작성' 탭 목록·편집·작업내역서 반영은 그대로, [+ 새 견적서]만 없음 · Claude 견적 만들기 한 줄 · [견적 쓰기]·검색창 '새 견적서'는
       보류 안내([닫기]는 아무것도 안 바꿈 · [이번만 앱에서 쓰기]는 예전 그대로) · 💸 AI 견적작성·📸 사진 견적은 보류 칸에 (QUOTE)
    ⑥ 광고 — [＋ 게시 기록]은 기록 0건이면 보류(카톡봇 '홍보' 명령 → PC 홍보 게시 기록 안내, 파일 이름 없이), 기록이 있으면 그대로 (ADS)
    ⑦ 🧰 — 맨 위 '사진·홍보·작업 이력 명령은 카톡봇 관리 프로그램 「클로드 명령」에 있어요' · 사진 명령 넷은 접힌 '옮긴 명령' · 청구 누락은 남음 (COWORK)
    ⑧ 폰 390 큰 글씨 2단계 — 보류 묶음을 펼쳐도 가로 넘침 0·단추 44px · 핀 3곳 같음 · 페이지 오류 0 · 바깥 쓰기 0 (PHONE)
-   HJ_V612_BASELINE=<commit> 은 ① 에서, HJ_V612_MUTATION=cats-all 은 ①, no-unhold 는 ②, qmnew-shown·no-gate 는 ⑤, ads-shown 은 ⑥, cw-all 은 ⑦ 에서 실패해야 한다. */
+   HJ_V612_BASELINE=<commit> 은 ① 에서, HJ_V612_MUTATION=cats-all 은 ①, no-unhold 는 ②, no-shared-sync 는 ④, qmnew-shown·no-gate 는 ⑤, ads-shown 은 ⑥, cw-all 은 ⑦ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -26,6 +27,7 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'cats-all': ["const items=c.items.filter(it=>!held.has(it[0]));if(!items.length)return '';", "const items=c.items;if(!items.length)return '';"],
   'no-unhold': ['const ok=id?hjHoldShow(id):hjHoldReset();if(!ok)return;', 'const ok=false;if(!ok)return;'],
+  'no-shared-sync': ['      hjMyWorkSharedBtnSync(root);\n', ''],
   'qmnew-shown': ["const qNew=!hjHeld('quotenew');", 'const qNew=true;'],
   'no-gate': ["  if(!pass&&hjHeld('quotenew'))return hjQuoteNewHeldView(()=>hjQuoteStartFor(name,true),name);\n", ''],
   'ads-shown': ["const postLog=!hjHeld('adpostlog');", 'const postLog=true;'],
@@ -196,6 +198,32 @@ const moreInfo = page => page.evaluate(() => {
       await page.evaluate(() => { state.notes.push({ id: 'tt1', text: '[팀 업무]', todo: true, done: false, project: '가온아파트', teamTask: { schema: 1, title: '가상 업무', assignee: '가상담당', status: 'doing', due: '', handoff: '', recorder: '가상', updatedAt: '2026-11-18T00:00:00.000Z', revision: 1 } }); render(); });
       assert.equal(await page.locator('#dashboardTeamOpen').count(), 1, '열린 팀 업무 → 팀 업무 단추');
       assert.equal(await page.locator('#dashboardCompanyTeam').count(), 0, '직원 작업실 링크는 서버가 없으면 그대로 보류');
+      // 남은 공유 할일(v613 검토 2) — 중계가 연결된 기기에서 📋 내 업무가 남은 공유 할일을 읽어 오면 내 업무 [☁ 팀 공유 할일]·대시보드 단추가 제자리에서 생기고,
+      // 다시 열어도(읽는 중) 처음부터 있다 · 다 끝내면 읽은 뒤 둘 다 빠진다. 공유 서버는 페이지 안 가짜 fetch(바깥 요청 0).
+      await page.evaluate(() => {
+        __relay.url = 'https://script.google.com/macros/s/TEST_DEPLOY/exec'; __relay.token = 'TEST_TOKEN'; __relay.device = 'test-hold'; relayReady = () => true;
+        const task = (id, done) => ({ id, project: '가온아파트', text: done ? '가상 끝난 공유 일' : '가상 남은 공유 일', done, revision: 1, updatedBy: '가상', createdAt: '2026-11-18T00:00:00.000Z', updatedAt: '2026-11-18T00:00:00.000Z' });
+        window.__sharedTasks = [task('11111111-1111-4111-8111-111111111111', false), task('22222222-2222-4222-8222-222222222222', true)];
+        window.__sharedCalls = 0; window.__sharedGate = null; window.__fetch0 = window.fetch;
+        window.fetch = async (url, init) => {
+          if (String(url) !== __relay.url) return window.__fetch0(url, init);
+          window.__sharedCalls++; if (window.__sharedGate) await window.__sharedGate;
+          return new Response(JSON.stringify({ ok: true, version: HJ_SHARED_TODO_VERSION, tasks: window.__sharedTasks }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        };
+        render(); window.__dashNode = document.getElementById('dashboardTodo');
+      });
+      assert.equal(await page.locator('#dashboardSharedTodoOpen').count(), 0, '공유 할일을 읽기 전 — 보류(대시보드 할 일 단추 하나)');
+      await page.evaluate(() => { myWorkView(); });
+      await page.waitForSelector('#myWork #mwShared');
+      await page.waitForFunction(() => !!document.getElementById('dashboardSharedTodoOpen'));
+      assert.ok(await page.evaluate(() => document.getElementById('dashboardTodo') === window.__dashNode && __hjMyWork.sharedOpenN === 1 && window.__sharedCalls === 1), '대시보드는 다시 그리지 않고 그 줄만 · 남은 1건');
+      await page.evaluate(() => closeModal(true));
+      await page.evaluate(() => { window.__sharedGate = new Promise(resolve => { window.__sharedRelease = resolve; }); myWorkView(); });
+      assert.deepEqual(await page.evaluate(() => [__hjMyWork.sharedState, !!document.querySelector('#myWork #mwShared'), !!document.getElementById('dashboardSharedTodoOpen')]), ['loading', true, true], '다시 열 때(읽는 중)도 단추 그대로');
+      await page.evaluate(() => { window.__sharedTasks = window.__sharedTasks.map(t => Object.assign({}, t, { done: true })); window.__sharedRelease(); });
+      await page.waitForFunction(() => __hjMyWork.sharedState === 'ready' && !document.querySelector('#myWork #mwShared') && !document.getElementById('dashboardSharedTodoOpen'));
+      await page.evaluate(() => closeModal(true));
+      await page.evaluate(() => { window.fetch = window.__fetch0; relayReady = () => false; __relay.url = ''; __relay.token = ''; render(); });
     });
 
     await test('⑤ 견적 — 목록·편집 그대로, [+ 새 견적서]만 없음 · Claude 한 줄 · [견적 쓰기]는 보류 안내 (QUOTE)', async () => {

@@ -3,14 +3,15 @@
    ① 목록 — 자동·처음 보류 id 가 모두 더보기 칸이거나 따로 그리는 항목 · 보류하지 않는 목록(사진·일정·수금·AS·웹 업무·접수함·🧰·전자계약·AI 비서)과 겹치지 않음 ·
       11/18 대표 자료 꼴(서버 없음·저장 칸 0)이면 18개 모두 보류 (LIST)
    ② 자동 — 고객 페이지 주소·OfficeOps 주소+토큰·직원 작업실 apiUrl 이 있으면 보이고, 받은 카카오 문의·게시한 고객 페이지·열린 팀 업무가 있으면 보인다 ·
-      ☁ 팀 공유 할일은 중계(Apps Script)가 연결돼 있어도 처음 보류(18 할 일 하나 — v613 검토) · 내 업무가 읽어 온 남은 공유 할일이 있으면 보임 · 까닭 글은 실제 자리·쉬운 말 (AUTO)
+      ☁ 팀 공유 할일은 중계(Apps Script)가 연결돼 있어도 처음 보류(18 할 일 하나 — v613 검토) · 내 업무(실제 hjMyWorkSharedLoad)가 마지막으로 읽어 온 남은 공유 할일이 있으면 보임 —
+      다시 여는 중(읽는 중)·잠깐의 읽기 실패에도 그 수 그대로, 다 끝내거나 중계를 끊으면 다시 보류 · 까닭 글은 실제 자리·쉬운 말 (AUTO)
    ③ 자료 — 그 칸에 자료가 생기면 다시 보인다 · 목표 칸의 매출 기준(salesBasis)은 목표가 아니다 · 보관 현장의 예산은 안 센다 · 견적 셋은 자료와 상관없이 보류 ·
       예산 경고는 예산이 없어도 견적의 70%를 넘는 지출이 있으면 보임(budgetAlertData 의 실제 입력) (DATA)
    ④ 이 기기 설정 — [다시 보이기]는 그 id 만 · 모르는 id·보류 아닌 것은 안 적음 · 깨진 값은 빈 설정 · 처음으로 되돌리기 · 자동 먼저 차례 (PREFS)
    ⑤ 더보기 묶음 HTML — '보류 n개 보기' · 줄마다 까닭·[다시 보이기] · 직원 작업실은 ./team.html 링크 · 되돌리기 단추는 다시 보이게 한 것이 있을 때만 · 편집 중 잠김 (BLOCK)
    ⑥ 대시보드 단추 줄 — 기본은 ✅ 할 일 하나(☁ 팀 공유 할일·팀 업무·직원 작업실 없음) · 다시 보이면 제자리 · 서명(sig)이 바뀐다 (DASH)
    ⑦ 🧰 옮긴 명령 — 관리 프로그램과 같은 일인 사진 명령 넷만 · 청구 누락(cw_unbilled)·캘린더 맞추기·작업내역서 반영은 남김 · 내가 만든 명령은 안 옮김 (COWORK)
-   HJ_V612_MUTATION=no-auto 는 ①②, shared-when-relay 는 ②, no-data 는 ②③, goal-basis·alert-budget-only 는 ③, show-ignored 는 ④, dash-always 는 ⑥, move-unbilled 는 ⑦ 에서 실패해야 한다. */
+   HJ_V612_MUTATION=no-auto 는 ①②, shared-when-relay·shared-state-only 는 ②, no-data 는 ②③, goal-basis·alert-budget-only 는 ③, show-ignored 는 ④, dash-always 는 ⑥, move-unbilled 는 ⑦ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -21,6 +22,8 @@ const MUT = {
   'no-auto': ["  if(f){let a='';try{a=f()||'';}catch(e){a='';}if(a)return {why:String(a),auto:true};}\n", '\n'],
   'no-data': ["  return {why:n>0?'':d.why,auto:false};", '  return {why:d.why,auto:false};'],
   'shared-when-relay': ["  sharedtodo:{why:'할 일은 ✅ 할 일 한 곳에 — 팀 공유 할일은 직원이 생기면 다시 보이기',", "  sharedtodo:{why:'',"],
+  // v613 검토 2 — 예전 판정(내 업무의 지금 읽기 상태가 'ready' 일 때만 셈): 다시 여는 중('loading')이면 남은 공유 할일이 있어도 보류가 된다
+  'shared-state-only': ["n:()=>{const w=typeof __hjMyWork!=='undefined'?__hjMyWork:null;return w?Number(w.sharedOpenN)||0:0;}}", "n:()=>{const w=typeof __hjMyWork!=='undefined'?__hjMyWork:null;return w&&w.sharedState==='ready'&&Array.isArray(w.shared)?w.shared.filter(t=>t&&!t.done).length:0;}}"],
   'alert-budget-only': ["n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)+(typeof budgetAlertData==='function'?budgetAlertData().length:0)}", "n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)}"],
   'goal-basis': ["n:()=>{const g=state.goals||{};return (num(g.month)>0?1:0)+(num(g.year)>0?1:0);}}", 'n:()=>Object.keys(state.goals||{}).length}'],
   'show-ignored': ["function hjHeld(id){try{return !!hjHoldWhy(id)&&!hjHoldPrefs().show.includes(id);}", 'function hjHeld(id){try{return !!hjHoldWhy(id);}'],
@@ -39,13 +42,16 @@ const code = [
   cut('const HJ_HOLD_KEY=', 'function moreItemInfo(action){'),
   cut('function moreItemInfo(action){', 'function moreReadActions('),
   cut('const CW_SAFE=', 'const CW_FILL_RE='),
-  cut('function budgetAlertData(){', 'function budgetAlert(){')
-].join('\n') + '\n;globalThis.__hold={HJ_HOLD_IDS,HJ_HOLD_NEVER,HJ_HOLD_EXTRA,HJ_HOLD_AUTO,HJ_HOLD_DEFAULT,HJ_HOLD_KEY,MORE_CATS,CW_MOVED};';
+  cut('function budgetAlertData(){', 'function budgetAlert(){'),
+  // 📋 내 업무의 공유 할일 읽기(실제 함수) — ☁ 팀 공유 할일 보류 판정이 보는 남은 수(sharedOpenN)를 여기서 센다
+  cut('const HJ_SHARED_TODO_VERSION=', '\n') + '\n', cut('function hjSharedTodoUUID(id){', '// Reserve/clear the durable request'),
+  cut('let __hjMyWork=', '// 직원 작업실(team.html)')
+].join('\n') + '\n;globalThis.__hold={HJ_HOLD_IDS,HJ_HOLD_NEVER,HJ_HOLD_EXTRA,HJ_HOLD_AUTO,HJ_HOLD_DEFAULT,HJ_HOLD_KEY,MORE_CATS,CW_MOVED};globalThis.__myWork=()=>__hjMyWork;';
 
 function env(opts = {}) {
   const store = new Map(Object.entries(opts.local || {}));
   const ctx = {
-    console, setTimeout: (fn) => { fn(); return 1; }, clearTimeout() {},
+    console, setTimeout: (fn) => { fn(); return 1; }, clearTimeout() {}, AbortController, localStamp: () => '2026-11-19 10:00',
     state: Object.assign({ projects: [{ name: '시험현장', archived: false }], quotes: [{ id: 'q1' }], notes: [], inventory: [], materials: [], suppliers: [], supplierMap: {},
       satisfaction: [], goals: {}, adPosts: [], portalCfg: {}, kakaoLastAt: '', tab: 'photos' }, opts.state || {}),
     localStorage: { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => { if (opts.denyWrite) throw new Error('quota'); store.set(k, String(v)); }, removeItem: k => store.delete(k) },
@@ -55,7 +61,11 @@ function env(opts = {}) {
     num: v => Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, '')) || 0,
     toasts: [], toast: m => ctx.toasts.push(String(m)), renders: 0, scheduleRender: () => { ctx.renders++; },
     document: { getElementById: () => null, createElement: () => ({ innerHTML: '', firstElementChild: null }) },
-    fetches: 0, fetch: async () => { ctx.fetches++; if (opts.teamFail) throw new Error('offline'); return { ok: true, text: async () => "window.HJ_TEAM_CONFIG = Object.freeze({ apiUrl: '" + (opts.team || '') + "' });" }; },
+    // POST = 내 업무의 공유 할일 읽기(sharedTodoList) — 답은 ctx.sharedReply(Error 면 읽기 실패) · GET = team-config.js
+    sharedCalls: 0, sharedReply: null,
+    fetches: 0, fetch: async (url, init) => {
+      if (init && init.method === 'POST') { ctx.sharedCalls++; const r = ctx.sharedReply; if (!r || r instanceof Error) throw r || new Error('offline'); return { ok: true, json: async () => JSON.parse(JSON.stringify(r)) }; }
+      ctx.fetches++; if (opts.teamFail) throw new Error('offline'); return { ok: true, text: async () => "window.HJ_TEAM_CONFIG = Object.freeze({ apiUrl: '" + (opts.team || '') + "' });" }; },
     projStats: n => Object.assign({ costTotal: 0, est: 0 }, (opts.stats || {})[n]),   // 예산 경고(budgetAlertData)가 보는 지출·견적만
     window: {}, AD_CH: [{ id: 'threads' }], COMPANY: { name: '시험회사' }, moreDispatch: a => a, hjQuoteNewDirect() {}, hjTeamBoard() {}, hjSharedTodoView() {}, adPostAdd() {}
   };
@@ -98,12 +108,29 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v61
     assert.match(shared.why, /할 일은 ✅ 할 일 한 곳에/);
     assert.equal(on.ctx.dashboardTodoBtnsHTML().includes('dashboardSharedTodoOpen'), false, '대시보드 할 일 단추는 하나');
     assert.match(on.ctx.dashboardTodoHintText(), /✅ 할 일 한 곳에/);
-    on.ctx.__hjMyWork = { sharedState: 'ready', shared: [{ id: 's1', done: true }] };
-    assert.equal(on.ctx.hjHeld('sharedtodo'), true, '끝난 공유 할일만 있으면 그대로 보류');
-    on.ctx.__hjMyWork = { sharedState: 'ready', shared: [{ id: 's1', done: false }] };
-    assert.equal(on.ctx.hjHeld('sharedtodo'), false, '내 업무가 읽어 온 남은 공유 할일이 있으면 보인다(자료가 있으면 숨기지 않는다)');
-    on.ctx.__hjMyWork = { sharedState: 'error', shared: [{ id: 's1', done: false }] };
-    assert.equal(on.ctx.hjHeld('sharedtodo'), true, '읽기에 실패한 목록은 세지 않는다');
+    // 남은 공유 할일 = 📋 내 업무(실제 hjMyWorkSharedLoad)가 마지막으로 읽기에 성공한 목록의 수(sharedOpenN) — v613 검토 2:
+    // myWorkView 는 단추 줄을 그리기 전에 sharedState 를 'loading' 으로 둔다. 지금 읽기 상태로 세면 다시 열 때마다 단추가 사라졌다.
+    const task = (n, done) => ({ id: '00000000-0000-4000-8000-00000000000' + n, project: '시험현장', text: '가상 공유 일 ' + n, done, revision: 1, updatedBy: '가상',
+      createdAt: '2026-11-18T00:00:00.000Z', updatedAt: '2026-11-18T00:00:00.000Z' });
+    const reply = tasks => ({ ok: true, version: 'shared-todo-v1', tasks });
+    const mw = on.ctx.__myWork();
+    on.ctx.sharedReply = reply([task(1, true)]); await on.ctx.hjMyWorkSharedLoad();
+    assert.deepEqual([mw.sharedState, on.ctx.hjHeld('sharedtodo')], ['ready', true], '끝난 공유 할일만 있으면 그대로 보류');
+    on.ctx.sharedReply = reply([task(1, true), task(2, false)]); await on.ctx.hjMyWorkSharedLoad();
+    assert.deepEqual([mw.sharedState, mw.sharedOpenN, on.ctx.hjHeld('sharedtodo')], ['ready', 1, false], '내 업무가 읽어 온 남은 공유 할일이 있으면 보인다(자료가 있으면 숨기지 않는다)');
+    mw.sharedState = 'loading';   // myWorkView 가 다시 열 때 단추 줄을 그리기 전에 하는 일
+    assert.equal(on.ctx.hjHeld('sharedtodo'), false, '다시 여는 중(읽는 중)에도 마지막으로 읽은 수 — 내 업무 [☁ 팀 공유 할일]·대시보드 단추가 그대로');
+    on.ctx.sharedReply = new Error('offline'); await on.ctx.hjMyWorkSharedLoad();
+    assert.deepEqual([mw.sharedState, on.ctx.hjHeld('sharedtodo')], ['error', false], '잠깐의 읽기 실패에도 그대로');
+    on.ctx.sharedReply = reply([task(1, true), task(2, true)]); await on.ctx.hjMyWorkSharedLoad();
+    assert.deepEqual([mw.sharedOpenN, on.ctx.hjHeld('sharedtodo')], [0, true], '다 끝내면 다시 보류');
+    on.ctx.sharedReply = reply([task(2, false)]); await on.ctx.hjMyWorkSharedLoad();
+    const relay0 = on.ctx.__relay; on.ctx.__relay = { url: '', token: '' }; await on.ctx.hjMyWorkSharedLoad(); on.ctx.__relay = relay0;
+    assert.deepEqual([mw.sharedState, mw.sharedOpenN, on.ctx.hjHeld('sharedtodo')], ['off', 0, true], '중계를 끊으면 센 수도 버린다(다시 이어도 읽기 전엔 보류)');
+    assert.equal(on.ctx.sharedCalls, 5, '중계가 없으면 공유 서버를 부르지 않는다');
+    const first = env({ relay: { url: 'https://script.google.com/macros/s/TEST_DEPLOY_ID/exec', token: 'TEST_TOKEN' } });
+    first.ctx.sharedReply = new Error('offline'); await first.ctx.hjMyWorkSharedLoad();
+    assert.deepEqual([first.ctx.__myWork().sharedState, first.ctx.hjHeld('sharedtodo')], ['error', true], '한 번도 읽지 못한 목록은 세지 않는다');
     assert.equal(env().ctx.hjHoldReason('sharedtodo').auto, true, '중계가 없으면 자동 보류(서버 없음)가 먼저');
     // 까닭 글 — 실제로 고치는 자리 · 개발 말(파일 이름) 없음 · 읽기 실패는 '확인하지 못했어요'
     const plain = env();

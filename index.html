@@ -30863,7 +30863,7 @@ function todoLocalView(projectName){
    (이 기기 할일 = notes todo:true, 팀 업무판 = notes teamTask, 팀 공유 = 서버 sharedTodoList 읽기만).
    기존 화면(todoLocalView·hjSharedTodoView·hjTeamBoard·team.html)은 아래 링크로 그대로 산다.
    완료 보고는 그 일정의 작업일지(workLogSave)에만 남는다 — 현장 단계(setStage)는 사람이 바꾼다. */
-let __hjMyWork={seq:0,shared:null,sharedState:'',sharedAt:'',team:''};
+let __hjMyWork={seq:0,shared:null,sharedState:'',sharedAt:'',team:'',sharedOpenN:0};   // sharedOpenN — 마지막으로 읽기에 성공한 남은 공유 할일 수(⏸ 보류 판정, 읽는 중·실패에도 그대로)
 const HJ_MYWORK_SRC=Object.freeze({local:'이 기기 할일',team:'팀 업무판',shared:'팀 공유'});
 function hjMyWorkDone(s){return !!(s&&s.report&&s.report.progress==='완료');}
 function hjMyWorkSchedules(date){
@@ -30886,7 +30886,7 @@ function hjMyWorkTodos(shared){
 // 팀 공유 할일 읽기 — 기존 서버 계약(sharedTodoList) 그대로, 쓰기는 공유 화면에서만
 async function hjMyWorkSharedLoad(){
   const seq=++__hjMyWork.seq;
-  if(!relayReady()||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||''))){__hjMyWork.shared=null;__hjMyWork.sharedState='off';return;}
+  if(!relayReady()||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||''))){__hjMyWork.shared=null;__hjMyWork.sharedState='off';__hjMyWork.sharedOpenN=0;return;}
   const conn=JSON.stringify([__relay.url,__relay.token,__relay.device]);
   __hjMyWork.sharedState='loading';
   const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
@@ -30896,7 +30896,7 @@ async function hjMyWorkSharedLoad(){
     const j=await r.json();
     if(seq!==__hjMyWork.seq||conn!==JSON.stringify([__relay.url,__relay.token,__relay.device]))return;
     if(!(j&&j.ok)||j.version!==HJ_SHARED_TODO_VERSION||!Array.isArray(j.tasks)||j.tasks.length>5000||j.tasks.some(t=>!hjSharedTodoValidTask(t,false)))throw new Error('invalid');
-    __hjMyWork.shared=j.tasks;__hjMyWork.sharedState='ready';__hjMyWork.sharedAt=localStamp();
+    __hjMyWork.shared=j.tasks;__hjMyWork.sharedState='ready';__hjMyWork.sharedAt=localStamp();__hjMyWork.sharedOpenN=j.tasks.filter(t=>!t.done).length;
   }catch(e){if(seq===__hjMyWork.seq){__hjMyWork.sharedState='error';}}
   finally{clearTimeout(timer);}
 }
@@ -30905,6 +30905,13 @@ async function hjMyWorkTeamCheck(){
   try{const r=await fetch('./team-config.js',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('http');
     const m=/apiUrl\s*:\s*['"]([^'"]*)['"]/.exec(await r.text());__hjMyWork.team=m&&/^https:\/\//.test(m[1])?'on':'off';}
   catch(e){__hjMyWork.team='error';}
+}
+// v613 18 — ☁ 팀 공유 할일 단추도 보류 묶음 규칙(남은 공유 할일 = 마지막으로 읽은 수)을 따른다. 읽은 뒤 그 단추만 제자리에서 넣거나 뺀다.
+function hjMyWorkSharedBtnHTML(){return relayReady()&&!hjHeld('sharedtodo')?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'';}
+function hjMyWorkSharedBtnSync(root){
+  const old=root.querySelector('#mwShared'),local=root.querySelector('#mwLocal'),html=hjMyWorkSharedBtnHTML();
+  if(old&&!html)old.remove();else if(!old&&html&&local)local.insertAdjacentHTML('afterend',html);
+  const sh=root.querySelector('#mwShared');if(sh)sh.onclick=()=>hjSharedTodoView();
 }
 // v613 18 — 직원 작업실(서버 없음)은 보류 묶음 규칙을 따른다. 이 창이 서버를 확인했으면(on) 보인다.
 function hjMyWorkTeamShown(){return __hjMyWork.team==='on'||!hjHeld('teamroom');}
@@ -30938,8 +30945,10 @@ function myWorkView(opts){
   opts=opts||{};
   if(opts.refresh!==false){
     __hjMyWork.sharedState=relayReady()?'loading':'off';__hjMyWork.team='';
-    // 다 읽은 뒤 할일 묶음·직원 작업실 줄만 제자리에서 바꾼다 — 창을 다시 열면 적던 기록자 이름·초점이 날아간다
-    Promise.all([hjMyWorkSharedLoad(),hjMyWorkTeamCheck()]).then(()=>{const root=document.getElementById('myWork');if(!root||!root.isConnected)return;
+    // 다 읽은 뒤 할일 묶음·☁ 팀 공유 할일 단추·직원 작업실 줄만 제자리에서 바꾼다 — 창을 다시 열면 적던 기록자 이름·초점이 날아간다
+    Promise.all([hjMyWorkSharedLoad(),hjMyWorkTeamCheck()]).then(()=>{try{hjHoldDashRefresh();}catch(e){}   // v613 남은 공유 할일 수가 바뀌면 대시보드 단추 줄도 제자리에서
+      const root=document.getElementById('myWork');if(!root||!root.isConnected)return;
+      hjMyWorkSharedBtnSync(root);
       let team=root.querySelector('#mwTeam');   // v613 직원 작업실 줄은 보류가 아닐 때만(서버가 확인되면 그때 붙인다)
       if(!team&&hjMyWorkTeamShown()){root.insertAdjacentHTML('beforeend','<h4 data-mw-teamh>🏢 직원 작업실</h4><div id="mwTeam"></div>');team=root.querySelector('#mwTeam');}
       if(team)team.innerHTML=hjMyWorkTeamHTML();
@@ -30976,7 +30985,7 @@ function myWorkView(opts){
       '<button type="button" class="ghost" data-mw-matissue="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 문제 있음')+'">⚠ 문제 있음</button></div></article>').join(''):'')+
     '<div id="mwTodoBox">'+hjMyWorkTodoBoxHTML(todos)+'</div>'+
     (empty?'<div class="empty" id="mwEmpty" style="padding:14px;margin-top:10px"><b>오늘은 할 일이 없습니다</b>'+(ahead.length?'내일('+escapeHtml(tomorrow)+') 일정 '+ahead.length+'건:<ul style="text-align:left;margin:6px 0 0;padding-left:18px">'+ahead.slice(0,5).map(s=>'<li>'+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' · '+s.project:''))+'</li>').join('')+'</ul>':'내일 잡힌 일정도 없습니다.')+'</div>':'')+
-    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()&&!hjHeld('sharedtodo')?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+(hjHeld('teamboard')?'':'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button>')+'</div>'+   // v613 팀 업무판은 보류가 아닐 때만
+    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+hjMyWorkSharedBtnHTML()+(hjHeld('teamboard')?'':'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button>')+'</div>'+   // v613 팀 업무판은 보류가 아닐 때만
     (hjMyWorkTeamShown()?'<h4 data-mw-teamh>🏢 직원 작업실</h4><div id="mwTeam">'+hjMyWorkTeamHTML()+'</div>':'')+'</section>';   // v613 직원 작업실은 보류가 아닐 때만(18)
   openModal('📋 내 업무'+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length?' ('+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length)+')':''),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('myWork');
@@ -33041,8 +33050,9 @@ const HJ_HOLD_DEFAULT=Object.freeze({
   budgetalert:{why:'안 쓰는 메뉴 — 현장 예산 0곳 · 예산 경고 0건',n:()=>hjHoldProjCount(p=>num(p.budget)>0?1:0)+(typeof budgetAlertData==='function'?budgetAlertData().length:0)},
   adpostlog:{why:'게시 기록 0건 — 올린 곳은 카톡봇 ‘홍보’ 명령이 PC 홍보 게시 기록에 적어요',n:()=>hjHoldNum(state.adPosts)},
   // 18 할 일 하나 — 할 일은 ✅ 할 일(현장 자료와 함께 저장돼 PC·폰이 같이 본다) 한 곳. ☁ 팀 공유 할일은 중계가 연결돼 있어도 처음엔 접는다(직원이 생기면 [다시 보이기]).
-  //   이 기기 📋 내 업무가 공유 서버에서 읽어 온 남은 공유 할일이 있으면 보류하지 않는다(자료가 있으면 숨기지 않는다). 중계가 없으면 자동 보류가 먼저(까닭: 서버 없음).
-  sharedtodo:{why:'할 일은 ✅ 할 일 한 곳에 — 팀 공유 할일은 직원이 생기면 다시 보이기',n:()=>{const w=typeof __hjMyWork!=='undefined'?__hjMyWork:null;return w&&w.sharedState==='ready'&&Array.isArray(w.shared)?w.shared.filter(t=>t&&!t.done).length:0;}}
+  //   이 기기 📋 내 업무가 공유 서버에서 마지막으로 읽어 온 남은 공유 할일이 있으면 보류하지 않는다(자료가 있으면 숨기지 않는다 — 다시 여는 중·읽기 실패에도 그 수 그대로).
+  //   중계가 없으면 자동 보류가 먼저(까닭: 서버 없음).
+  sharedtodo:{why:'할 일은 ✅ 할 일 한 곳에 — 팀 공유 할일은 직원이 생기면 다시 보이기',n:()=>{const w=typeof __hjMyWork!=='undefined'?__hjMyWork:null;return w?Number(w.sharedOpenN)||0:0;}}
 });
 // 자동 보류 — '' 이면 쓸 수 있음(보이기), 아니면 보류 까닭
 function hjHoldPortalOn(){const c=state.portalCfg;return !!(c&&typeof c==='object'&&String(c.base||'').trim());}
@@ -56299,14 +56309,14 @@ async function webWorkAsRegister(inquiryId){
    만물웹 lead-inbox.html 의 「앱에 붙여넣을 본문 복사」와 똑같은 글이라 붙여넣기와 같은 중복 ID·접수번호 중복 막기가 그대로 걸린다.
    서버 계약: POST text/plain JSON {action,ts,payload[,sessionToken]} → {ok:true,…} | {ok:false,error}.
      leadLogin {adminCode} → {sessionToken(64자↑), expiresAt(ms, 8시간)} · leadLogout → {loggedOut}
-     leadList {status:'신규'|'보류'|'승인'|'거절'|'전체'} → {leads:[문의 줄], total, counts} · 로그인 없이 부를 수 있는 것은 leadHealth·leadCreate·leadLogin 뿐
+     leadList {status:'신규'|'보류'|'승인'|'거절'|'전체'} → {leads:[문의 줄], total, counts}
      leadDecide {leadId, decision:'승인'|'보류'|'거절', memo(거절은 필수·500자), requestId(UUID v4 — 같은 값은 서버가 한 번만)} → {lead[,duplicate]}
      전이: 신규→승인·보류·거절 · 보류→승인·거절 · 거절→보류 · 승인은 끝. 오류: not-configured·invalid-credentials·rate-limited(5번 틀리면 15분)·session-expired·
      invalid-input·invalid-transition·not-found·bad-request·server-error.
    지키는 것
    - 접수함 주소(IDB 'lead_inbox_url')는 **이 기기 IndexedDB 에만**, 서버가 준 세션({token,expiresAt}, 8시간)은 **이 창 메모리(__leadInbox.session)에만** —
-     state·_현장.json·중계·안전판·내보내기·브라우저 저장소에 넣지 않는다. 현장웹과 만물웹 공개 사이트가 같은 출처(01023978629.github.io)라
-     IndexedDB·웹 저장소는 만물웹 쪽 페이지 스크립트도 읽을 수 있다 — 세션은 만물웹 lead-inbox.html 과 같이 메모리에만 두고, 앱을 닫거나 새로고침하면 다시 로그인한다.
+     state·_현장.json·중계·안전판·내보내기·브라우저 저장소에 넣지 않는다. 세션은 만물웹 lead-inbox.html 과 같이 이 창 메모리에만 두고 기기 저장소에 남기지 않는다 —
+     앱을 닫거나 새로고침하면 다시 로그인한다.
      (이 묶음의 예전 개발판이 남긴 IDB 'lead_inbox_session' 은 부팅 때 지운다.) 로그인 창에는 비밀번호를 보낼 접수함 주소의 배포 ID 끝 6자리를 보여 준다.
    - 관리 비밀번호는 비밀번호 칸에서 읽자마자 칸을 비우고 leadLogin 요청 한 번에만 쓴다. 어디에도 저장하지 않는다(브라우저 저장소·메모리 변수·state 모두).
    - 받은 문의 목록(이름·전화)은 이 창들이 열려 있는 동안 메모리에만 — 창을 닫거나 등록하면 버린다.
@@ -56352,7 +56362,7 @@ function leadInboxLive(){
   if(__leadInbox.session&&!leadInboxSessionOk(__leadInbox.session))__leadInbox.session=null;   // 세션은 메모리에만 — 만료면 버린다
   return !!__leadInbox.session;
 }
-// 로그인 창에 보이는 '비밀번호를 보낼 곳' — 배포 ID 끝 6자리(주소 전체는 길고, 같은 출처 스크립트가 주소를 바꿔 두었는지 대표가 알아보게)
+// 로그인 창에 보이는 '비밀번호를 보낼 곳' — 배포 ID 끝 6자리(주소 전체는 길어서 — 대표가 보낼 곳을 눈으로 확인하게)
 function leadInboxUrlTail(url){const m=/\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/.exec(String(url||''));return m?m[1].slice(-6):'';}
 function leadInboxTime(ms){const d=new Date(ms);return isNaN(d.getTime())?'':d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});}
 function leadInboxWhen(value){const t=Date.parse(String(value||''));return Number.isFinite(t)?new Date(t).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';}
@@ -56410,7 +56420,7 @@ async function leadInboxLogin(code){
   const result=await leadInboxPost('leadLogin',{adminCode:code},false);
   const session={token:typeof result.sessionToken==='string'?result.sessionToken:'',expiresAt:Number(result.expiresAt)};
   if(!leadInboxSessionOk(session))throw leadInboxError('invalid-response');
-  __leadInbox.session=session;__leadInbox.statusById={};   // 메모리에만(같은 출처 만물웹 페이지가 읽을 수 있는 IDB·웹 저장소에 두지 않는다)
+  __leadInbox.session=session;__leadInbox.statusById={};   // 이 창 메모리에만(기기 저장소에 남기지 않는다)
   return session;
 }
 async function leadInboxLogout(){
