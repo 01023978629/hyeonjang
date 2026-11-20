@@ -3,6 +3,23 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-20 v616 🧭 AI 모델 역할 배정 — 무료 Gemini 한도를 모델마다 나눠 쓴다
+
+대표 지시(11/20) "모델 역할 구분해서 배정해줘". Gemini 를 결제계정 없이 쓰면 한도를 **구글 프로젝트·모델마다 따로** 센다(분당·하루 — 하루 한도는 한국 오후 4~5시에 다시 참).
+예전에는 모든 기능이 `gemini-flash-latest` 를 먼저 부르고 429 를 받으면 **다른 모델을 보지 않고 멈췄다** — Flash 하루 한도를 넘기면 Flash-Lite 한도가 남아도 AI 기능 전부가 멈췄다.
+- **역할표** `HJ_AI_ROLES`(정확한 모델 이름 — 별칭 `-latest` 는 정확한 이름이 모두 단종됐을 때의 예비로 Gemini 차례 끝에만):
+  `bulk` 많이 도는 글(정하지 않은 기능 전부) 3.5 Flash-Lite → 3.1 Flash-Lite → (flash-lite-latest) → Gemma 4 31B(글만) ·
+  `vision` 사진 Flash-Lite 차례(Gemma 없음 — 사진은 Gemini 만, bulk 를 넘겨도 vision) · `tools` AI 비서 `aiFC` Flash-Lite 차례(비서 한 번에 여러 번 부르므로 3.8 Flash 안 씀) ·
+  `smart` 돈·계약·하자 판단 3.8 Flash → 3.5 → 3.1 Flash-Lite → (flash-latest). smart 기능은 `HJ_AI_SMART_FEATURES` 13개
+  (aiQuoteItems·aiQuoteFromText·reviewQuote·negotiateDialog·lossAlert·profitAnalysis·bizAnalysis·contractReview·contractAiTerms·schedulePlanDialog·yearReport·photoDefectCheck·photoQuoteScan) — 늘리거나 빼면 목록과 호출을 같이 고쳐라(검사가 수를 맞춘다).
+- **한 곳** `hjAiGenerate(role,body,read)` — `geminiAsk(prompt,role)`·`geminiVision(prompt,imgs,role)`·`aiFC`(tools) 가 모두 이것을 탄다. `aiAsk(prompt,role)` 은 Gemini 일 때만 role 을 넘긴다(ChatGPT·Llama 길은 그대로). **같은 판 고침**: `aiAsk` 기본 길이 기기 키(`__geminiKey`)만 봐서, 계약 서버에만 키를 넣으면 aiAsk 를 쓰는 기능 약 20개(브리핑·보고·계약서 검토 등)가 'AI 키 없음'으로 멈췄다 — 이제 `aiRelayProbe().gemini` 도 본다.
+  다음 모델로: 404(단종)·429(그 모델 한도)·5xx·네트워크·빈 답·차단(서버 중계의 `AI_UPSTREAM '(429)'` 도 같은 뜻). **멈춤**: 400·401·403(키·요청 문제), 서버 보호선 `AI_QUOTA`(geminiCall 이 `__aiStop` 을 붙인다 — ai-relay ⑤ 우회 금지 그대로).
+  앱 보호선 `quotaReserve('gemini')`(분당 8·하루 200)은 예전처럼 요청 한 번에 한 건 — 구글에서 200 을 한 번도 못 받았을 때만 되돌린다(`.reached`). 답의 생각(`thought`) 조각은 글에서 뺀다(비서 화면의 말에서도).
+- 설정 › AI·지도 키 › 🤖 AI 도우미 칸에 배정 한 줄(`hjAiRolesText`). 키 [🔎 확인]은 `gemini-3.5-flash-lite` 로(3.8 Flash 의 작은 하루 한도를 쓰지 않게).
+- 무변경: 서버 중계(만물웹 저장소 apps-script-contract `AiService.gs` — 모델 이름을 그대로 넘긴다), AI_TOOLS·AI_WRITE·SAFE_AUTO, 저장 키, 영수증(기기 안 Tesseract 그대로).
+- 모델 이름·한도는 구글이 자주 바꾼다 — 한도 숫자는 AI Studio 의 프로젝트 한도 화면이 정답. 모델이 단종되면 `HJ_AI_ROLES` 와 `HJ_AI_MODEL_NAMES` 만 고친다.
+- 검사: `tests/ai-roles-v616.unit.js`(앱 스크립트 VM — 기기 키 길·서버 중계 길을 가짜로. `HJ_V616_BASELINE` 은 ①, 변이 break-on-429 ②·no-stop-quota ③·gemma-in-vision ①·smart-dropped·aiask-no-relay ⑤·thought-kept ⑥ 에서 실패). 핀 `hyeonjang-v616-airoles`.
+
 ## 2026-11-20 v615 🤖 클로드 요청함 알림 — 카톡봇·클로드 요청을 첫 화면 한 줄로
 
 - v614 를 먼저 내보낸 뒤(PR #224) 그 위에 따로 낸 판. 핀 `hyeonjang-v615-inboxnotice`. 기능 설명은 아래 v614 항목의 '🤖 클로드 요청함 알림' 줄 그대로다
@@ -4102,7 +4119,7 @@ node scripts/verify-office-ops-branch-scope.mjs
 - 데이터: `state` + `serializeData()/applyData()` (드라이브 백업 왕복)
 - 설정 화면: `openGdriveSetup()` — 5탭(저장·백업/전자계약/OfficeOps/AI·지도 키/기타)
 - 전자계약 연결: `contractCall()`, `contractSelfTest()`, `contractFeatureAvailable()`
-- AI: `geminiCall()`(서버 중계 우선), `aiFC()`(도구 호출), `AI_TOOLS`/`aiToolRun()`
+- AI: `geminiCall()`(서버 중계 우선), `hjAiGenerate()`+`HJ_AI_ROLES`(v616 모델 역할·한도 넘어가기), `aiFC()`(도구 호출), `AI_TOOLS`/`aiToolRun()`
 - 아파트 오더: `aptOrderManage()`, `aptSettle()`, `aptStats()`, `aptPhotoCount()`
 - 주간·운영 보고: `weekBriefData/Text()`, `opsReportData/Text()`
 - 전체 장부 엑셀: `exportFullXlsx()` (11시트 — v328 추가공사)
