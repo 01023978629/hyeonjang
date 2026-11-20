@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-20 v615 🤖 클로드 요청함 알림 — 카톡봇·클로드 요청을 첫 화면 한 줄로
+
+- v614 를 먼저 내보낸 뒤(PR #224) 그 위에 따로 낸 판. 핀 `hyeonjang-v615-inboxnotice`. 기능 설명은 아래 v614 항목의 '🤖 클로드 요청함 알림' 줄 그대로다
+  (그 줄은 v614 작업 중에 썼고 실제로는 v615 에 들어간다). 새 저장 키·AI 도구·apps-script 변경 없음.
+
 ## 2026-11-20 v614 현장 옛 이름 기억(formerNames) — 카톡봇 연동
 
 대표 요청 "현장웹과 카톡봇 프로젝트 명 관리를 연동". 카톡봇은 드라이브 `현장데이터.json` 의 현장 목록을 읽는데, 현장웹에서 현장 이름을 바꾸면 옛 이름이 사라져
@@ -15,8 +20,15 @@
   🧭 창 글 '…이 현장의 옛 이름과 같아요', 체크 안 함) · 옛 이름을 '＋ 새 현장'으로 제안하지 않음 · 같은 옛 이름을 가진 진행 현장이 둘이면 고르지 않음.
   자동 배정·현장 만들기(`recoverOrganizedMetadata`·`ensureProjectExists`)는 이 칸을 **보지 않는다**(옛 이름으로 새 현장을 일부러 다시 만드는 경우를 자동으로 덮지 않게).
 - **개인정보 정리(3년)와 함께**: 정리(`hjRetAnonymize` 꼴 — 고객 이름이 든 현장 이름을 '고객'으로 바꿈)도 `hjRenameProjectRefs` 를 지나므로 옛 이름에 고객 이름이 남았다(PR #224 첫 CI `tests/retention-v447` ② 'customer name is gone everywhere'). 정리한 현장은 `formerNames` 칸을 지운다(예전에 손으로 바꾼 옛 이름까지) — 카톡봇도 그 현장의 옛 이름을 더는 모른다.
-- 그 밖에 바뀐 것 없음: AI 도구·클로드 요청 도구·CLAUDE_REQ_DENY·apps-script/ 무변경, 화면 단추 없음, 바깥 요청 없음. 핀 `hyeonjang-v614-formernames`.
+- formerNames 갈래의 나머지는 그대로: AI 도구·클로드 요청 도구·CLAUDE_REQ_DENY·apps-script/ 무변경, 이 칸 때문에 생긴 화면 단추·바깥 요청 없음. 핀 `hyeonjang-v614-formernames`(아래 알림도 같은 판).
 - 검사: `tests/formernames-v614.unit.js`(앱 스크립트 VM — 변이 7개·`HJ_V614_BASELINE` 은 ①에서 실패) · `tests/project-rename.e2e.js` ②③ 에 formerNames 단언.
+- **🤖 클로드 요청함 알림(같은 판)**: 카톡봇 v1.8.6 이 '현장 만들기' 요청을 드라이브 `견적서/클로드_요청함.json` 에 쓰는데, 대표가 🤖 요청함을 열기 전엔 안 보였다. 서버(중계)가 연결된 기기는
+  부팅(중계 부팅 뒤 4초)·앱 다시 보기·첫 화면 그리기 때 **합쳐 30분에 한 번**(`HJ_CINBOX_CHECK_MS` · 시각은 메모리 + localStorage `hj_claude_inbox_checked_at`, 받기 전에 적어 실패도 셈)
+  `hjClaudeInboxAutoCheck` → `claudeInboxFetch`(처리한 id·형식 오류·금지 도구 거름은 그대로)로 **읽기만** 하고, ✅ 오늘 현장 업무 칸(`dashboardTodoHTML`, 대표 할 일 줄 바로 아래 자리 `#dashboardClaudeInbox`)에
+  '🤖 카톡봇·클로드 요청 n건이 승인을 기다려요' + 새 현장 이름 3개 '외 n곳' + [요청함 열기](이 창에서 받은 결과를 claudeDone 으로 다시 걸러 `claudeInboxView(preset)`, 없으면 새로 받기)·[✕](그때 id 를 `hj_claude_inbox_dismissed` 에 — **새 id 가 오면** 다시 보임).
+  대기 요약(id·도구·이름 40자 ≤100건)은 `hj_claude_inbox_pending`(새로 고친 뒤 30분 안에도 줄 유지 · 그릴 때 claudeDone 으로 다시 거름). 미연결·체험·직원 모드·오프라인 → 요청 0, 실패는 console.debug 만(토스트·창 없음).
+  **부팅 때(중계 설정 복원 순간 `__hjRelayConfigDone.ready`) 이미 연결된 기기만** 켠다(`__hjCinboxArmed`) — 쓰다가 방금 연결한 기기·부팅 뒤 `__relay` 를 넣고 `relayCall` 을 '부르면 안 됨' 가짜로 바꾸는 검사(document-upload·my-work·shared-todo 꼴)는 자동 확인을 안 탄다. 검사에서 켜려면 `__hjCinboxArmed=true`.
+  자동 적용 없음 · 새 저장 키 없음(localStorage 셋은 이 기기 기록) · 중계는 원래 쓰던 `listFiles{kind:'doc'}`·`download` 만. 검사 `tests/claudeinbox-notice-v614.unit.js`(VM — 변이 10개·`HJ_V614_CINBOX_BASELINE` 은 ①) · `tests/claudeinbox-notice-v614.e2e.js`(390px·어두운 화면·열기·승인·✕).
 
 ## 2026-11-19 v613 정리 묶음 — 📥 웹 업무 연결 A/S·📬 접수함 당겨오기 · 📣 누수 접수 링크를 만물웹으로 · ⏸ 보류 묶음 · 🧹 현장 단계 한 번에 정리 · 🏢 관리사무소 접수 분리 스위치
 
