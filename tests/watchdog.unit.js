@@ -710,7 +710,110 @@ test('v6 dailyWatch — 맞추기와 알림을 함께, WATCH_CALSYNC=0 이면 �
   assert(/ · alert-off$/.test(d.out) && d.cal.live().every(e => e._e.title.indexOf('[일정 알림]') !== 0), 'ALERT_OFF: ' + d.out);
   const i = alertBox({}); i.b.ScriptApp = { getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyHours: () => ({ create() {} }) }) }) };
   assert(/매일 9시 내일 일정 알림/.test(i.b.installDailyWatch()), '설치 안내에 일정 알림');
-  eq(sandbox.WATCH_VERSION, 'watch-v6', '버전');
+  eq(sandbox.WATCH_VERSION, 'watch-v6.1', '버전');
+});
+
+// ── watch-v6.1 (2026-11-21) — 구글에서 가져온 앱 일정은 다시 넣지 않기 · 미리 보기 · 겹쳐 돌지 않기 · 실패 점검 알림 · 트리거 정리 ──
+function fullBox(props) {
+  const b = {}; vm.createContext(b); vm.runInContext(src, b);
+  const store = Object.assign({}, props || {});
+  b.PropertiesService = { getScriptProperties: () => ({ getProperty: k => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); },
+                                                         deleteProperty: k => { delete store[k]; } }) };
+  b.Logger = { log() {} };
+  b.MailApp = { sendEmail() {} };
+  b.Session = { getEffectiveUser: () => ({ getEmail: () => 'owner@example.test' }) };
+  return { b, store };
+}
+const V61_DATA = () => ({
+  projects: [{ name: '가상빌 101동 101호' }, { name: '목동' }],
+  schedule: [
+    { id: 'imp1', date: ahead(2), time: '', title: '대전시 가상구 가상로 1 거실 수전 작업', project: '가상빌 101동 101호', icsUid: 'abc123@google.com',
+      memo: '장소: 가상로 1\n구글 캘린더에서 가져옴 (@ 제미나이 입력)' },
+    { id: 'imp2', date: ahead(3), time: '', title: '가상사거리 배관 작업', project: '', icsUid: 'gcal:' + ahead(3) + '|가상사거리배관작업' },
+    { id: 'imp3', date: ahead(4), time: '', title: '메모 표시만 있는 일정', project: '목동', memo: '구글 캘린더에서 가져옴' },
+    { id: 'own', date: ahead(2), time: '10:00', hours: 2, title: '철거', project: '목동' }
+  ]
+});
+function v61Cal() {
+  const cal = fakeCal(), d2 = sandbox.watchDate_(ahead(2));
+  cal.createAllDayEvent('@대전시 가상구 가상로 1 거실 수전 작업', d2, {});            // 구글 원본(사장님·제미나이가 넣은 것)
+  const copy = cal.createAllDayEvent('[가상빌 101동 101호] 대전시 가상구 가상로 1 거실 수전 작업', d2, {});   // v5 가 만든 사본
+  copy.setTag('hjKey', 'imp1'); copy.setTag('hjSig', 'old');
+  return { cal, copy };
+}
+
+test('v6.1 구글에서 가져온 앱 일정(icsUid·메모 표시)은 캘린더에 다시 넣지 않고, 예전 사본은 스스로 지운다 — 원본은 그대로', () => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const w = sandbox.watchCalItems_(V61_DATA(), today);
+  eq(w.items.map(i => i.key).join(','), 'own', '앱에서 만든 일정만 넣는다');
+  eq(w.fromGoogle, 3, '구글에서 온 일정 3건을 센다');
+  const { cal, copy } = v61Cal();
+  const r = sandbox.watchCalSync_(V61_DATA(), cal, new Date());
+  eq(r.created + '/' + r.deleted + '/' + r.fromGoogle, '1/1/3', '철거 하나 만들고 · v5 사본 하나 지움 · 구글에서 온 일정 3');
+  assert(copy._e.deleted, 'v5 가 만든 사본(태그 일정)은 지운다');
+  assert(cal.live().some(e => e._e.title === '@대전시 가상구 가상로 1 거실 수전 작업' && !e._e.deleted), '구글 원본은 그대로');
+  eq(cal.mine().map(e => e._e.title).join(','), '[목동] 철거', '태그 일정은 앱에서 만든 것만');
+  assert(sandbox.watchFromGoogle_({ icsUid: '  ' }) === false && sandbox.watchFromGoogle_({ memo: '현장 메모' }) === false, '표시가 없으면 앱 일정');
+});
+
+test('v6.1 미리 보기(dry) — 캘린더에 쓰지 않고 만들·고칠·지울 일정만 센다 · watchPreview 글', () => {
+  const { cal, copy } = v61Cal();
+  const before = cal.evs.length;
+  const r = sandbox.watchCalSync_(V61_DATA(), cal, new Date(), true);
+  eq(r.created + '/' + r.deleted, '1/1', '만들 1 · 지울 1');
+  eq(cal.evs.length, before, '새 일정을 만들지 않는다');
+  assert(!copy._e.deleted && cal.mine().length === 1, '지우지 않는다');
+  assert(/철거/.test(r.plan.create[0]) && /가상로 1/.test(r.plan.del[0]), '목록: ' + JSON.stringify(r.plan));
+  const { b } = fullBox({});
+  b.watchLoadData_ = () => V61_DATA();
+  b.CalendarApp = { getDefaultCalendar: () => cal, getCalendarById: () => cal };
+  const txt = b.watchPreview();
+  assert(/만들 1 · 고칠 0 · 지울 1/.test(txt) && /구글에서 온 일정\(다시 안 넣음\) 3/.test(txt) && /지울 일정\(이 스크립트가 만든 것만\)/.test(txt), txt);
+  eq(cal.evs.length, before, 'watchPreview 도 쓰지 않는다');
+});
+
+test('v6.1 겹쳐 돌지 않기 — 실행 중 표시가 10분 안이면 건너뛰고, 끝나면 지운다 · 10분 넘은 표시는 멈춘 실행으로 본다', () => {
+  const mk = run => { const x = fullBox({ WATCH_RUN: String(run), ALERT_OFF: '1' }); const cal = fakeCal();
+    x.b.CalendarApp = { getDefaultCalendar: () => cal, getCalendarById: () => cal }; x.b.watchLoadData_ = () => V61_DATA(); return x; };
+  const busy = mk(Date.now() - 60000);
+  eq(busy.b.dailyWatch(false), 'busy', '앞 실행이 1분 전에 시작 — 건너뜀');
+  assert(busy.store.WATCH_RUN, '남의 표시는 지우지 않는다');
+  const stale = mk(Date.now() - 11 * 60000);
+  assert(/^sync \+1/.test(stale.b.dailyWatch(false)), '11분 전 표시는 멈춘 실행 — 돈다');
+  assert(!('WATCH_RUN' in stale.store), '끝나면 표시를 지운다');
+  assert(JSON.parse(stale.store.WATCH_LAST).ver === 'watch-v6.1', '최근 실행 기록');
+});
+
+test('v6.1 실패 점검 — 3번 잇달아 실패하면 하루 한 번 [파수꾼] ⚠️ 알림 · 성공하면 0 · WATCH_FAIL_ALARM=0 이면 끔', () => {
+  const { b, store } = fullBox({});
+  const cal = fakeCal(); let ok = false;
+  b.CalendarApp = { getDefaultCalendar: () => cal, getCalendarById: () => cal };
+  b.watchLoadData_ = () => { if (!ok) throw new Error('가상 읽기 실패'); return V61_DATA(); };
+  for (let i = 0; i < 2; i++) eq(b.dailyWatch(false), 'load-failed', '읽기 실패');
+  eq(store.WATCH_FAILS, '2', '두 번');
+  eq(cal.live().length, 0, '두 번까지는 알림 없음');
+  b.dailyWatch(false); b.dailyWatch(false);
+  const warn = cal.live().filter(e => /^\[파수꾼\] ⚠️ 일정 자동 맞추기가 3번 잇달아 안 됐어요/.test(e._e.title));
+  eq(warn.length, 1, '세 번째에 한 번 · 네 번째는 같은 날이라 또 꽂지 않음');
+  assert(/마지막 결과: load-failed/.test(warn[0]._e.desc) && !/가상빌|010-/.test(warn[0]._e.desc), '설명은 결과만');
+  eq(sandbox.watchAlertCalItem_(warn[0], ahead(1)), null, '점검 알림은 내일 일정 알림에 들어가지 않는다');
+  ok = true; b.dailyWatch(false);
+  eq(store.WATCH_FAILS, '0', '성공하면 0');
+  const off = fullBox({ WATCH_FAIL_ALARM: '0', WATCH_FAILS: '5' }); const cal2 = fakeCal();
+  off.b.CalendarApp = { getDefaultCalendar: () => cal2, getCalendarById: () => cal2 }; off.b.watchLoadData_ = () => null;
+  eq(off.b.dailyWatch(false), 'no-data', '자료 없음도 실패로 센다');
+  eq(off.store.WATCH_FAILS, '6', '셈은 이어 간다'); eq(cal2.live().length, 0, '알림은 끔');
+});
+
+test('v6.1 트리거 정리 — dailyWatch 트리거가 셋이면 하나만 남기고 다른 함수 트리거는 그대로 · watchStatus', () => {
+  const { b } = fullBox({ WATCH_LAST: '{"at":"2026-11-21 09:00","ver":"watch-v6.1","out":"sync +0"}' });
+  const trig = name => ({ getHandlerFunction: () => name, name });
+  const all = [trig('dailyWatch'), trig('dailyWatch'), trig('otherJob'), trig('dailyWatch')], gone = [];
+  b.ScriptApp = { getProjectTriggers: () => all.filter(t => gone.indexOf(t) < 0), deleteTrigger: t => gone.push(t) };
+  eq(b.watchTriggerTidy_(), 2, '겹친 두 개를 지움');
+  assert(gone.every(t => t.name === 'dailyWatch') && all.filter(t => gone.indexOf(t) < 0).map(t => t.name).join(',') === 'dailyWatch,otherJob', '하나 남김 · 다른 트리거 그대로');
+  const st = b.watchStatus();
+  assert(/판: watch-v6\.1/.test(st) && /매시간 트리거: 1개/.test(st) && /최근 실행: .*sync \+0/.test(st), st);
 });
 
 const passed = results.filter(r => r.ok).length;

@@ -451,6 +451,11 @@ const normalizeCheckoutLines = value => value.replace(/\r\n/g, '\n');
 // watch-v5 맞추기는 그대로(WATCH_CALSYNC=0 이면 멈춤). 이 정확한 본문(SHA-256)만 허용한다.
 // 운영 Apps Script 반영은 별도(운영 본문을 먼저 보관하고 Watchdog.gs 만 바꾼다).
 const approvedWatchdogV6Sha256 = '05de8511bef40dc6fd849cdf35292d17a35c1d16aad0ab6452da0c342c89c57e';
+// 2026-11-21 사용자 요청·승인("파수꾼 v6 더 보강해서 올리자"): watch-v6.1 — 구글에서 가져온 앱 일정은 캘린더에 다시 넣지 않음(예전 사본은
+// 스스로 지움) · 겹쳐 돌지 않기(실행 중 표시, 중계 저장의 스크립트 잠금은 잡지 않음) · 매시간 트리거 하나만 · 실행 기록과 3번 잇단 실패 점검 알림 ·
+// watchStatus/watchPreview(쓰기 없음). 현장데이터는 그대로 읽기만. 이 정확한 본문(SHA-256, 줄끝 LF)만 더 허용한다.
+const approvedWatchdogV61Sha256 = '1155f230c8ed44de6889d1dc4e4e8bf9eb38a3c97898337670700a6d7bbe56c5';
+const approvedWatchdogShas = [approvedWatchdogV6Sha256, approvedWatchdogV61Sha256];
 // 2026-11-19 사용자 요청·승인(작업 목록 항목 32 '관리사무소 접수를 현장 전체 자료 서버에서 떼어 내기'):
 // OfficeIntake.gs 에 스크립트 속성 스위치(OFFICE_INTAKE_MODE=external)와 별도 접수 프로젝트(apps-script-office-intake/)용
 // 저장 나눔(oiRole_·oiSplit*)을 더하고, README_APPS_SCRIPT.md 에 그 계약(속성 두 개·office-intake-moved)을 적었다.
@@ -500,8 +505,8 @@ function assertProtectedSnapshot(entries, label) {
       assert.equal(current.text === original.text || current.text === approvedRelayText || current.text === approvedMediaRelayText, true,
         label + ': relay must equal Task 1 plus only the exact single post-auth shared-todo dispatch');
     } else if (original.path === 'apps-script/Watchdog.gs') {
-      assert.equal(current.text === original.text || sha256Text(current.text) === approvedWatchdogV6Sha256, true,
-        label + ': Watchdog must equal the fixed baseline or the exact approved watch-v6');
+      assert.equal(current.text === original.text || approvedWatchdogShas.includes(sha256Text(current.text)), true,
+        label + ': Watchdog must equal the fixed baseline or the exact approved watch-v6 · watch-v6.1');
     } else if (original.path === 'apps-script/appsscript.json') {
       assert.equal(current.text === original.text || current.text === approvedMediaManifestText, true,
         label + ': manifest must equal fixed baseline plus the exact external_request scope');
@@ -537,7 +542,7 @@ for (const [name, alteredRelay] of [
 }
 {
   const approvedWatchdog = normalizeCheckoutLines(fs.readFileSync(path.join(ROOT, 'apps-script', 'Watchdog.gs'), 'utf8'));
-  if (sha256Text(approvedWatchdog) === approvedWatchdogV6Sha256) {
+  if (approvedWatchdogShas.includes(sha256Text(approvedWatchdog))) {
     assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Watchdog.gs' ? { ...entry, text: approvedWatchdog } : entry), 'approved watch-v6');
     assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Watchdog.gs' ? { ...entry, text: approvedWatchdog + '\nvar TEST_UNAPPROVED_WATCH = 1;\n' } : entry), 'watchdog mutation'),
       /exact approved watch-v6/, 'scope mutation rejects any other Watchdog change');

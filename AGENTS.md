@@ -3,6 +3,29 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-21 파수꾼 watch-v6.1 — 구글에서 가져온 일정은 다시 올리지 않기 · 겹쳐 돌지 않기 · 조용히 멈추지 않기 (서버 파일만)
+
+대표 요청(11/21) "파수꾼 v6 더 보강해서 올리자". `apps-script/Watchdog.gs` 만 바꾼다(앱 index.html·핀 무변경, 현장데이터는 그대로 읽기만).
+- **문제(실제)**: 11/20 🔄 구글 캘린더 맞추기로 앱에 들인 하이츠빌 일정을 운영 v5 맞추기가 '[하이츠빌아파트 …] …' 사본으로 다시 올려 11/23 에 같은 일정이 둘 떴다.
+  `watchCalHasManual_` 는 원본 제목에 작업 이름과 **현장 이름**이 다 있어야 '이미 있음'으로 봐서, 현장 이름이 없는 제미나이 '@' 원본은 못 알아봤다.
+  (11/21 실자료: 동기화 범위 안 앱 일정 70건 중 55건이 구글에서 가져온 것.)
+- **고침**: `watchFromGoogle_(sc)` — `icsUid` 가 있거나 메모에 '구글 캘린더에서 가져옴'(앱 `hjCalSyncApply`·캘린더 파일이 적는 글)이 있으면 `watchCalItems_` 가 넣지 않는다(원본이 구글에 있다).
+  예전에 v5·v6 이 만든 그런 사본(태그 hjKey)은 다음 실행에서 이 스크립트가 지운다(태그 일정만 — 원본·사장님 일정은 그대로). 내일 일정 알림은 앱+캘린더를 합쳐 한 줄로 세던 그대로.
+  알려진 한계: 가져온 일정을 앱에서 날짜를 옮겨도 구글 원본은 그대로다(가져온 일정은 구글이 원본 — 고칠 때는 구글에서).
+- **겹쳐 돌지 않기**: 스크립트 속성 `WATCH_RUN`(실행 중 표시, 10분 지나면 멈춘 실행으로 봄)이 있으면 그 시간은 'busy' 로 건너뛴다.
+  **`LockService.getScriptLock()` 은 쓰지 마라** — 중계 `Code.gs` save·OfficeIntake 가 같은 스크립트 잠금을 써서, 파수꾼이 잡으면 앱 저장이 기다린다.
+  `watchTriggerTidy_` — `dailyWatch` 트리거가 둘 이상이면 하나만 남긴다(다른 함수 트리거는 그대로).
+- **조용히 멈추지 않기**: 실행마다 `WATCH_LAST`(시각·판·결과) · `WATCH_FAILS`(load-failed·no-data·sync-failed·alert-failed·error 잇단 횟수, 성공하면 0).
+  3번 잇달아 실패하면 기본 캘린더에 `[파수꾼] ⚠️ 일정 자동 맞추기가 n번 잇달아 안 됐어요`(하루 한 번 `WATCH_FAIL_ALERTED`, 설명에 결과만 — 고객·금액 없음).
+  `WATCH_FAIL_ALARM=0` 이면 끔. 접두가 '[파수꾼]' 이라 앱 맞추기(hjCalSyncSkip)·내일 일정 알림·카톡봇 일정 보기가 이 일정을 건너뛴다.
+- **편집기 도구(쓰기 없음)**: `watchStatus`(판·트리거 수·최근 실행·잇단 실패·오늘 알림) · `watchPreview`(`watchCalSync_(…, dry=true)` — 만들·고칠·지울 수와 제목, 구글에서 온 일정 수).
+- **보호 파일 승인**: `tests/office-ops-server-isolation.check.js` 에 `approvedWatchdogV61Sha256`(이 본문, 줄끝 LF) 추가 — v6 본문 승인도 그대로 둔다. PR 설명에 따로 드러냈다.
+  이 검사는 얕은 클론에서 기준 커밋(19657c3)이 없어 로컬에서 실패한다 — `git fetch --unshallow` 뒤 돌려라.
+- 검사: `tests/watchdog.unit.js` 39/39(새 v6.1 5개 — 변이 no-from-google·dry-writes·no-lease·no-alarm·no-tidy 가 각각 실패) ·
+  `tests/timedspan-v595.e2e.js` 의 사본 만들기 도우미는 가져옴 표시를 떼고 사본을 만든다(예전에 올라간 사본 꼴을 그대로 시험).
+- **운영 반영 순서**: 운영 Apps Script 의 Watchdog.gs 본문을 먼저 따로 보관 → 이 본문으로 바꿔 저장(시간 트리거는 저장한 본문으로 돈다, 웹 앱 배포는 새로 하지 않아도 됨) →
+  `watchPreview` 로 지울 사본이 '이 스크립트가 만든 것만'인지 확인 → `watchStatus`. 새 권한은 필요 없다(Calendar·ScriptApp·Properties 는 v5 부터 승인됨).
+
 ## 2026-11-20 v615 🤖 클로드 요청함 알림 — 카톡봇·클로드 요청을 첫 화면 한 줄로
 
 - v614 를 먼저 내보낸 뒤(PR #224) 그 위에 따로 낸 판. 핀 `hyeonjang-v615-inboxnotice`. 기능 설명은 아래 v614 항목의 '🤖 클로드 요청함 알림' 줄 그대로다
