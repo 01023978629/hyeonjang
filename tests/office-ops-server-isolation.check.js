@@ -451,10 +451,10 @@ const normalizeCheckoutLines = value => value.replace(/\r\n/g, '\n');
 // watch-v5 맞추기는 그대로(WATCH_CALSYNC=0 이면 멈춤). 이 정확한 본문(SHA-256)만 허용한다.
 // 운영 Apps Script 반영은 별도(운영 본문을 먼저 보관하고 Watchdog.gs 만 바꾼다).
 const approvedWatchdogV6Sha256 = '05de8511bef40dc6fd849cdf35292d17a35c1d16aad0ab6452da0c342c89c57e';
-// 2026-11-21 사용자 요청·승인("파수꾼 v6 더 보강해서 올리자"): watch-v6.1 — 구글에서 가져온 앱 일정은 캘린더에 다시 넣지 않음(예전 사본은
-// 스스로 지움) · 겹쳐 돌지 않기(실행 중 표시, 중계 저장의 스크립트 잠금은 잡지 않음) · 매시간 트리거 하나만 · 실행 기록과 3번 잇단 실패 점검 알림 ·
+// 2026-11-21 사용자 요청·승인("파수꾼 v6 더 보강해서 올리자"): watch-v6.1 — 가져온 앱 일정은 원본이 캘린더에 실제로 있을 때만 사본을 두지 않음(그때만
+// 예전 사본을 지움 · 원본 없는 📌 파일 일정 사본은 그대로) · 겹쳐 돌지 않기(실행 중 표시, 중계 저장의 스크립트 잠금은 잡지 않음) · 매시간 트리거 하나만 · 실행 기록과 3번 잇단 실패 점검 알림 ·
 // watchStatus/watchPreview(쓰기 없음). 현장데이터는 그대로 읽기만. 이 정확한 본문(SHA-256, 줄끝 LF)만 더 허용한다.
-const approvedWatchdogV61Sha256 = '1155f230c8ed44de6889d1dc4e4e8bf9eb38a3c97898337670700a6d7bbe56c5';
+const approvedWatchdogV61Sha256 = 'fdebd6b5480d1b98b92a1bf08e1e71a06de07d0b1d4eec2b99e6e62b298adcaf';
 const approvedWatchdogShas = [approvedWatchdogV6Sha256, approvedWatchdogV61Sha256];
 // 2026-11-19 사용자 요청·승인(작업 목록 항목 32 '관리사무소 접수를 현장 전체 자료 서버에서 떼어 내기'):
 // OfficeIntake.gs 에 스크립트 속성 스위치(OFFICE_INTAKE_MODE=external)와 별도 접수 프로젝트(apps-script-office-intake/)용

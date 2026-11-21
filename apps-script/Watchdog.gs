@@ -7,10 +7,13 @@
  *       구글 서버에서 도므로 폰·PC가 꺼져 있어도 동작한다.
  *
  * watch-v6.1 (2026-11-21 대표 요청 "파수꾼 v6 더 보강해서 올리자"):
- *   · 구글 캘린더에서 가져온 앱 일정(🔄 구글 캘린더 맞추기·📥 캘린더 파일 — icsUid 또는 메모 '구글 캘린더에서 가져옴')은
- *     캘린더에 다시 넣지 않는다. 구글에 원본이 이미 있다. 11/20 앱에 들인 하이츠빌 일정이 v5 맞추기로
- *     '[하이츠빌아파트 …] …' 사본이 되어 11/23 에 같은 일정이 둘 떴다(원본 제목에 현장 이름이 없으면 '이미 있음'으로 못 알아봤다).
- *     예전에 이렇게 만든 사본(이 스크립트 태그 일정)은 다음 실행에서 이 스크립트가 스스로 지운다 — 사장님 일정·원본은 건드리지 않는다.
+ *   · 가져온 앱 일정(🔄 구글 캘린더 맞추기·📥 캘린더 파일 — icsUid 또는 메모 '구글 캘린더에서 가져옴')은 **원본이 캘린더에 실제로 있을 때만**
+ *     사본을 만들지 않는다 — 같은 구글 일정 ID(iCalUID = icsUid)이거나, 그날을 덮는 일정의 제목 핵심이 같으면(현장 이름은 안 봄) 원본으로 본다.
+ *     11/20 앱에 들인 하이츠빌 일정이 v5 맞추기로 '[하이츠빌아파트 …] …' 사본이 되어 11/23 에 같은 일정이 둘 떴다
+ *     (v5 는 원본 제목에 현장 이름까지 있어야 '이미 있음'으로 봤다). 원본을 찾은 일정의 예전 사본(이 스크립트 태그 일정)은 다음 실행에서 지운다.
+ *     원본이 캘린더에 없는 가져온 일정(예: 📥 캘린더 파일로 들인 📌 지원사업 마감)은 v5 처럼 사본을 그대로 둔다 — 그 사본이 캘린더의 유일한 일정이다.
+ *     (11/21 운영 미리 보기에서 '가져옴 표시만 보고 다 지우는' 첫 v6.1 이 📌 일정 사본까지 지우려 해 바로 v5 로 되돌리고 이렇게 고쳤다.)
+ *   · 앱에 잘못 들어온 '[파수꾼]'·'[일정 알림]' 요약 일정은 작업 일정이 아니다 — 맞추기·알림에서 뺀다(그 사본만 지운다).
  *   · 겹쳐 돌지 않기: 실행 중 표시(스크립트 속성 WATCH_RUN, 10분)가 있으면 그 시간은 건너뛴다. 중계 저장이 쓰는 스크립트 잠금은 잡지 않는다
  *     (잡으면 앱 저장이 기다린다). 매시간 트리거가 둘 이상이면 하나만 남긴다(겹친 트리거가 같은 일정을 두 번 만들지 않게).
  *   · 멈춰도 모르는 일 없게: 실행마다 결과를 스크립트 속성 WATCH_LAST 에 남기고, 자료 읽기·맞추기·알림이 3번 잇달아 실패하면
@@ -223,7 +226,7 @@ function watchPreview() {
   if (!data) { Logger.log('현장데이터 파일 없음'); return 'no-data'; }
   var r = watchCalSync_(data, watchCalendar_(), new Date(), true);
   var out = '미리 보기(쓰기 없음) — 만들 ' + r.created + ' · 고칠 ' + r.updated + ' · 지울 ' + r.deleted + ' · 그대로 ' + r.kept +
-            ' · 이미 있음 ' + r.skipped + ' · 구글에서 온 일정(다시 안 넣음) ' + r.fromGoogle + (r.held ? ' · 지우기 보류 ' + r.held : '');
+            ' · 이미 있음 ' + r.skipped + ' · 원본이 캘린더에 있는 가져온 일정(사본 안 둠) ' + r.fromGoogle + (r.held ? ' · 지우기 보류 ' + r.held : '');
   var L = [out];
   ['create', 'update', 'del'].forEach(function (k) {
     var name = { create: '만들 일정', update: '고칠 일정', del: '지울 일정(이 스크립트가 만든 것만)' }[k];
@@ -665,7 +668,9 @@ function watchDedupeSum_(list) {
 function watchWorkOk_(sc) {
   if (!sc || !sc.date || !/^\d{4}-\d{2}-\d{2}$/.test(String(sc.date))) return false;
   if (sc._taxAuto || sc.sourceUid) return false;
-  return !WATCH_MONEY_RE.test(String(sc.title || ''));
+  var t = String(sc.title || '').trim();
+  if (t.indexOf(WATCH_TAG) === 0 || t.indexOf(ALERT_TAG) === 0) return false;   // watch-v6.1 앱에 잘못 들어온 요약 일정
+  return !WATCH_MONEY_RE.test(t);
 }
 // 앱 hjSchSpan 과 같은 셈 — 기간은 공정표 메모 '시작~끝' 에서만(첫 날이 그 일정 날짜일 때, 60일 이하)
 function watchSpan_(sc) {
@@ -782,20 +787,25 @@ function watchCalSync_(data, cal, now, dry) {
   var today = new Date(now.getTime()); today.setHours(0, 0, 0, 0);
   var want = watchCalItems_(data, today);
   var events = cal.getEvents(watchDate_(want.from), watchDate_(watchYmdAdd_(want.to, 1)));
-  var mine = {}, others = [];
+  var mine = {}, others = [], ids = {};
   for (var i = 0; i < events.length; i++) {
     var key = null;
     try { key = events[i].getTag(WATCH_KEY_TAG); } catch (_) { key = null; }
     if (key) (mine[key] = mine[key] || []).push(events[i]);
-    else others.push(events[i]);
+    else {
+      others.push(events[i]);
+      try { var gid = String(events[i].getId() || ''); if (gid) ids[gid] = true; } catch (_) {}   // watch-v6.1 원본 찾기(iCalUID)
+    }
   }
-  var r = { created: 0, updated: 0, deleted: 0, kept: 0, skipped: 0, held: 0, wanted: want.items.length, fromGoogle: want.fromGoogle || 0,
+  var r = { created: 0, updated: 0, deleted: 0, kept: 0, skipped: 0, held: 0, wanted: want.items.length, fromGoogle: 0,
             plan: { create: [], update: [], del: [] } };
   var title = function (ev) { try { return watchMdDow_(watchYmd_(ev.isAllDayEvent() ? ev.getAllDayStartDate() : ev.getStartTime())) + ' ' + ev.getTitle(); } catch (_) { return '?'; } };
   var del = function (ev) { if (dry) { r.plan.del.push(title(ev)); return true; } return watchDel_(ev); };
   var wanted = {};
   for (var j = 0; j < want.items.length; j++) {
     var it = want.items[j], sig = watchSig_(it), have = mine[it.key] || [];
+    // watch-v6.1 가져온 일정의 원본이 캘린더에 있으면 사본을 두지 않는다(wanted 에 넣지 않아 예전 사본은 아래에서 지운다)
+    if (it.fromGoogle && watchCalHasOriginal_(others, ids, it)) { r.fromGoogle++; continue; }
     wanted[it.key] = true;
     for (var x = 1; x < have.length; x++) { if (del(have[x])) r.deleted++; }   // 같은 일정이 둘 이상이면 하나만 남긴다
     if (have.length) {
@@ -851,6 +861,29 @@ function watchDel_(ev) {
   try { ev.deleteEvent(); return true; }
   catch (e) { Logger.log('캘린더 일정 지우기 실패: ' + e); return false; }
 }
+// watch-v6.1 가져온 앱 일정의 원본이 캘린더에 있나 — 같은 iCalUID(맞추기·캘린더 파일이 남긴 icsUid, 화면 글의 'gcal:' 합성 값은 빼고),
+// 또는 그날을 덮는 일정(여러 날 원본은 이어지는 날도)의 제목 핵심(@·[현장]·꼬리 뗀 글자)이 같거나 한쪽이 다른 쪽을 품을 때. 현장 이름은 보지 않는다.
+function watchCalHasOriginal_(others, ids, it) {
+  if (it.uid && !/^gcal:/.test(it.uid) && ids && ids[it.uid]) return true;
+  var base = watchAlertKey_(it.base);
+  if (base.length < 2) return false;
+  for (var i = 0; i < others.length; i++) {
+    var t, all, s, e;
+    try {
+      t = String(others[i].getTitle() || '');
+      all = others[i].isAllDayEvent();
+      s = all ? others[i].getAllDayStartDate() : others[i].getStartTime();
+      e = all ? others[i].getAllDayEndDate() : others[i].getEndTime();
+    } catch (_) { continue; }
+    if (!s || t.indexOf(WATCH_TAG) === 0 || t.indexOf(ALERT_TAG) === 0) continue;
+    var d0 = watchYmd_(s), d1 = e ? watchYmd_(new Date(e.getTime() - 1)) : d0;   // 끝 시각 바로 전까지가 그 일정의 날
+    if (d1 < d0) d1 = d0;
+    if (it.date < d0 || it.date > d1) continue;
+    var k = watchAlertKey_(t);
+    if (k.length >= 2 && (k === base || k.indexOf(base) >= 0 || base.indexOf(k) >= 0)) return true;
+  }
+  return false;
+}
 // 사장님이 직접(또는 앱 '📅 구글 캘린더에 추가'로) 넣어 둔 같은 일정 — 같은 날이고 제목에 작업 이름과 현장 이름이 다 들어 있으면 같은 일정으로 본다.
 function watchCalHasManual_(others, it) {
   var base = watchNorm_(it.base), proj = watchNorm_(it.project);
@@ -878,7 +911,8 @@ function watchCalItems_(data, today) {
   for (var s = 0; s < schedule.length; s++) {
     var sc = schedule[s];
     if (!watchWorkOk_(sc)) continue;
-    if (watchFromGoogle_(sc)) { if (String(sc.date) >= from && String(sc.date) <= to) fromGoogle++; continue; }   // watch-v6.1 원본이 구글에 있다
+    var fg = watchFromGoogle_(sc), uid = String(sc.icsUid || '').trim();   // watch-v6.1 가져온 일정 — 원본 확인은 맞출 때(watchCalSync_)
+    if (fg && String(sc.date) >= from && String(sc.date) <= to) fromGoogle++;
     var sp = watchSpan_(sc), id = watchSchId_(sc), p = byName[String(sc.project || '')] || null;
     var days = [[String(sc.date), null]], more = watchContDates_(sc);
     for (var m = 0; m < more.length; m++) days.push([more[m], watchContOn_(sc, more[m])]);
@@ -888,7 +922,9 @@ function watchCalItems_(data, today) {
       var key = id + (c ? '-d' + c.day : '');
       if (seen[key]) continue;   // id 가 겹친 일정은 처음 것만
       seen[key] = true;
-      items.push(watchCalItem_(sc, ymd, c, sp, p, key));
+      var item = watchCalItem_(sc, ymd, c, sp, p, key);
+      if (fg) { item.fromGoogle = true; item.uid = uid; }
+      items.push(item);
     }
   }
   items.sort(function (a, b) {

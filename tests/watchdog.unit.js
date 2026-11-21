@@ -374,7 +374,8 @@ function fakeCal() {
   const evs = [];
   let seq = 0;
   const mk = (title, start, end, allDay, opt) => {
-    const e = { id: ++seq, title, start, end, allDay, desc: (opt && opt.description) || '', loc: (opt && opt.location) || '', tags: {}, deleted: false, edits: [] };
+    const e = { id: ++seq, title, start, end, allDay, desc: (opt && opt.description) || '', loc: (opt && opt.location) || '', tags: {}, deleted: false, edits: [],
+               uid: (opt && opt.uid) || '' };
     const api = {
       _e: e,
       getTitle: () => e.title,
@@ -386,6 +387,9 @@ function fakeCal() {
       isAllDayEvent: () => e.allDay,
       getAllDayStartDate: () => e.start,
       getStartTime: () => e.start,
+      getEndTime: () => e.end,
+      getAllDayEndDate: () => e.end,
+      getId: () => e.uid || ('ev' + e.id + '@fake.test'),
       getTag: k => (Object.prototype.hasOwnProperty.call(e.tags, k) ? e.tags[k] : null),
       setTag: (k, v) => { e.tags[k] = v; return api; },
       deleteEvent: () => { e.deleted = true; },
@@ -713,7 +717,7 @@ test('v6 dailyWatch — 맞추기와 알림을 함께, WATCH_CALSYNC=0 이면 �
   eq(sandbox.WATCH_VERSION, 'watch-v6.1', '버전');
 });
 
-// ── watch-v6.1 (2026-11-21) — 구글에서 가져온 앱 일정은 다시 넣지 않기 · 미리 보기 · 겹쳐 돌지 않기 · 실패 점검 알림 · 트리거 정리 ──
+// ── watch-v6.1 (2026-11-21) — 가져온 일정은 원본이 캘린더에 있을 때만 사본을 두지 않기 · 미리 보기 · 겹쳐 돌지 않기 · 실패 점검 알림 · 트리거 정리 ──
 function fullBox(props) {
   const b = {}; vm.createContext(b); vm.runInContext(src, b);
   const store = Object.assign({}, props || {});
@@ -727,48 +731,67 @@ function fullBox(props) {
 const V61_DATA = () => ({
   projects: [{ name: '가상빌 101동 101호' }, { name: '목동' }],
   schedule: [
+    // 구글에서 바로 읽어 들인 일정 — 원본의 iCalUID 가 icsUid (원본 제목에는 현장 이름이 없다: 제미나이 '@')
     { id: 'imp1', date: ahead(2), time: '', title: '대전시 가상구 가상로 1 거실 수전 작업', project: '가상빌 101동 101호', icsUid: 'abc123@google.com',
       memo: '장소: 가상로 1\n구글 캘린더에서 가져옴 (@ 제미나이 입력)' },
+    // 화면 글로 들인 일정 — 합성 uid('gcal:') 라 제목으로 원본을 찾는다
     { id: 'imp2', date: ahead(3), time: '', title: '가상사거리 배관 작업', project: '', icsUid: 'gcal:' + ahead(3) + '|가상사거리배관작업' },
-    { id: 'imp3', date: ahead(4), time: '', title: '메모 표시만 있는 일정', project: '목동', memo: '구글 캘린더에서 가져옴' },
+    // 📥 캘린더 파일로 들인 📌 일정 — 원본이 구글에 없다. 캘린더에는 v5 사본이 유일하다 → 그대로 둬야 한다
+    { id: 'imp3', date: ahead(4), time: '', title: '📌 가상 지원사업 마감', project: '', icsUid: 'file-77@manmul.test', memo: '구글 캘린더에서 가져옴' },
+    // 앱에 잘못 들어온 예전 요약 — 작업 일정이 아니다
+    { id: 'junk', date: ahead(1), time: '', title: '[파수꾼] 🔔 방치 26', project: '', icsUid: 'junk@google.com' },
     { id: 'own', date: ahead(2), time: '10:00', hours: 2, title: '철거', project: '목동' }
   ]
 });
 function v61Cal() {
-  const cal = fakeCal(), d2 = sandbox.watchDate_(ahead(2));
-  cal.createAllDayEvent('@대전시 가상구 가상로 1 거실 수전 작업', d2, {});            // 구글 원본(사장님·제미나이가 넣은 것)
-  const copy = cal.createAllDayEvent('[가상빌 101동 101호] 대전시 가상구 가상로 1 거실 수전 작업', d2, {});   // v5 가 만든 사본
-  copy.setTag('hjKey', 'imp1'); copy.setTag('hjSig', 'old');
-  return { cal, copy };
+  const cal = fakeCal(), d = n => sandbox.watchDate_(ahead(n));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const items = sandbox.watchCalItems_(V61_DATA(), today).items, sig = k => sandbox.watchSig_(items.find(i => i.key === k));
+  cal.createAllDayEvent('@오후 수전 방문', d(2), { uid: 'abc123@google.com' });   // imp1 원본 — 제목은 달라도 같은 iCalUID 로만 알아본다
+  cal.createAllDayEvent('가상사거리 배관 작업', d(3), {});                                                    // imp2 원본(제목)
+  const copy1 = cal.createAllDayEvent('[가상빌 101동 101호] 대전시 가상구 가상로 1 거실 수전 작업', d(2), {});   // v5 가 만든 imp1 사본
+  copy1.setTag('hjKey', 'imp1'); copy1.setTag('hjSig', 'old');
+  const copy3 = cal.createAllDayEvent('📌 가상 지원사업 마감', d(4), {});                                      // v5 가 만든 imp3 사본(유일한 일정)
+  copy3.setTag('hjKey', 'imp3'); copy3.setTag('hjSig', sig('imp3'));
+  const junk = cal.createAllDayEvent('[파수꾼] 🔔 방치 26', d(1), {});                                         // 요약 일정의 사본
+  junk.setTag('hjKey', 'junk'); junk.setTag('hjSig', 'x');
+  return { cal, copy1, copy3, junk };
 }
 
-test('v6.1 구글에서 가져온 앱 일정(icsUid·메모 표시)은 캘린더에 다시 넣지 않고, 예전 사본은 스스로 지운다 — 원본은 그대로', () => {
+test('v6.1 가져온 일정 — 원본이 캘린더에 있으면(같은 iCalUID·그날 같은 제목) 사본을 두지 않고 예전 사본을 지우고, 원본이 없으면(📌 파일 일정) 사본을 그대로 둔다', () => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const w = sandbox.watchCalItems_(V61_DATA(), today);
-  eq(w.items.map(i => i.key).join(','), 'own', '앱에서 만든 일정만 넣는다');
-  eq(w.fromGoogle, 3, '구글에서 온 일정 3건을 센다');
-  const { cal, copy } = v61Cal();
+  eq(w.items.map(i => i.key).sort().join(','), 'imp1,imp2,imp3,own', '가져온 일정도 목록에는 있다 · [파수꾼] 요약은 뺀다');
+  eq(w.fromGoogle, 3, '가져온 일정 3건');
+  const { cal, copy1, copy3, junk } = v61Cal();
   const r = sandbox.watchCalSync_(V61_DATA(), cal, new Date());
-  eq(r.created + '/' + r.deleted + '/' + r.fromGoogle, '1/1/3', '철거 하나 만들고 · v5 사본 하나 지움 · 구글에서 온 일정 3');
-  assert(copy._e.deleted, 'v5 가 만든 사본(태그 일정)은 지운다');
-  assert(cal.live().some(e => e._e.title === '@대전시 가상구 가상로 1 거실 수전 작업' && !e._e.deleted), '구글 원본은 그대로');
-  eq(cal.mine().map(e => e._e.title).join(','), '[목동] 철거', '태그 일정은 앱에서 만든 것만');
+  eq([r.created, r.deleted, r.fromGoogle, r.kept].join('/'), '1/2/2/1', '철거 만듦 · imp1 사본과 요약 사본 지움 · 원본 있는 가져온 일정 2 · 📌 사본 그대로 1');
+  assert(copy1._e.deleted, '원본(같은 iCalUID)이 있는 imp1 의 사본은 지운다');
+  assert(!copy3._e.deleted, '원본이 캘린더에 없는 📌 일정의 사본은 지우지 않는다 — 캘린더의 유일한 일정');
+  assert(junk._e.deleted, '앱에 잘못 들어온 [파수꾼] 요약의 사본은 지운다');
+  assert(cal.live().filter(e => !e._e.tags.hjKey).length === 2, '원본 둘은 그대로');
+  eq(cal.mine().map(e => e._e.title).sort().join(','), ['📌 가상 지원사업 마감', '[목동] 철거'].sort().join(','), '태그 일정');
   assert(sandbox.watchFromGoogle_({ icsUid: '  ' }) === false && sandbox.watchFromGoogle_({ memo: '현장 메모' }) === false, '표시가 없으면 앱 일정');
+  // 여러 날 원본은 이어지는 날도 덮는다
+  const multi = fakeCal();
+  multi.createEvent('가상 배관 교체', sandbox.watchDateTime_(ahead(5), '09:00'), sandbox.watchDateTime_(ahead(6), '17:00'), { uid: 'm1@google.com' });
+  assert(sandbox.watchCalHasOriginal_(multi.live(), {}, { uid: '', base: '가상 배관 교체', date: ahead(6) }), '여러 날 원본의 둘째 날');
+  assert(!sandbox.watchCalHasOriginal_(multi.live(), {}, { uid: '', base: '가상 배관 교체', date: ahead(7) }), '원본이 덮지 않는 날은 아님');
 });
 
 test('v6.1 미리 보기(dry) — 캘린더에 쓰지 않고 만들·고칠·지울 일정만 센다 · watchPreview 글', () => {
-  const { cal, copy } = v61Cal();
+  const { cal, copy1, junk } = v61Cal();
   const before = cal.evs.length;
   const r = sandbox.watchCalSync_(V61_DATA(), cal, new Date(), true);
-  eq(r.created + '/' + r.deleted, '1/1', '만들 1 · 지울 1');
+  eq(r.created + '/' + r.deleted, '1/2', '만들 1 · 지울 2');
   eq(cal.evs.length, before, '새 일정을 만들지 않는다');
-  assert(!copy._e.deleted && cal.mine().length === 1, '지우지 않는다');
-  assert(/철거/.test(r.plan.create[0]) && /가상로 1/.test(r.plan.del[0]), '목록: ' + JSON.stringify(r.plan));
+  assert(!copy1._e.deleted && !junk._e.deleted, '지우지 않는다');
+  assert(/철거/.test(r.plan.create[0]) && r.plan.del.some(t => /가상로 1/.test(t)) && r.plan.del.some(t => /방치/.test(t)), '목록: ' + JSON.stringify(r.plan));
   const { b } = fullBox({});
   b.watchLoadData_ = () => V61_DATA();
   b.CalendarApp = { getDefaultCalendar: () => cal, getCalendarById: () => cal };
   const txt = b.watchPreview();
-  assert(/만들 1 · 고칠 0 · 지울 1/.test(txt) && /구글에서 온 일정\(다시 안 넣음\) 3/.test(txt) && /지울 일정\(이 스크립트가 만든 것만\)/.test(txt), txt);
+  assert(/만들 1 · 고칠 0 · 지울 2/.test(txt) && /원본이 캘린더에 있는 가져온 일정\(사본 안 둠\) 2/.test(txt) && /지울 일정\(이 스크립트가 만든 것만\)/.test(txt), txt);
   eq(cal.evs.length, before, 'watchPreview 도 쓰지 않는다');
 });
 
@@ -779,7 +802,7 @@ test('v6.1 겹쳐 돌지 않기 — 실행 중 표시가 10분 안이면 건너�
   eq(busy.b.dailyWatch(false), 'busy', '앞 실행이 1분 전에 시작 — 건너뜀');
   assert(busy.store.WATCH_RUN, '남의 표시는 지우지 않는다');
   const stale = mk(Date.now() - 11 * 60000);
-  assert(/^sync \+1/.test(stale.b.dailyWatch(false)), '11분 전 표시는 멈춘 실행 — 돈다');
+  assert(/^sync \+\d+/.test(stale.b.dailyWatch(false)), '11분 전 표시는 멈춘 실행 — 돈다');
   assert(!('WATCH_RUN' in stale.store), '끝나면 표시를 지운다');
   assert(JSON.parse(stale.store.WATCH_LAST).ver === 'watch-v6.1', '최근 실행 기록');
 });
