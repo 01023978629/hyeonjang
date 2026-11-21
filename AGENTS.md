@@ -13,7 +13,7 @@
   `claudeReqBad` 통과 · `claudeDone` 아님. 직원 모드·체험·서버 미연결이면 안 함. 한 번에 10건. 넣기 전 `hjSnapshot` 한 번, 넣은 뒤 `claudeDone`·`markDirty`·토스트 한 번.
   같은 날 같은 제목 일정(띄어쓰기·대소문자 무시)이 이미 있으면 넣지 않고 처리로만(🔄 맞추기로 먼저 들어온 경우). 넣다가 실패하면 처리로 표시하지 않는다(요청함에 남음).
 - **도구를 늘리지 마라**: 지우기·바꾸기·발송·돈(`CLAUDE_REQ_DENY`·`set_stage`·`set_received` 등)은 대표가 앱에서 직접. 늘리려면 대표 결정과 카톡봇 `approvals.AUTO_TOOLS` 를 같이.
-  도장은 요청 파일 안의 글자일 뿐이다 — 막는 힘은 '드라이브 파일만 · 더하기 도구만 · 7일' 에 있다(드라이브 요청 파일은 대표 계정과 대표 PC 만 쓴다).
+  저절로 반영은 되돌리기 쉬운 더하기만 — 잘못 들어가도 안전판(hjSnapshot)이나 손으로 지우면 된다.
 - `add_schedule` 에 `allDay:true`(시각 없음)면 종일('') — 카톡봇이 종일 일정을 보낼 때만. 다른 길(AI 비서 등)은 예전처럼 시각이 비면 09:00.
 - 카톡봇 쪽: 결재·도장·병합은 카톡봇 v1.9.1(`문서\mm-kakaobot\mmbot\approvals.py`) — 이 저장소 밖. 메모 끝 '구글 캘린더에서 가져옴 (카톡봇)' 으로 파수꾼 v6.1 이 구글에 다시 올리지 않는다.
 - 검사: `tests/kakaoauto-v617.unit.js`(앱 스크립트 VM — 가짜 relayCall 요청 파일). 기준선(`HJ_V617_BASELINE`)은 ①, 변이 no-via-check·no-age-check·any-tool·link-auto·no-done·no-dup-check·no-snapshot·staff-auto·allday-ignored 가 각각 실패. 핀 `hyeonjang-v617-kakaoauto`.
