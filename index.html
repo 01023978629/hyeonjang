@@ -4069,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v616-airoles';
+const APP_BUILD='hyeonjang-v617-kakaoauto';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13344,7 +13344,7 @@ async function aiToolRun(name,a){
       if(!t)throw new Error('일정 제목이 비었습니다.');
       if(!/^\d{4}-\d{2}-\d{2}$/.test(d))throw new Error('날짜는 YYYY-MM-DD 형식이어야 합니다: '+d);
       {const _p=d.split('-').map(Number);const _vd=new Date(_p[0],_p[1]-1,_p[2]);if(_vd.getFullYear()!==_p[0]||_vd.getMonth()!==_p[1]-1||_vd.getDate()!==_p[2])throw new Error('존재하지 않는 날짜입니다: '+d);}
-      const s=Object.assign(newSchedule(),{title:t,date:d,time:String(a.time||'09:00').slice(0,5),project:String(a.project||''),workers:String(a.workers||''),memo:String(a.memo||'')});
+      const s=Object.assign(newSchedule(),{title:t,date:d,time:(a.allDay===true&&!a.time)?'':String(a.time||'09:00').slice(0,5),project:String(a.project||''),workers:String(a.workers||''),memo:String(a.memo||'')});
       state.schedule=state.schedule||[];state.schedule.push(s);
       markDirty();render();
       if(hjGcalAutoOn())setTimeout(()=>hjGcalMaybeOpen(s),80);
@@ -14444,8 +14444,69 @@ async function hjClaudeInboxAutoCheck(reason){
     if(!relayReady())return false;
     const r=await claudeInboxFetch();   // 성공하면 hjClaudeInboxNoticeStore 가 줄을 바꾼다
     if(!(r&&r.ok)){try{console.debug('[클로드 요청함 알림] 확인 실패('+String(reason||'')+')',r&&r.error);}catch(e){}return false;}
+    try{await hjKakaoAutoApply(r);}catch(e){}   // v617 카톡·관리 프로그램에서 대표가 승인한 추가 요청만 저절로
     return true;
   }catch(e){try{console.debug('[클로드 요청함 알림] 확인 실패',e&&e.message||e);}catch(_){}return false;}
+}
+
+/* ═══ v617 📲 카톡 승인 요청 저절로 반영 — 대표 결정(11/21) "추천대로": 카톡봇 결재함(v1.9.1)에서 대표가 카톡 나와의 채팅·카톡봇 관리 프로그램으로
+   승인한 현장웹 **추가** 요청(일정·현장)은 요청함을 다시 열어 ✓ 를 누르지 않아도, 현장웹이 요청 파일을 읽을 때(hjClaudeInboxAutoCheck — 부팅·다시 보기·
+   첫 화면, 30분에 한 번) 들어간다. 나머지 요청은 지금처럼 🤖 클로드 요청함의 [✓ 승인·적용].
+   · 조건(모두): 드라이브 요청 파일에서 받은 것(claudeInboxFetch — 링크·붙여넣기 ?hjreq= 는 절대 아님: 누구나 만들 수 있다) · id 가 'kb-'(카톡봇) ·
+     approved.via 가 kakao·manager(대표가 승인한 곳 — Claude 는 승인 길이 없다) · approved.at 이 7일 안(미래 10분 넘으면 안 됨) ·
+     도구가 HJ_KAKAO_AUTO_TOOLS(add_schedule·add_project — 더하기만. 지우기·바꾸기·발송·돈은 없다) · claudeReqBad 통과 · 처리한 id 아님.
+   · 직원 모드·체험·서버 미연결·오프라인이면 안 한다(hjClaudeInboxAutoCheck 문 그대로 + 여기서 한 번 더). 한 번에 HJ_KAKAO_AUTO_MAX 건.
+   · 같은 날 같은 제목(띄어쓰기·대소문자 무시) 일정이 이미 있으면 넣지 않고 처리로만 표시(🔄 구글 캘린더 맞추기로 먼저 들어온 경우). 같은 이름 현장도 그대로(aiToolRun).
+   · 넣기 전에 안전판(hjSnapshot) 한 번 · 넣은 뒤 claudeDone(기기끼리 공유 — 두 번 넣지 않게) · markDirty · 토스트 한 번.
+   · 넣다가 실패한 요청은 처리로 표시하지 않는다 — 요청함에 남아 대표가 손으로 본다. */
+const HJ_KAKAO_AUTO_TOOLS=new Set(['add_schedule','add_project']);
+const HJ_KAKAO_AUTO_VIA=new Set(['kakao','manager']);
+const HJ_KAKAO_AUTO_DAYS=7;
+const HJ_KAKAO_AUTO_MAX=10;
+function hjKakaoAutoOk(q,now){
+  if(!q||typeof q!=='object'||typeof q.id!=='string'||!/^kb-[0-9A-Za-z-]{1,60}$/.test(q.id))return false;
+  if(!HJ_KAKAO_AUTO_TOOLS.has(q.tool))return false;
+  const ap=q.approved;
+  if(!ap||typeof ap!=='object'||!HJ_KAKAO_AUTO_VIA.has(ap.via))return false;
+  const t=Date.parse(String(ap.at||''));
+  if(!isFinite(t))return false;
+  const n=now||Date.now();
+  if(t>n+10*60*1000||n-t>HJ_KAKAO_AUTO_DAYS*86400000)return false;
+  if(claudeReqBad(q))return false;
+  return true;
+}
+function hjKakaoSchHas(a){
+  const k=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
+  const d=String(a&&a.date||''),t=k(a&&a.title);
+  return !!t&&(state.schedule||[]).some(s=>s&&s.date===d&&k(s.title)===t);
+}
+async function hjKakaoAutoApply(r){
+  try{
+    if(!(r&&r.ok)||state._demo)return 0;
+    if(r.via==='link')return 0;   // 링크·붙여넣기로 받은 것은 절대 저절로 넣지 않는다
+    if(typeof hjStaffOn==='function'&&hjStaffOn())return 0;
+    const done=claudeDoneSet(),now=Date.now();
+    const list=(r.requests||[]).filter(q=>q&&!done.has(q.id)&&hjKakaoAutoOk(q,now)).slice(0,HJ_KAKAO_AUTO_MAX);
+    if(!list.length)return 0;
+    try{await hjSnapshot('📲 카톡 승인 요청 반영 전 — '+list.length+'건',true);}catch(e){}
+    let n=0,same=0;
+    for(const q of list){
+      const a=q.args||{};
+      try{
+        if(q.tool==='add_schedule'&&hjKakaoSchHas(a)){same++;}
+        else{
+          const out=await aiToolRun(q.tool,a);
+          if(q.tool==='add_project'&&out&&out.결과==='이미 있는 현장')same++;else n++;
+        }
+      }catch(e){try{console.debug('[카톡 승인 요청] 넣지 못함 — 요청함에 남김',q.id,e&&e.message||e);}catch(_){}continue;}
+      state.claudeDone=state.claudeDone||[];
+      if(!state.claudeDone.includes(q.id))state.claudeDone.push(q.id);
+    }
+    if(state.claudeDone&&state.claudeDone.length>500)state.claudeDone=state.claudeDone.slice(-500);
+    if(n||same){markDirty();try{hjClaudeInboxNoticeRefresh();}catch(e){}}
+    if(n)toast('📲 카톡에서 승인한 요청 '+n+'건을 현장웹에 넣었어요'+(same?' · 이미 있던 '+same+'건은 건너뜀':''));
+    return n;
+  }catch(e){try{console.debug('[카톡 승인 요청] 건너뜀',e&&e.message||e);}catch(_){}return 0;}
 }
 
 /* ═══════════ 💾 수금 이력(payLog) — 주간 리포트의 "이번 주 수금" 근거 ═══════════ */
