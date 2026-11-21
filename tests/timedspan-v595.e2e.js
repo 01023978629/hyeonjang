@@ -111,7 +111,12 @@ const EDGE_TEXT = EDGE.map(x => kTime(x[1]) + '~' + kTime(x[2]) + ', ' + x[0] + 
 function copies(data) {
   const sb = { Logger: { log() {} }, console }; vm.createContext(sb);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'apps-script', 'Watchdog.gs'), 'utf8'), sb);
-  return JSON.parse(JSON.stringify(sb.watchCalItems_(data, new Date(2026, 10, 10, 12)).items));
+  // watch-v6.1 부터 Watchdog 은 구글에서 가져온 앱 일정(icsUid·메모 '구글 캘린더에서 가져옴')의 사본을 만들지 않는다(원본이 구글에 있다).
+  // 그래도 v5·v6 이 예전에 올린 사본은 캘린더에 남아 있을 수 있고(v6.1 이 스스로 지울 때까지), 앱에서 만든 일정의 사본은 늘 있다 —
+  // 그 사본 꼴을 그대로 시험하려고 가져옴 표시를 떼고 사본을 만든다.
+  const plain = Object.assign({}, data, { schedule: (data.schedule || []).map(s => {
+    const c = Object.assign({}, s); delete c.icsUid; c.memo = String(c.memo || '').replace(/\n?구글 캘린더에서 가져옴[^\n]*/g, ''); return c; }) });
+  return JSON.parse(JSON.stringify(sb.watchCalItems_(plain, new Date(2026, 10, 10, 12)).items));
 }
 const p2 = n => String(n).padStart(2, '0');
 const kstOf = ms => { const k = new Date(ms + 9 * 3600000); return { date: k.getUTCFullYear() + '-' + p2(k.getUTCMonth() + 1) + '-' + p2(k.getUTCDate()), time: p2(k.getUTCHours()) + ':' + p2(k.getUTCMinutes()) }; };
