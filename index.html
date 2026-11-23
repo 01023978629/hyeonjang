@@ -4069,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v618-aptunitlink';
+const APP_BUILD='hyeonjang-v619-kakaotick';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -14506,6 +14506,42 @@ function hjKakaoAutoOk(q,now){
   if(claudeReqBad(q))return false;
   return true;
 }
+/* v619 대표 요청(11/23) — 세대 연결(apt_unit_link)은 그 사진들이 이 기기 자료(state.files)에 다 있을 때만 저절로 넣는다.
+   사진이 아직 없는 기기(PC 가 사진을 불러와 저장하기 전의 폰 등)가 먼저 넣으면 '못찾음'으로 처리로 표시돼 연결이 빠졌다(11/23 미메이드·하이츠빌).
+   승인 뒤 이틀(HJ_KAKAO_UNIT_WAIT_MS)이 지나면 있는 것만이라도 넣는다. 다른 도구는 그대로. */
+const HJ_KAKAO_UNIT_WAIT_MS=2*86400000;
+function hjKakaoUnitReady(q,now){
+  if(!q||q.tool!=='apt_unit_link')return true;
+  const a=q.args||{};
+  const names=[...new Set((Array.isArray(a.files)?a.files:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];
+  if(!names.length)return true;
+  const have=new Set((state.files||[]).filter(f=>f&&f.kind==='photo'&&!f._fromQuote).map(f=>String(f.name||'').trim().toLowerCase()));
+  if(names.every(n=>have.has(n)))return true;
+  const t=Date.parse(String(q.approved&&q.approved.at||''));
+  return isFinite(t)&&(now||Date.now())-t>HJ_KAKAO_UNIT_WAIT_MS;
+}
+/* v619 대표 요청(11/23) "다음번에는 카톡봇에서 승인하면 넣어지게" — 현장웹이 켜져 있으면(숨은 탭 포함) 1분마다 깨어, 요청 파일을 읽은 지
+   HJ_KAKAO_TICK_MS(5분) 지났으면 읽고 카톡·관리 프로그램 승인 요청을 넣는다(hjKakaoAutoApply 그대로 — 도장·7일·도구·직원 문 같음).
+   30분 알림 확인(hjClaudeInboxAutoCheck)과 따로 센다 — 시각은 localStorage(탭이 여럿이어도 기기에서 5분에 한 번), 다른 길로 방금 읽었으면 그것도 센다. */
+const HJ_KAKAO_TICK_MS=5*60*1000;
+const HJ_KAKAO_TICK_AT_KEY='hj_kakao_tick_at';
+async function hjKakaoAutoTick(){
+  try{
+    const off=state._demo||typeof relayReady!=='function'||!relayReady()||!__hjCinboxArmed||(typeof hjStaffOn==='function'&&hjStaffOn());
+    if(off)return false;
+    try{if(navigator.onLine===false)return false;}catch(e){}
+    const now=Date.now();
+    let last=0;try{last=Number(localStorage.getItem(HJ_KAKAO_TICK_AT_KEY))||0;}catch(e){}
+    if(now-Math.max(last,hjClaudeInboxCheckedAt())<HJ_KAKAO_TICK_MS)return false;
+    try{localStorage.setItem(HJ_KAKAO_TICK_AT_KEY,String(now));}catch(e){}   // 받기 전에 적는다 — 느린 중계를 겹쳐 두드리지 않게
+    try{await window.__hjRelayBootDone;}catch(e){}
+    if(!relayReady())return false;
+    const r=await claudeInboxFetch();
+    if(!(r&&r.ok))return false;
+    try{await hjKakaoAutoApply(r);}catch(e){}
+    return true;
+  }catch(e){return false;}
+}
 function hjKakaoSchHas(a){
   const k=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
   const d=String(a&&a.date||''),t=k(a&&a.title);
@@ -14517,7 +14553,7 @@ async function hjKakaoAutoApply(r){
     if(r.via==='link')return 0;   // 링크·붙여넣기로 받은 것은 절대 저절로 넣지 않는다
     if(typeof hjStaffOn==='function'&&hjStaffOn())return 0;
     const done=claudeDoneSet(),now=Date.now();
-    const list=(r.requests||[]).filter(q=>q&&!done.has(q.id)&&hjKakaoAutoOk(q,now)).slice(0,HJ_KAKAO_AUTO_MAX);
+    const list=(r.requests||[]).filter(q=>q&&!done.has(q.id)&&hjKakaoAutoOk(q,now)).filter(q=>hjKakaoUnitReady(q,now)).slice(0,HJ_KAKAO_AUTO_MAX);   // v619 세대 연결은 사진이 이 기기에 다 있을 때
     if(!list.length)return 0;
     try{await hjSnapshot('📲 카톡 승인 요청 반영 전 — '+list.length+'건',true);}catch(e){}
     let n=0,same=0;
@@ -57257,7 +57293,7 @@ function hjBuildTagApply(){
   try{setTimeout(()=>{appVersionAutoCheck().catch(()=>{});},2500);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')appVersionAutoCheck().catch(()=>{});});}catch(e){}
   // v614 🤖 클로드 요청함 알림 — 부팅 때(중계 설정 복원 순간) 이미 연결된 기기만 켠다(__hjCinboxArmed). 중계 부팅(동기화)이 끝나고 4초 뒤 한 번, 앱을 다시 볼 때,
   // 첫 화면을 그릴 때(viewDashboard) — 합쳐 30분에 한 번 · 읽기만. 쓰다가 방금 연결한 기기는 다음에 열 때부터.
-  try{Promise.all([window.__hjRelayConfigDone,window.__hjRelayBootDone]).catch(()=>[]).then(r=>{if(!(r&&r[0]&&r[0].ready&&relayReady()))return;__hjCinboxArmed=true;setTimeout(()=>{hjClaudeInboxAutoCheck('boot');},4000);});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')hjClaudeInboxAutoCheck('visible');});}catch(e){}
+  try{Promise.all([window.__hjRelayConfigDone,window.__hjRelayBootDone]).catch(()=>[]).then(r=>{if(!(r&&r[0]&&r[0].ready&&relayReady()))return;__hjCinboxArmed=true;setTimeout(()=>{hjClaudeInboxAutoCheck('boot');},4000);setInterval(()=>{hjKakaoAutoTick();},60*1000);});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')hjClaudeInboxAutoCheck('visible');});}catch(e){}
 }catch(e){}})();
 </script>
 
