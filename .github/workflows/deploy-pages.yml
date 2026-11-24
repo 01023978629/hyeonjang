@@ -96,6 +96,22 @@ jobs:
           # v5는 숨김 파일을 기본 제외하므로 Pages의 .nojekyll을 명시적으로 보존한다.
           include-hidden-files: true
 
+      # 11/24 배포 실패 5번이 모두 같은 꼴 — 'Upload site artifact' 가 묶음을 올린 바로 그 초(0~1초 뒤)에 다음 단계가
+      # 'Fetching artifact metadata failed · No artifacts named "github-pages"' 로 끝났다(성공한 실행은 1초 뒤 · GitHub 상태는 정상).
+      # 올린 묶음이 목록에 보일 때까지(최대 2분) 기다렸다가 배포한다. 이 단계는 실패로 끝나지 않는다 — 못 보면 그대로 배포를 해 본다
+      # (카톡봇 v1.9.16 은 실패한 단계가 'Deploy to GitHub Pages' 뿐이면 GitHub 쪽 실패로 보고 새 실행으로 다시 돌린다). tests/deploy-wait.check.js
+      - name: Wait until the site artifact is listed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 24); do
+            n="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages" --jq '.total_count' 2>/dev/null || echo 0)"
+            if [ "${n:-0}" -ge 1 ] 2>/dev/null; then echo "올린 묶음이 목록에 보임(${i}번째 확인) — 10초 더 기다린 뒤 배포"; sleep 10; exit 0; fi
+            sleep 5
+          done
+          echo "::warning::2분이 지나도 github-pages 묶음이 목록에 안 보임 — 그대로 배포를 해 본다"
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

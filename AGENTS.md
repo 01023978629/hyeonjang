@@ -3,6 +3,31 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-24 배포 — 올린 사이트 묶음이 목록에 보일 때까지 기다렸다 배포
+
+11/24 배포 실패 5번(v620 3번·v621·v622 각 1번 + 다시 돌린 1번)이 모두 같은 꼴: `Upload site artifact` 가 묶음을 올린 바로 그 초(0~1초 뒤)에
+`Deploy to GitHub Pages` 가 'Fetching artifact metadata failed · No artifacts named "github-pages"' 로 끝났다. 묶음은 실제로 있었고(API 로 보임)
+성공한 실행은 1초 뒤에 시작했다 · GitHub 상태 페이지는 정상. → 두 단계 사이에 `Wait until the site artifact is listed`
+(`gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages` 가 1개 이상일 때까지 5초마다 · 최대 2분 · 보이면 10초 더).
+- 이 단계는 **실패로 끝나지 않는다**(`exit 1` 없음 · 못 보면 경고만 남기고 배포를 해 본다). 이름에 'Deploy to GitHub Pages' 를 넣지 마라 —
+  카톡봇(v1.9.16~)은 실패한 단계가 모두 그 이름이면 GitHub 쪽 실패로 보고 새 실행(workflow_dispatch)으로 다시 돌린다. 읽기만(권한 `actions: read` — B 에서 더함).
+- 검사 `tests/deploy-wait.check.js`(올리기 → 기다리기 → 배포 순서 · 실패 없음 · 같은 실행의 github-pages 만 · 변이 표).
+
+## 2026-11-24 v623 📋 지난 일정 보고 정리
+
+대표 결정(11/24 'C ⑧ 지난 일정 작업 보고'). 그날 자료: 일정 84건 중 작업 보고(📋 report) 있는 일정 0건 · 현장이 이어진 지난 일정 15건 가운데 8건은
+그날 그 현장 사진이 있다. 보고가 없으면 공정 진행(`hjPhaseProgress`)·🐢 공정 지연(`hjPhaseDelays`)·누수 출동 기록(`s.urgent` + 완료 보고)이 '안 한 일'로 본다.
+- 일정 탭 띠 `hjPastRepBanner`(체험·직원 모드 없음) → `hjPastRepView` 창 → 체크한 것만 `hjPastRepApply`. 후보 `hjPastRepCands(today)`:
+  지난 60일(`HJ_PAST_REP_DAYS`) · 진행 현장(보관 빼고)에 이어진 · `s.report` 가 비어 있는(쓰다 만 보고도 있으면 안 건드림) · 여러 날 공정은 끝난 뒤(`hjSchSpan(s).to<today`) ·
+  상담·실측(`HJ_PLAN_SKIP_RE`)·💰(`HJ_INQ_MONEY_RE`)·세금(`_taxAuto`)·AS 방문(`hjIsAsVisitSched`·asLog visitSchedId) 빼고. 최근 날짜 먼저.
+- 사진 수: `state.files` 사진(kind photo) 중 같은 현장 · `localDate(new Date(f.when))` 가 그 일정 기간 안(v403 `hjPhotoDayGroups` 와 같은 날 셈). 사진이 있으면 미리 체크.
+- 남기는 보고: 📋 일일 작업 보고와 같은 칸만 `{done:'제목 (사진 N장)', actualWorkers:'', material:'', issue:'', progress:'완료', weather:'', filledAt}`(v403 📷 사진으로 기록과 같은 꼴, 새 칸 없음).
+  `filledAt` 은 누른 때가 아니라 **그 일정 날 0시** — 누수 '확인' 문자(`hjLeakSmsSent`)는 완료 보고의 filledAt 뒤에 보낸 문자만 보냄으로 본다(누른 때로 적으면 그날 보낸 문자가 '안 보냄'으로 돌아간다).
+  그사이 보고가 생긴 일정은 건너뛴다. 일정을 지우거나 옮기지 않는다. 알림·고객 문자·다음 공정 묻기 없음(지난 일 정리라서).
+- 📋 `saveReport`: 이미 '완료'였던 보고를 고쳐 다시 '완료'로 저장하면 `filledAt` 그대로(예전엔 저장할 때마다 지금 시각 — 같은 까닭으로 누수 문자 '보냄'이 풀렸다).
+  '진행' 등에서 '완료'로 바꿀 때는 예전처럼 지금 시각.
+- 검사 `tests/pastreport-v623.unit.js`(앱 스크립트를 VM 에 올림 · 변이 `HJ_V623_MUTATION`).
+
 ## 2026-11-24 배포 검사 — 병합 전 검사를 통과한 같은 내용이면 배포 때는 빠른 검사만 · PC 빠른 검사 2개
 
 대표 결정(11/24 'B' — 공개 빨리, 덜 깨지게). 공개 한 번에 같은 전체 검사가 두 번 돌았다: PR 검사(verify-release.yml, 최근 30번 중앙 20분)를 통과한
