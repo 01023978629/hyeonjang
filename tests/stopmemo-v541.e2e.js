@@ -40,7 +40,7 @@ async function open({ width, height, mobile, staff }) {
     if (!read) network.writes++;
     return route.abort('blockedbyclient');
   });
-  await page.addInitScript(staffOn => { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); localStorage.setItem('hj_last_backup', JSON.stringify({ at: Date.now(), kind: 'file' })); if (staffOn) localStorage.setItem('hj_role', 'staff'); }, !!staff);
+  await page.addInitScript(staffOn => { localStorage.setItem('hj_more_hold', JSON.stringify({ show: ['worktime'] }));   /* v625 ⏱ 작업시간은 기록 0건이면 보류 — 이 검사는 그 기능 자체를 본다 */ localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); localStorage.setItem('hj_last_backup', JSON.stringify({ at: Date.now(), kind: 'file' })); if (staffOn) localStorage.setItem('hj_role', 'staff'); }, !!staff);
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(keys => typeof serializeData === 'function' && typeof workPunch === 'function' && keys.every(key => !!window[key]), BOOT);
   await page.evaluate(async ({ keys, mobile }) => {

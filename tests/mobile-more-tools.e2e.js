@@ -41,7 +41,7 @@ async function boot(width=390,forced=false){
   page.on('download',()=>external.push('download'));page.on('popup',()=>external.push('popup'));
   const gis=page.waitForEvent('requestfailed',{predicate:r=>r.url()==='https://accounts.google.com/gsi/client',timeout:25000});
   await context.route('**/*',r=>new URL(r.request().url()).origin===ORIGIN?r.continue():r.abort());
-  await page.addInitScript(()=>{localStorage.setItem('hj_onboard_done','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_more_recent','[]');localStorage.setItem('hj_more_favorites','[]');});
+  await page.addInitScript(()=>{localStorage.setItem('hj_more_hold',JSON.stringify({show:['contacts']}));/* v625 연락처 0명이면 보류 — 이 검사는 바로가기 [연락처] 자체를 본다 */localStorage.setItem('hj_onboard_done','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_more_recent','[]');localStorage.setItem('hj_more_favorites','[]');});
   await page.goto(APP,{waitUntil:'domcontentloaded'});await gis;
   await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
   // The unrelated boot-only glance cache is written after 2.5s. Settle it before

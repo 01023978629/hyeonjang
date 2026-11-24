@@ -1,7 +1,7 @@
 /* v613 ⏸ 보류 묶음 판정 — 실제 앱 함수(index.html 에서 그대로 떼어 낸 HJ_HOLD_* · hjHold* · 대시보드 단추 줄 · CW_MOVED)를 합성 자료로 돌린다.
    브라우저·네트워크·실제 자료 없음(team-config.js 읽기는 가짜 fetch). 화면 쪽(더보기 묶음·견적 작성 탭·광고 탭·🧰)은 hold-v612.e2e.js.
    ① 목록 — 자동·처음 보류 id 가 모두 더보기 칸이거나 따로 그리는 항목 · 보류하지 않는 목록(사진·일정·수금·AS·웹 업무·접수함·🧰·전자계약·AI 비서)과 겹치지 않음 ·
-      11/18 대표 자료 꼴(서버 없음·저장 칸 0)이면 18개 모두 보류 (LIST)
+      11/18 대표 자료 꼴(서버 없음·저장 칸 0)이면 25개 모두 보류(v625 ⑮ 지출 셋·운행일지·작업시간·연락처·명함 스캔 일곱을 더함 — 판정은 worklog-v625.unit ④) (LIST)
    ② 자동 — 고객 페이지 주소·OfficeOps 주소+토큰·직원 작업실 apiUrl 이 있으면 보이고, 받은 카카오 문의·게시한 고객 페이지·열린 팀 업무가 있으면 보인다 ·
       ☁ 팀 공유 할일은 중계(Apps Script)가 연결돼 있어도 처음 보류(18 할 일 하나 — v613 검토) · 내 업무(실제 hjMyWorkSharedLoad)가 마지막으로 읽어 온 남은 공유 할일이 있으면 보임 —
       다시 여는 중(읽는 중)·잠깐의 읽기 실패에도 그 수 그대로, 다 끝내거나 중계를 끊으면 다시 보류 · 까닭 글은 실제 자리·쉬운 말 (AUTO)
@@ -78,7 +78,7 @@ let passed = 0;
 async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v612 ' + name); }
 
 (async () => {
-  await test('① 목록 — 더보기 칸·따로 그리는 항목 · 보류하지 않는 것과 겹치지 않음 · 대표 자료 꼴이면 18개 모두 보류 (LIST)', async () => {
+  await test('① 목록 — 더보기 칸·따로 그리는 항목 · 보류하지 않는 것과 겹치지 않음 · 대표 자료 꼴이면 25개 모두 보류 (LIST)', async () => {
     const { ctx, H } = env();
     const menu = new Set(H.MORE_CATS.flatMap(c => c.items.map(i => i[0])));
     assert.equal(menu.size, 126, '더보기 126개 그대로(지우지 않음)');
@@ -87,9 +87,10 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v61
     const never = ['photoaudit', 'photobundle', 'beforeafter', 'schshare', 'payproof', 'payplan', 'asmanage', 'webbridge', 'aptorders', 'claudeinbox', 'cowork', 'contractdraft', 'ai', 'aiprovider'];
     for (const id of never) assert.ok(H.HJ_HOLD_NEVER.includes(id) && !H.HJ_HOLD_IDS.includes(id), '보류하지 않음 ' + id);
     assert.deepEqual([...Object.keys(H.HJ_HOLD_AUTO), ...Object.keys(H.HJ_HOLD_DEFAULT)].filter(id => H.HJ_HOLD_NEVER.includes(id)), [], '자동·처음 목록은 보류하지 않는 목록과 겹치지 않는다');
-    assert.deepEqual([...H.HJ_HOLD_IDS], ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom', 'sharedtodo', 'quotenew', 'aiquote', 'photoquote', 'inventory', 'materials', 'matdue', 'suppliers', 'satisfaction', 'goal', 'budget', 'budgetalert', 'adpostlog']);
+    assert.deepEqual([...H.HJ_HOLD_IDS], ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom', 'sharedtodo', 'quotenew', 'aiquote', 'photoquote', 'inventory', 'materials', 'matdue', 'suppliers', 'satisfaction', 'goal', 'budget', 'budgetalert', 'adpostlog',
+      'expense', 'expenseclassify', 'scanreceipt', 'trips', 'worktime', 'contacts', 'scancard']);   // v625 ⑮
     ctx.hjHoldTeamState(); await settle();   // team-config.js apiUrl '' → off
-    assert.deepEqual(heldIds(ctx).sort(), [...H.HJ_HOLD_IDS].sort(), '서버 없음·저장 칸 0 → 18개 모두 보류');
+    assert.deepEqual(heldIds(ctx).sort(), [...H.HJ_HOLD_IDS].sort(), '서버 없음·저장 칸 0 → 25개 모두 보류');
     const st = ctx.hjHoldState();
     assert.deepEqual([...st.rows.filter(r => r.auto).map(r => r.id)], ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom', 'sharedtodo'], '자동 보류가 먼저 · 정해진 차례');
     assert.ok(st.rows.every(r => r.why && typeof r.why === 'string'), '줄마다 까닭');
@@ -208,25 +209,25 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v61
     const chip = it => '<button type="button" class="more-chip" data-moreaction="' + it.id + '">' + it.label + '</button>';
     let st = ctx.hjHoldState(), html = ctx.moreHoldBlockHtml(st, chip, false);
     assert.ok(html.startsWith('<details class="more-cat-block more-hold" data-cat="hold" id="moreHold">'), '접힌 채로 시작');
-    assert.match(html, /보류 18개 보기/);
-    assert.equal((html.match(/data-hold-row="/g) || []).length, 18);
-    assert.equal((html.match(/data-more-unhold="/g) || []).length, 18, '줄마다 [다시 보이기]');
-    assert.equal((html.match(/data-moreaction="/g) || []).length, 13, '더보기 칸 13개는 그 칸 단추 그대로(거기서 연다)');
-    assert.equal((html.match(/data-hold-open="/g) || []).length, 4, '따로 그리는 넷은 열기 단추');
+    assert.match(html, /보류 25개 보기/);
+    assert.equal((html.match(/data-hold-row="/g) || []).length, 25);
+    assert.equal((html.match(/data-more-unhold="/g) || []).length, 25, '줄마다 [다시 보이기]');
+    assert.equal((html.match(/data-moreaction="/g) || []).length, 17, '더보기 칸 17개는 그 칸 단추 그대로(거기서 연다)');
+    assert.equal((html.match(/data-hold-open="/g) || []).length, 7, '따로 그리는 일곱(v625 운행일지·작업시간·연락처 더함)은 열기 단추');
     assert.match(html, /<a class="more-chip more-hold-open" href="\.\/team\.html" data-hold-link="teamroom"/, '직원 작업실은 링크');
-    assert.ok(html.indexOf('🔌 서버 연결이 없어 접어 둔 것 6') < html.indexOf('💤 안 쓰는 메뉴 12'), '서버 없음 먼저');
+    assert.ok(html.indexOf('🔌 서버 연결이 없어 접어 둔 것 6') < html.indexOf('💤 안 쓰는 메뉴 19'), '서버 없음 먼저');
     assert.ok(!/data-more-holdreset/.test(html), '되돌릴 것이 없으면 단추 없음');
     ctx.hjHoldShow('inventory'); ctx.hjHoldShow('teamboard');
     st = ctx.hjHoldState(); html = ctx.moreHoldBlockHtml(Object.assign({}, st, { open: true }), chip, false);
-    assert.match(html, /id="moreHold" open>/); assert.match(html, /보류 16개 보기/); assert.match(html, /다시 보이게 한 2개/);
+    assert.match(html, /id="moreHold" open>/); assert.match(html, /보류 23개 보기/); assert.match(html, /다시 보이게 한 2개/);
     const editing = ctx.moreHoldBlockHtml(st, chip, true);
-    assert.equal((editing.match(/data-more-unhold="[^"]+"[^>]* disabled/g) || []).length, 16, '즐겨찾기 편집 중엔 [다시 보이기] 잠김');
+    assert.equal((editing.match(/data-more-unhold="[^"]+"[^>]* disabled/g) || []).length, 23, '즐겨찾기 편집 중엔 [다시 보이기] 잠김');
     // 모두 다시 보이게 했어도 되돌리기는 남는다
     for (const id of [...ctx.hjHoldState().held]) ctx.hjHoldShow(id);
     st = ctx.hjHoldState(); html = ctx.moreHoldBlockHtml(st, chip, false);
-    assert.match(html, /보류 0개 보기/); assert.match(html, /다시 보이게 한 18개/);
+    assert.match(html, /보류 0개 보기/); assert.match(html, /다시 보이게 한 25개/);
     ctx.hjHoldReset(); ctx.state.inventory = [{ id: 'i' }];
-    assert.equal(ctx.hjHoldState().rows.length, 17, '자료가 생긴 것은 묶음에서 빠진다');
+    assert.equal(ctx.hjHoldState().rows.length, 24, '자료가 생긴 것은 묶음에서 빠진다');
   });
 
   await test('⑥ 대시보드 단추 줄 — 기본은 ✅ 할 일 하나 · 다시 보이면 제자리 (DASH)', async () => {
