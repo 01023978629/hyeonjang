@@ -22,6 +22,7 @@
   상담·실측(`HJ_PLAN_SKIP_RE`)·💰(`HJ_INQ_MONEY_RE`)·세금(`_taxAuto`)·AS 방문(`hjIsAsVisitSched`·asLog visitSchedId) 빼고. 최근 날짜 먼저.
 - 사진 수: `state.files` 사진(kind photo) 중 같은 현장 · `localDate(new Date(f.when))` 가 그 일정 기간 안(v403 `hjPhotoDayGroups` 와 같은 날 셈). 사진이 있으면 미리 체크.
 - 남기는 보고: 📋 일일 작업 보고와 같은 칸만 `{done:'제목 (사진 N장)', actualWorkers:'', material:'', issue:'', progress:'완료', weather:'', filledAt}`(v403 📷 사진으로 기록과 같은 꼴, 새 칸 없음).
+  `filledAt` 은 누른 때가 아니라 **그 일정 날 0시** — 누수 '확인' 문자(`hjLeakSmsSent`)는 완료 보고의 filledAt 뒤에 보낸 문자만 보냄으로 본다(누른 때로 적으면 그날 보낸 문자가 '안 보냄'으로 돌아간다).
   그사이 보고가 생긴 일정은 건너뛴다. 일정을 지우거나 옮기지 않는다. 알림·고객 문자·다음 공정 묻기 없음(지난 일 정리라서).
 - 검사 `tests/pastreport-v623.unit.js`(앱 스크립트를 VM 에 올림 · 변이 `HJ_V623_MUTATION`).
 

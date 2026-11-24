@@ -8,7 +8,7 @@
    ⑤ 연결 — 일정 탭에 띠 · 누르면 창 (WIRE)
    브라우저 없이 돈다: index.html 앱 스크립트를 통째로 VM 에 올려(autoupdate-v622.unit.js 와 같은 틀) 진짜 함수를 부른다.
    변이(HJ_V623_MUTATION): keep-report·include-archived·no-window·unfinished-span·no-skip-plan·no-skip-as 는 ①, photo-any-kind·photo-span 은 ②,
-   apply-overwrite·apply-progress 는 ③, precheck-all·banner-in-demo 는 ④, no-banner-wire·no-click-wire 는 ⑤에서 실패해야 한다. */
+   apply-overwrite·apply-progress·apply-filled-now 는 ③, no-skip-as-id 는 ①, precheck-all·banner-in-demo 는 ④, no-banner-wire·no-click-wire 는 ⑤에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -26,7 +26,9 @@ const MUT = {
   'photo-any-kind': ["    if(!f||f.kind!=='photo'||!want.has(f.project)||!f.when)return;", '    if(!f||!want.has(f.project)||!f.when)return;'],
   'photo-span': ['    (days.get(s.project)||new Map()).forEach((c,d)=>{if(d>=sp.from&&d<=sp.to)n+=c;});', '    (days.get(s.project)||new Map()).forEach((c,d)=>{if(d===sp.from)n+=c;});'],
   'apply-overwrite': ['    if(!s||s.report)return;   // 그사이 보고가 생긴 일정(다른 기기·📋)은 그대로', '    if(!s)return;   // 그사이 보고가 생긴 일정(다른 기기·📋)은 그대로'],
-  'apply-progress': ["issue:'',progress:'완료',weather:'',filledAt:at};n++;});", "issue:'',progress:'진행',weather:'',filledAt:at};n++;});"],
+  'apply-progress': ["issue:'',progress:'완료',weather:'',filledAt};n++;});", "issue:'',progress:'진행',weather:'',filledAt};n++;});"],
+  'apply-filled-now': ["const day=new Date(String(s.date)+'T00:00:00'),filledAt=isNaN(day.getTime())?new Date().toISOString():day.toISOString();   // 그 일정 날 0시", "const filledAt=new Date().toISOString();   // 그 일정 날 0시"],
+  'no-skip-as-id': ['||hjIsAsVisitSched(s)||asIds.has(s.id))return false;', '||asIds.has(s.id))return false;'],
   'precheck-all': ["'\"'+(r.n>0?' checked':'')+' style=\"margin-top:3px\">'", "'\"'+' checked'+' style=\"margin-top:3px\">'"],
   'banner-in-demo': ["    if(hjStaffOn()||state._demo)return '';   // 체험·직원 모드엔 없음", "    if(false)return '';   // 체험·직원 모드엔 없음"],
   'no-banner-wire': ['  html+=hjPastRepBanner();   // v623 보고 없는 지난 일정 — 보고 정리', ''],
@@ -82,6 +84,7 @@ const run = (src) => JSON.parse(JSON.stringify(vm.runInContext('(()=>{' + src + 
 // 날짜 — 앱의 localDate() 와 같은 기기 시각(오늘 기준 앞뒤 며칠)
 const pad = n => String(n).padStart(2, '0');
 const day = off => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + off); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const smsAt = (off, hh) => { const d = new Date(); d.setHours(hh, 0, 0, 0); d.setDate(d.getDate() + off); return d.toISOString(); };
 const shot = (off, hh, project, kind = 'photo') => { const d = new Date(); d.setHours(hh, 30, 0, 0); d.setDate(d.getDate() + off); return { kind, project, when: d.toISOString(), name: 'p' + off + hh + '.jpg' }; };
 
 let dirty = 0, renders = 0, toasts = [], modal = null, staff = false;
@@ -95,9 +98,9 @@ ctx.closeModal = () => {};
 function seed() {
   dirty = 0; renders = 0; toasts = []; modal = null; staff = false;
   ctx.__seed__ = {
-    projects: [{ name: '가나아파트', stage: 2 }, { name: '다라빌라', stage: 2 }, { name: '보관현장', stage: 3, archived: true }],
+    projects: [{ name: '가나아파트', stage: 2, kind: 'leak', leak: { sms: { detect: smsAt(-3, 15) } } }, { name: '다라빌라', stage: 2 }, { name: '보관현장', stage: 3, archived: true }],
     schedule: [
-      { id: 's1', date: day(-3), time: '09:00', title: '가나아파트 101동 욕실 방수', project: '가나아파트', report: null },
+      { id: 's1', date: day(-3), time: '09:00', title: '가나아파트 101동 욕실 방수', project: '가나아파트', report: null, urgent: true },
       { id: 's2', date: day(-5), time: '10:00', title: '다라빌라 우수관', project: '다라빌라', report: null },
       { id: 's3', date: day(-8), time: '09:00', title: '가나아파트 철거', project: '가나아파트', report: null, memo: day(-8) + '~' + day(-6) + ' (3일)' },
       { id: 'rep', date: day(-2), time: '09:00', title: '이미 보고', project: '가나아파트', report: { done: '', progress: '진행' } },
@@ -114,6 +117,7 @@ function seed() {
       { id: 'tax', date: day(-4), time: '14:00', title: '부가세 신고', project: '가나아파트', report: null, _taxAuto: true },
       { id: 'as1', date: day(-4), time: '15:00', title: '🔧 AS 방문 — 누수', project: '가나아파트', report: null },
       { id: 'as2', date: day(-4), time: '16:00', title: '하자 확인', project: '다라빌라', report: null },
+      { id: 'as3', date: day(-4), time: '17:00', title: '방문 점검', project: '다라빌라', report: null, asId: 'a9' },
     ],
     files: [
       shot(-3, 10, '가나아파트'), shot(-3, 11, '가나아파트'), shot(-3, 11, '다라빌라'), shot(-4, 11, '가나아파트'),
@@ -145,6 +149,7 @@ test('② 사진 수 — 같은 현장 · 그 기간 안 · 사진만 (PHOTOS)',
 
 test('③ 남기기 — 고른 것만 · 그사이 보고가 생기면 건너뜀 · 저장 표시 (APPLY)', () => {
   seed();
+  assert.equal(run("return hjLeakSmsSent(state.projects[0],'detect');"), true, '그날 보낸 누수 확인 문자 — 보고 전');
   const r = run(`const rows=hjPastRepCands();const pick=rows.filter(r=>r.s.id==='s1'||r.s.id==='s2'||r.s.id==='s3');
     state.schedule.find(s=>s.id==='s3').report={done:'다른 기기에서 쓴 보고',progress:'완료'};
     const n=hjPastRepApply(pick);return {n,s1:state.schedule.find(s=>s.id==='s1').report,s2:state.schedule.find(s=>s.id==='s2').report,
@@ -153,7 +158,8 @@ test('③ 남기기 — 고른 것만 · 그사이 보고가 생기면 건너뜀
   assert.deepEqual(Object.keys(r.s1).sort(), ['actualWorkers', 'done', 'filledAt', 'issue', 'material', 'progress', 'weather'], '📋 일일 작업 보고와 같은 칸');
   assert.equal(r.s1.done, '가나아파트 101동 욕실 방수 (사진 2장)');
   assert.equal(r.s1.progress, '완료');
-  assert.match(r.s1.filledAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(r.s1.filledAt, new Date(day(-3) + 'T00:00:00').toISOString(), '보고 시각은 그 일정 날 0시(누른 때가 아니다)');
+  assert.equal(run("return hjLeakSmsSent(state.projects[0],'detect');"), true, '그날 보낸 누수 확인 문자는 보고 뒤에도 보냄');
   assert.equal(r.s2.done, '다라빌라 우수관', '사진이 없으면 제목만');
   assert.equal(r.s3.done, '다른 기기에서 쓴 보고', '그사이 생긴 보고는 그대로');
   assert.equal(r.edge, null, '고르지 않은 일정은 그대로');

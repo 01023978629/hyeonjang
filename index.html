@@ -43383,13 +43383,16 @@ function hjPastRepView(){
     const n=hjPastRepApply(pick);
     closeModal();toast(n?'📋 지난 일정 '+n+'건에 완료 보고를 남겼어요':'바뀐 일정이 없어요');}}],true);
 }
-/* 고른 것만 — 그사이 보고가 생긴(다른 기기·📋) 일정은 건너뛴다. 보고 꼴은 📋 일일 작업 보고와 같은 칸(새 칸 없음). */
+/* 고른 것만 — 그사이 보고가 생긴(다른 기기·📋) 일정은 건너뛴다. 보고 꼴은 📋 일일 작업 보고와 같은 칸(새 칸 없음).
+   filledAt 은 누른 때가 아니라 그 일정 날 0시 — 누수 '확인' 문자(hjLeakSmsEvent/hjLeakSmsSent)는 완료 보고의 filledAt 뒤에 보낸 문자만 '보냄'으로 본다.
+   누른 때로 적으면 그날 이미 보낸 문자가 '안 보냄'으로 돌아가 다시 보내라고 한다(보고 시각이 없을 때 쓰는 그날 0시와 같다). */
 function hjPastRepApply(pick){
-  let n=0;const at=new Date().toISOString();
+  let n=0;
   (pick||[]).forEach(r=>{const s=(state.schedule||[]).find(x=>x&&r&&r.s&&x.id===r.s.id);
     if(!s||s.report)return;   // 그사이 보고가 생긴 일정(다른 기기·📋)은 그대로
     const title=String(s.title||'').trim()||'현장 작업';
-    s.report={done:title+(r.n>0?' (사진 '+r.n+'장)':''),actualWorkers:'',material:'',issue:'',progress:'완료',weather:'',filledAt:at};n++;});
+    const day=new Date(String(s.date)+'T00:00:00'),filledAt=isNaN(day.getTime())?new Date().toISOString():day.toISOString();   // 그 일정 날 0시
+    s.report={done:title+(r.n>0?' (사진 '+r.n+'장)':''),actualWorkers:'',material:'',issue:'',progress:'완료',weather:'',filledAt};n++;});
   if(n){markDirty();render();}
   return n;
 }
