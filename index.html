@@ -4069,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v620-photoassign';
+const APP_BUILD='hyeonjang-v621-gcalskip';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -16356,7 +16356,11 @@ function hjSchShareTitle(s,c){
    · 주소 = 현장 주소 → 없으면 메모의 '장소:'(hjSchShareAddr). 장소를 주소 줄로 쓴 일정은 메모 글에 그 토막을 다시 싣지 않는다(hjSchMemoOut).
    · 따라오는 곳: 📤 일정 공유 글·.ics · 작업자 캘린더 보내기 · 🔔 작업자 문안 · 🔨 다음 공정 안내의 주소 · 📤 하루치 팀 지시(hjWoBuildDay).
    그대로: 일정 메모 자체·일정표 화면·🤖 칩·내 폰 캘린더(hjAlertIcsItems — v577 대표 결정)·고객 문안(메모를 싣지 않는다). */
-const HJ_CALSYNC_FROM_RE=/^구글 캘린더에서 가져옴(?: \(@ 제미나이 입력\))?$/;   // hjCalSyncApply 가 새 일정 메모 끝줄에 적는 글 — 그 글을 바꾸면 여기도(teamtext-v605 가 진짜 맞추기 길로 대조한다)
+const HJ_CALSYNC_FROM_RE=/^구글 캘린더에서 가져옴(?: \((?:@ 제미나이 입력|카톡봇)\))?$/;   // hjCalSyncApply 가 새 일정 메모 끝줄에 적는 글 — 그 글을 바꾸면 여기도(teamtext-v605 가 진짜 맞추기 길로 대조한다) · v621 카톡봇이 넣는 일정의 끝줄 '구글 캘린더에서 가져옴 (카톡봇)'(카톡봇 approvals.schedule_args)도 같은 출처 줄
+/* v621 구글 캘린더에서 온 일정 — 메모 어느 줄이든 출처 줄(🔄 맞추기 '(@ 제미나이 입력)' · 카톡봇 '(카톡봇)' · 꼬리 없는 것)이면 참.
+   📅 구글 캘린더 자동 열기(hjGcalMaybeOpen)가 이 일정을 '새 일정 만들기' 창으로 다시 띄우지 않게 한다 — 이미 구글에 있어서, 저장하면 같은 일정이 둘이 된다.
+   11/24 카톡 승인 1011번(구글 캘린더 일정)을 현장웹이 넣자 PC 에 구글 캘린더 창이 저절로 떴다(카톡 승인 요청은 손을 대지 않아도 들어온다). */
+function hjSchFromGcal(s){return String(s&&s.memo||'').split('\n').some(l=>HJ_CALSYNC_FROM_RE.test(l.replace(/\s+/g,' ').trim()));}
 // 일정 메모의 '장소: …' 토막 — 🔄 구글 캘린더 맞추기·📥 캘린더 파일 가져오기가 구글 위치를 이렇게 적는다(v604, 읽기만).
 const HJ_SCH_PLACE_RE=/^장소:\s*(.+)$/;
 // 메모 토막 — 출입 번호 토막을 빼고(cut), 첫 토막의 공정표 기간 '시작~끝 (N일)' 을 떼고, 빈칸을 고른 것. hjMemoOut 과 hjSchPlaceOf 가 같은 토막을 본다.
@@ -21375,7 +21379,7 @@ function hjGcalUrl(s){
 }
 function hjGcalAutoOn(){return localStorage.getItem('hj_gcal_auto')==='1';}
 function hjGcalMaybeOpen(s){
-  if(!hjGcalAutoOn()||!s||/^💰/.test(s.title||''))return false;
+  if(!hjGcalAutoOn()||!s||/^💰/.test(s.title||'')||hjSchFromGcal(s))return false;   // v621 구글에서 온 일정은 다시 띄우지 않는다
   try{window.open(hjGcalUrl(s),'_blank','noopener');return true;}catch(e){return false;}
 }
 function toggleGcalAuto(){
