@@ -3,6 +3,26 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-24 배포 검사 — 병합 전 검사를 통과한 같은 내용이면 배포 때는 빠른 검사만 · PC 빠른 검사 2개
+
+대표 결정(11/24 'B' — 공개 빨리, 덜 깨지게). 공개 한 번에 같은 전체 검사가 두 번 돌았다: PR 검사(verify-release.yml, 최근 30번 중앙 20분)를 통과한
+커밋을 병합하면 배포(deploy-pages.yml)가 병합 커밋으로 같은 `node tests/run-all.js` 를 또 18분 돌렸다. 앱(index.html) 변경 없음 — 판 번호 그대로.
+- PR 검사 맨 끝(위 단계가 **모두** 통과했을 때만)에 검사한 바로 그 트리 이름으로 기록 `verified-tree-<HEAD^{tree}>`(아티팩트, 14일)을 남긴다.
+  PR 검사는 refs/pull/N/merge(그때 main 과 합친 것)를 검사하므로, 병합 커밋의 트리가 그 트리와 같으면 내용이 바이트까지 같다. 이 단계 뒤에 검사를 더하지 마라.
+- 배포의 `scripts/verified-tree.mjs`(판단 — 실패로 끝나지 않는다): HEAD 가 PR 병합 커밋(부모 둘)이고 · 같은 트리 기록이 있고 · 만료 전 · 이 저장소(포크 아님) ·
+  verify-release.yml · pull_request · success · 그 실행의 head_sha 가 병합된 PR 머리(HEAD^2) 이고, 마지막으로 공개에 성공한 배포(조상) 이후 바뀐 파일이
+  검사 장치(`.github/`·`tests/run-all.js`·`package*.json`·이 스크립트 · 따옴표로 싼 이름)를 안 건드렸을 때만 `run=<실행 id>`(이름은 quotePath=false·--no-renames).
+  그러면 브라우저 설치·전체 검사를 건너뛰고 빠른 검사(`node tests/run-all.js .check.js .unit.js`)만. 그 밖에는(기록 없음·API 오류·모르는 커밋 …) 지금처럼 전체 검사.
+  **이제 진짜 전체 검사 관문은 PR 검사다** — verify-release.yml 의 전체 검사 단계는 인자 없이·조건(if)·continue-on-error·`||` 없이(verified-tree.unit.js ③이 지킨다).
+  전체 검사 단계는 그대로 `node tests/run-all.js`(인자 없이 — pages-artifact.e2e.js 가 지킨다, 예전 '82개 중 8개' 사고). 배포 권한에 `actions: read`.
+- PC 빠른 검사가 늘 2개 실패하던 것: ① sri.check — 윈도우 git(core.autocrlf=true)이 고정 파일 `tests/fixtures/vendor/*` 줄끝을 CRLF 로 바꿔 sha384 가 달랐다 →
+  `.gitattributes` `tests/fixtures/vendor/** -text`. 이미 받은 윈도우 사본은 `touch tests/fixtures/vendor/* && git checkout -- tests/fixtures/vendor` 한 번(그냥 checkout 은
+  stat 가 같아 아무것도 안 바꾼다 — sri 실패 글에도 나온다). 그 전에 `git add --renormalize`·`add -A`·`commit -a` 하지 마라(-text 라 CRLF 가 그대로 저장된다).
+  ② mutation-anchors — e2e 검사 몇 개가 표 앞에서 playwright 를 불러 표를 못 읽었다 → `require('playwright')`(이름)를 못 찾을 때만 빈 대역(검사는 돌리지 않는다 ·
+  '/opt/…/playwright' 같은 경로는 그대로 실패시켜 검사 파일이 NODE_PATH 의 진짜로 넘어간다). 변이 표 대상에 판단 스크립트·두 워크플로·.gitattributes.
+  이제 PC 에서 `node tests/run-all.js .check.js .unit.js` 67/67.
+- 검사: `tests/verified-tree.unit.js` 4/4(판단 · 임시 저장소(PR 병합 커밋)+127.0.0.1 가짜 API 로 실제 명령 · 워크플로 구조(PR 검사 전체 검사 지킴 포함) · PC 빠른 검사 — 변이 21개 머리글 목록대로 ①~④에서 실패). 독립 검토(4관점+반박 검증) 지적 반영.
+
 ## 2026-11-24 v622 🔄 손대지 않은 창은 새 판을 저절로
 
 대표 결정(11/24 'A' — 승인한 일이 PC 창에 묶이지 않게). 11/24 PC 크롬의 현장웹 창이 11/23 07:00 부터 v618 그대로 열려 있어

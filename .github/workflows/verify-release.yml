@@ -93,3 +93,23 @@ jobs:
           export PLAYWRIGHT_EXECUTABLE="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
           node tests/photo-original-keep.mutations.js
           node tests/photo-no-recovery.mutations.js
+
+      # 맨 끝(위 단계가 모두 통과했을 때만) — 배포(deploy-pages.yml)가 같은 내용을 다시 다 검사하지 않게, 검사한 바로 그 트리 이름을 남긴다.
+      # 이 단계 뒤에 검사 단계를 더하지 마라(기록이 검사보다 먼저 남는다). scripts/verified-tree.mjs · tests/verified-tree.unit.js
+      - name: Record the verified tree
+        id: tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          TREE="$(git rev-parse 'HEAD^{tree}')"
+          mkdir -p "$RUNNER_TEMP/verified-tree"
+          printf '%s\n' "$TREE" > "$RUNNER_TEMP/verified-tree/tree.txt"
+          echo "tree=$TREE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the verified tree record
+        uses: actions/upload-artifact@v7
+        with:
+          name: verified-tree-${{ steps.tree.outputs.tree }}
+          path: ${{ runner.temp }}/verified-tree/tree.txt
+          retention-days: 14
+          if-no-files-found: error

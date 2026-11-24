@@ -12,6 +12,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read   # 병합 전 검사 기록(verified-tree-*)·그 실행을 읽는다 — scripts/verified-tree.mjs
 
 concurrency:
   group: pages
@@ -38,7 +39,18 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
+      # 같은 내용(트리)이 병합 전 검사(verify-release.yml)를 이미 다 통과했으면 아래 전체 검사 대신 빠른 검사만 — 공개 한 번에 같은 전체 검사가
+      # 두 번(20분 + 18분) 돌았다(대표 결정 11/24 'B'). 병합된 바로 그 PR 머리의 기록만 · 마지막 성공 배포 이후 검사 장치(.github/·run-all.js·
+      # package*.json·이 판단 스크립트)가 바뀌었거나, 기록이 없거나, 무엇이든 확인이 안 되면 run 이 비어 전체 검사를 돈다(scripts/verified-tree.mjs — 실패로 끝나지 않는다).
+      - name: Find the same tree already verified before merge
+        id: verified
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verified-tree.mjs "$GITHUB_OUTPUT"
+
       - name: Install security test browser
+        if: steps.verified.outputs.run == ''   # 전체 검사 때만 브라우저
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/hj-e2e" --no-save --package-lock=false playwright@1.55.0
@@ -48,6 +60,7 @@ jobs:
         uses: actions/configure-pages@v6
 
       - name: Verify release guards (full suite)
+        if: steps.verified.outputs.run == ''   # 같은 트리 기록이 없으면(또는 확인이 안 되면) 전체 검사
         shell: bash
         run: |
           set -euo pipefail
@@ -61,6 +74,16 @@ jobs:
           sudo ln -sfn "$CHROME" /opt/pw-browsers/chromium
           export PLAYWRIGHT_EXECUTABLE="$CHROME"
           node tests/run-all.js
+
+      - name: Verify release guards (quick — the same tree passed the full suite before merge)
+        if: steps.verified.outputs.run != ''
+        shell: bash
+        env:
+          VERIFIED_RUN: ${{ steps.verified.outputs.run }}
+        run: |
+          set -euo pipefail
+          echo "병합 전 전체 검사: https://github.com/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN"
+          node tests/run-all.js .check.js .unit.js
 
       - name: Stage public site allowlist
         run: node scripts/stage-pages.mjs _site

@@ -10,7 +10,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ROOT = path.resolve(__dirname, '..');
 const TARGETS = ['index.html', 'sw.js', 'apps-script/Watchdog.gs', 'bathroom.js', 'leak.js', 'team-ui.js', 'team-projects.js', 'team-packet.js',
-  'media-safety.js', 'shared-todo-backup.js', 'operations-review.js']
+  'media-safety.js', 'shared-todo-backup.js', 'operations-review.js',
+  'scripts/verified-tree.mjs', '.github/workflows/deploy-pages.yml', '.github/workflows/verify-release.yml', 'tests/mutation-anchors.check.js', '.gitattributes']   // 배포 검사 줄이기(verified-tree.unit.js 변이)
   .filter(f => fs.existsSync(path.join(ROOT, f))).map(f => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]);
 // '{' 에서 짝이 맞는 '}' 까지(문자열·주석·템플릿 안의 괄호는 건너뜀)
 function objectText(src, at) {
@@ -26,6 +27,25 @@ function objectText(src, at) {
   }
   return null;
 }
+/* v623 PC(브라우저 검사 도구가 없는 곳)에서도 표를 읽는다 — e2e 검사 몇 개가 맨 위에서 playwright 를 부르는데(표 앞), 표는 그것과 상관없다.
+   playwright 를 못 찾을 때만 빈 대역을 준다(검사는 돌리지 않는다) — CI 전체 검사(NODE_PATH)는 진짜를 쓴다.
+   시험: MUT_ANCHORS_HIDE_PLAYWRIGHT=1 이면 playwright 가 없는 척한다(tests/verified-tree.unit.js 가 대역 길을 돌려 본다). */
+const PLAYWRIGHT_ID_RE = /^(?:playwright|@playwright\/[\w.-]+)$/;   // 이름만 — '/opt/…/playwright' 같은 경로는 그대로 실패시켜 검사 파일의 다음 시도(require('playwright'))로 간다
+const PLAYWRIGHT_STUB = new Proxy(function () {}, { get: (t, k) => (k === 'then' ? undefined : PLAYWRIGHT_STUB), apply: () => PLAYWRIGHT_STUB, construct: () => PLAYWRIGHT_STUB });
+function tableRequire(file) {
+  const real = require('node:module').createRequire(file);
+  return id => {
+    try {
+      if (process.env.MUT_ANCHORS_HIDE_PLAYWRIGHT === '1' && PLAYWRIGHT_ID_RE.test(String(id))) {
+        const hidden = new Error("Cannot find module '" + id + "' (MUT_ANCHORS_HIDE_PLAYWRIGHT)"); hidden.code = 'MODULE_NOT_FOUND'; throw hidden;
+      }
+      return real(id);
+    } catch (error) {
+      if (error && error.code === 'MODULE_NOT_FOUND' && PLAYWRIGHT_ID_RE.test(String(id))) return PLAYWRIGHT_STUB;
+      throw error;
+    }
+  };
+}
 function loadTable(file, src, match) {
   const obj = objectText(src, match.index + match[0].length - 1);
   if (!obj) throw new Error('변이 표의 끝을 못 찾음');
@@ -34,7 +54,7 @@ function loadTable(file, src, match) {
   }
   // 표가 파일 위쪽 상수를 쓴다 — 표까지의 앞부분만 실행(검사 본문·브라우저는 그 뒤라 돌지 않는다)
   const prefix = src.slice(0, obj.end).replace(/^#!.*\n/, '') + '\n;globalThis.__MUT_TABLE__ = MUT;';
-  const sandbox = { require: require('node:module').createRequire(file), __dirname: path.dirname(file), __filename: file, module: { exports: {} }, exports: {}, console, URL, URLSearchParams, Buffer, TextEncoder, TextDecoder,
+  const sandbox = { require: tableRequire(file), __dirname: path.dirname(file), __filename: file, module: { exports: {} }, exports: {}, console, URL, URLSearchParams, Buffer, TextEncoder, TextDecoder,
     process: { env: {}, platform: process.platform, argv: [], cwd: () => ROOT, exitCode: 0 } };
   sandbox.globalThis = sandbox;
   vm.runInNewContext(prefix, sandbox, { filename: file });
