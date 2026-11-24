@@ -8,7 +8,8 @@
    ⑤ 연결 — 일정 탭에 띠 · 누르면 창 (WIRE)
    브라우저 없이 돈다: index.html 앱 스크립트를 통째로 VM 에 올려(autoupdate-v622.unit.js 와 같은 틀) 진짜 함수를 부른다.
    변이(HJ_V623_MUTATION): keep-report·include-archived·no-window·unfinished-span·no-skip-plan·no-skip-as 는 ①, photo-any-kind·photo-span 은 ②,
-   apply-overwrite·apply-progress·apply-filled-now 는 ③, no-skip-as-id 는 ①, precheck-all·banner-in-demo 는 ④, no-banner-wire·no-click-wire 는 ⑤에서 실패해야 한다. */
+   ⑥ 📋 보고 고치기 — 이미 '완료'였던 보고를 다시 '완료'로 저장하면 완료 시각 그대로 · '진행'→'완료'는 지금 시각 (EDIT)
+   apply-overwrite·apply-progress·apply-filled-now 는 ③, edit-resets-time·edit-keeps-always 는 ⑥, no-skip-as-id 는 ①, precheck-all·banner-in-demo 는 ④, no-banner-wire·no-click-wire 는 ⑤에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -28,6 +29,8 @@ const MUT = {
   'apply-overwrite': ['    if(!s||s.report)return;   // 그사이 보고가 생긴 일정(다른 기기·📋)은 그대로', '    if(!s)return;   // 그사이 보고가 생긴 일정(다른 기기·📋)은 그대로'],
   'apply-progress': ["issue:'',progress:'완료',weather:'',filledAt};n++;});", "issue:'',progress:'진행',weather:'',filledAt};n++;});"],
   'apply-filled-now': ["const day=new Date(String(s.date)+'T00:00:00'),filledAt=isNaN(day.getTime())?new Date().toISOString():day.toISOString();   // 그 일정 날 0시", "const filledAt=new Date().toISOString();   // 그 일정 날 0시"],
+  'edit-resets-time': ["    filledAt:(prevRep&&prevRep.progress==='완료'&&prog==='완료'&&typeof prevRep.filledAt==='string'&&prevRep.filledAt)?prevRep.filledAt:new Date().toISOString(),", '    filledAt:new Date().toISOString(),'],
+  'edit-keeps-always': ["    filledAt:(prevRep&&prevRep.progress==='완료'&&prog==='완료'&&typeof prevRep.filledAt==='string'&&prevRep.filledAt)?prevRep.filledAt:new Date().toISOString(),", "    filledAt:(prevRep&&prevRep.filledAt)?prevRep.filledAt:new Date().toISOString(),"],
   'no-skip-as-id': ['||hjIsAsVisitSched(s)||asIds.has(s.id))return false;', '||asIds.has(s.id))return false;'],
   'precheck-all': ["'\"'+(r.n>0?' checked':'')+' style=\"margin-top:3px\">'", "'\"'+' checked'+' style=\"margin-top:3px\">'"],
   'banner-in-demo': ["    if(hjStaffOn()||state._demo)return '';   // 체험·직원 모드엔 없음", "    if(false)return '';   // 체험·직원 모드엔 없음"],
@@ -199,6 +202,27 @@ test('⑤ 연결 — 일정 탭에 띠 · 누르면 창 (WIRE)', () => {
   assert.match(appCode, /e\.target\.closest\('\[data-past-rep\]'\);if\(pastRepTarget\)return hjPastRepView\(\);/);
 });
 
+test('⑥ 📋 보고 고치기 — 완료였던 보고는 완료 시각 그대로 · 진행→완료는 지금 시각 (EDIT)', () => {
+  seed();
+  run("hjPastRepApply(hjPastRepCands().filter(r=>r.s.id==='s1'));");
+  const kept = new Date(day(-3) + 'T00:00:00').toISOString();
+  const fields = { rDone: '고친 글', rWorkers: '2', rMaterial: '', rIssue: '', rProgress: '완료', rWeather: '맑음' };
+  ctx.document = { getElementById: id => (id in fields ? { value: fields[id] } : null), querySelectorAll: () => [] };
+  run("saveReport('s1',true);");
+  let r = run("return state.schedule.find(s=>s.id==='s1').report;");
+  assert.deepEqual([r.done, r.progress, r.filledAt], ['고친 글', '완료', kept], '글만 고쳤다 — 완료 시각 그대로');
+  assert.equal(run("return hjLeakSmsSent(state.projects[0],'detect');"), true, '그날 보낸 누수 확인 문자는 그대로 보냄');
+  run("state.schedule.find(s=>s.id==='s2').report={done:'반쯤',progress:'진행',filledAt:'" + kept + "'};");
+  const t0 = Date.now();
+  run("saveReport('s2',true);");
+  r = run("return state.schedule.find(s=>s.id==='s2').report;");
+  assert.ok(Date.parse(r.filledAt) >= t0 - 1000, '진행→완료는 지금 시각');
+  fields.rProgress = '진행';
+  run("saveReport('s1',true);");
+  r = run("return state.schedule.find(s=>s.id==='s1').report;");
+  assert.ok(Date.parse(r.filledAt) >= t0 - 1000, '완료→진행으로 되돌리면 지금 시각');
+});
+
 assert.equal(writes, fetchAtBoot, '바깥 요청 없음');
-console.log('pastreport-v623: ' + passed + '/5');
-if (passed !== 5) process.exit(1);
+console.log('pastreport-v623: ' + passed + '/6');
+if (passed !== 6) process.exit(1);

@@ -43734,14 +43734,16 @@ function openReportEdit(id){
 function saveReport(id,keepOpen){
   const s=state.schedule.find(x=>x.id===id);if(!s)return;
   const g=i=>document.getElementById(i);
-  if(g('rDone')){s.report={
+  if(g('rDone')){const prevRep=s.report,prog=g('rProgress').value;s.report={
     done:g('rDone').value.trim(),
     actualWorkers:g('rWorkers').value,
     material:g('rMaterial').value.trim(),
     issue:g('rIssue').value.trim(),
-    progress:g('rProgress').value,
+    progress:prog,
     weather:g('rWeather').value,
-    filledAt:new Date().toISOString(),
+    // v623 이미 '완료'였던 보고를 고쳐 다시 '완료'로 저장하면 완료 시각은 그대로 — 누수 '확인' 문자(hjLeakSmsSent)는 완료 보고 시각 뒤에 보낸 것만
+    // '보냄'으로 본다. 글만 고쳤는데 지금 시각으로 바꾸면 그날 보낸 문자가 '안 보냄'으로 돌아가 다시 보내라고 한다(지난 일정 보고 정리로 남긴 보고를 고칠 때 흔하다).
+    filledAt:(prevRep&&prevRep.progress==='완료'&&prog==='완료'&&typeof prevRep.filledAt==='string'&&prevRep.filledAt)?prevRep.filledAt:new Date().toISOString(),
     ...(hjStaffOn()?{by:'staff'}:{})   // v444 직원 모드 표식
   };}
   markDirty();
