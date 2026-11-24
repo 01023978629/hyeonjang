@@ -3,6 +3,22 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-24 v620 🖼 사진 넣기(assign_photo_files) · 일정 ↔ 현장 · 열면 카톡 승인 요청을 바로
+
+대표 결정(11/24) '위 개발 내용 진행'(1단계). 카톡봇 v1.9.15 와 짝.
+- `assign_photo_files {project, files}`: 카톡봇이 현장사진\<현장> 으로 옮긴 사진을 **파일 이름으로** 그 현장에 넣는다(동·호 없는 현장 사진 — 11/23 16장은
+  폴더만으로는 배정되지 않아 손으로 골랐다). 현장이 없는 사진만: 이미 그 현장이면 그대로, 다른 현장 사진·같은 이름이 여럿인 사진은 건드리지 않는다(apt_unit_link 와 같은 문).
+  옛 `assign_photos` 를 쓰지 않는 까닭: 옛 판은 `files` 를 몰라 `unassigned` 만 보고 미배정 전체를 한 현장에 넣을 수 있다 — 새 이름이면 옛 판은 '모르는 도구'로 건너뛴다.
+  `HJ_KAKAO_AUTO_TOOLS` 에 더함(정의 줄은 v618 변이 기준 글이라 그대로 두고 `.add`) · `HJ_KAKAO_PHOTO_TOOLS` — 사진이 이 기기에 다 있을 때만(v619 `hjKakaoUnitReady` 그대로 넓힘). AI_TOOLS 170종.
+- 일정 ↔ 현장: `hjSchGuessProject(title)` — 제목에 현장 이름이 **하나만** 들어 있으면 그 현장(띄어쓰기 무시 · 단지 뒤 'A'=아파트 · 괄호 안 뺀 이름 · 3글자 이상 ·
+  긴 이름 먼저 · 진행 현장 먼저, 없을 때만 보관 현장 · 둘 이상이면 ''). `add_schedule` 에 현장이 없으면 이것으로. 일정 탭 맨 위 '🔗 현장 없는 일정 N건 — 현장 잇기'
+  (`hjSchLinkBanner`·`hjSchLinkView`·`hjSchLinkApply` — 체크한 것만 · 그새 현장이 생긴 일정·없어진 현장은 건너뜀 · 직원·체험 모드엔 안 보임). 위임은 `[data-sch-link]` 한 줄.
+  참고: 11/24 자료의 '현장 없는 일정' 63건 가운데 다수는 지원사업 공고·세금·비행기·파수꾼 줄이라 현장이 없는 게 맞다 — 짐작은 제목에 현장 이름이 있을 때만.
+- `hjKakaoOpenCheck`: 부팅 6초 뒤·다시 볼 때 1.5초 뒤 카톡 승인 요청을 바로 읽는다(기기에서 1분에 한 번 — `hj_kakao_tick_at`·30분 알림 확인 시각을 같이 센다).
+  v619 는 30분 알림 확인이 쉬면 5분 깨우기를 기다려 최대 5분 걸렸다(11/24 1011번). v619 의 `hjKakaoAutoTick`·부팅 줄 변이 기준 글은 그대로.
+- 검사: `tests/photoassign-v620.unit.js` 4/4(변이 put-other-site·put-dups 는 ①, not-auto·no-photo-wait 는 ②, no-guess·guess-short-wins·guess-no-a·guess-first·
+  link-overwrites 는 ③, no-open-boot·open-no-gap·open-ignores-staff 는 ④에서 실패 · 기준선 `HJ_V620_BASELINE=e530ff3` 은 ①에서). 핀 `hyeonjang-v620-photoassign`.
+
 ## 2026-11-23 v619 📲 카톡 승인 요청을 5분 안에 — 현장웹이 켜져 있으면 요청 파일을 5분마다 읽는다 · 세대 연결은 사진이 이 기기에 있을 때만
 
 대표 요청(11/23) "다음번에는 카톡봇에서 승인하면 넣어지게". 카톡봇 결재(1007·1008·1009)가 요청함에 1시간 넘게 남았다 — 현장웹은 요청 파일을
