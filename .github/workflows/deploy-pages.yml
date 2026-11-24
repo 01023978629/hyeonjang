@@ -40,15 +40,14 @@ jobs:
           package-manager-cache: false
 
       # 같은 내용(트리)이 병합 전 검사(verify-release.yml)를 이미 다 통과했으면 아래 전체 검사 대신 빠른 검사만 — 공개 한 번에 같은 전체 검사가
-      # 두 번(20분 + 18분) 돌았다(대표 결정 11/24 'B'). 검사 장치(.github/·run-all.js·package*.json·이 판단 스크립트)가 바뀐 배포, 기록이 없거나
-      # 포크·실패 실행의 기록, 무엇이든 확인이 안 되면 run 이 비어 전체 검사를 돈다(scripts/verified-tree.mjs — 실패로 끝나지 않는다).
+      # 두 번(20분 + 18분) 돌았다(대표 결정 11/24 'B'). 병합된 바로 그 PR 머리의 기록만 · 마지막 성공 배포 이후 검사 장치(.github/·run-all.js·
+      # package*.json·이 판단 스크립트)가 바뀌었거나, 기록이 없거나, 무엇이든 확인이 안 되면 run 이 비어 전체 검사를 돈다(scripts/verified-tree.mjs — 실패로 끝나지 않는다).
       - name: Find the same tree already verified before merge
         id: verified
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BEFORE: ${{ github.event.before }}
-        run: node scripts/verified-tree.mjs "$GITHUB_OUTPUT" "$BEFORE"
+        run: node scripts/verified-tree.mjs "$GITHUB_OUTPUT"
 
       - name: Install security test browser
         if: steps.verified.outputs.run == ''   # 전체 검사 때만 브라우저

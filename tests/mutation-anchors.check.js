@@ -30,7 +30,7 @@ function objectText(src, at) {
 /* v623 PC(브라우저 검사 도구가 없는 곳)에서도 표를 읽는다 — e2e 검사 몇 개가 맨 위에서 playwright 를 부르는데(표 앞), 표는 그것과 상관없다.
    playwright 를 못 찾을 때만 빈 대역을 준다(검사는 돌리지 않는다) — CI 전체 검사(NODE_PATH)는 진짜를 쓴다.
    시험: MUT_ANCHORS_HIDE_PLAYWRIGHT=1 이면 playwright 가 없는 척한다(tests/verified-tree.unit.js 가 대역 길을 돌려 본다). */
-const PLAYWRIGHT_ID_RE = /(?:^|[\\/])playwright(?:$|[\\/])|^@playwright\//;
+const PLAYWRIGHT_ID_RE = /^(?:playwright|@playwright\/[\w.-]+)$/;   // 이름만 — '/opt/…/playwright' 같은 경로는 그대로 실패시켜 검사 파일의 다음 시도(require('playwright'))로 간다
 const PLAYWRIGHT_STUB = new Proxy(function () {}, { get: (t, k) => (k === 'then' ? undefined : PLAYWRIGHT_STUB), apply: () => PLAYWRIGHT_STUB, construct: () => PLAYWRIGHT_STUB });
 function tableRequire(file) {
   const real = require('node:module').createRequire(file);

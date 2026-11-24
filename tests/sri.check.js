@@ -99,7 +99,8 @@ function check(src, opts) {
   // ⑦ 검사 스텁 바이트 == 표
   if (!opts.skipFixture && t.rows.exifjs) {
     const h = 'sha384-' + crypto.createHash('sha384').update(fs.readFileSync(FIXTURE)).digest('base64');
-    if (h !== t.rows.exifjs.sri) p.push('tests/fixtures/vendor/exif-js-2.3.0.js 의 sha384(' + h.slice(0, 20) + '…)가 표의 exifjs 와 다르다 — scandup-v557 스텁이 integrity 에 막힌다');
+    if (h !== t.rows.exifjs.sri) p.push('tests/fixtures/vendor/exif-js-2.3.0.js 의 sha384(' + h.slice(0, 20) + '…)가 표의 exifjs 와 다르다 — scandup-v557 스텁이 integrity 에 막힌다'
+      + (fs.readFileSync(FIXTURE, 'latin1').includes('\r\n') ? ' (윈도우 줄끝 CRLF 로 바뀐 사본 — touch tests/fixtures/vendor/* && git checkout -- tests/fixtures/vendor)' : ''));
   }
   return p;
 }
