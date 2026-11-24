@@ -9,7 +9,7 @@
    중계는 가짜 relayCall(합성 요청 파일). 실제 중계·드라이브·고객 없음 — 이름·번호·주소는 모두 가짜.
    변이(HJ_V624_MUTATION): overwrite·dup-names·no-phone-check·phone-cut-first·non-string-ok·no-clean·no-cap·digits-compare·customer-shape·
    no-unit-strip·no-leak-guard·sites-per-row·stored-long-differs·no-throw-empty 는 ①, pii-in-answer·not-write·label-first-empty·preview-full-phone·auto-confirm-off 는 ②,
-   not-auto·same-counted-new·no-miss-toast 는 ③ 에서 실패해야 한다(no-throw-empty 는 ③ 의 '요청함에 남김'도 깬다). HJ_V624_BASELINE=<commit>(예: ba167ed) 은 ①에서. */
+   not-auto·same-counted-new·no-miss-toast 는 ③ 에서 실패해야 한다(v625 부터 넣을 값이 없는 요청은 hjKakaoAutoCanWrite 가 고르지 않아 ③ 의 '요청함에 남김'은 no-throw-empty 와 상관없이 지켜진다). HJ_V624_BASELINE=<commit>(예: ba167ed) 은 ①에서. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

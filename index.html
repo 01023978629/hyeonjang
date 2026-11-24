@@ -13506,7 +13506,8 @@ async function aiToolRun(name,a){
         if(w.st==='same'){same++;continue;}         // 이미 그날 보고에 있는 글(두 번 승인·다시 읽기)
         if(w.st==='new'){w.s.report={done:w.line,actualWorkers:'',material:'',issue:'',progress:(w.date<hjSchSpan(w.s).to?'진행':'완료'),weather:'',filledAt:hjWorklogFilledAt(w.date)};wrote++;continue;}   // v623 hjPastRepApply 와 같은 꼴 · 여러 날 공정의 중간 날은 '진행'(중간 날 '완료'면 공정 전체가 끝난 것으로 보인다 — v591 진행률)
         const rep=w.s.report,prev=String(rep.done==null?'':rep.done).replace(/\s+$/,'');
-        rep.done=(prev?prev+'\n':'')+w.line;added++;   // 모두 보고가 있으면 첫 일정에 줄을 덧붙인다 — progress·filledAt 그대로
+        rep.done=(prev?prev+'\n':'')+w.line;added++;   // 모두 보고가 있으면 첫 일정에 줄을 덧붙인다 — progress·filledAt 그대로(아래 여러 날 공정의 마지막 날만 빼고)
+        const sp=hjSchSpan(w.s);if(sp.days>1&&w.date>=sp.to&&HJ_SCH_GOING_RE.test(String(rep.progress||'').trim())){rep.progress='완료';rep.filledAt=hjWorklogFilledAt(w.date);}   // 여러 날 공정의 마지막 날 보고면 '하는 중'이던 공정을 끝낸다
       }
       if(!wrote&&!added&&(missing||noSch||bad))throw new Error('작업일지를 한 줄도 적지 못했습니다 — 못 찾은 현장 '+missing+'곳 · 그날 일정 없음 '+noSch+'줄 · 못 쓰는 값 '+bad+'줄(현장 이름·날짜를 확인하세요).');   // 처리로 표시하지 않고 요청함에 남긴다
       if(wrote||added){markDirty();render();}
@@ -14765,13 +14766,33 @@ function hjKakaoSchHas(a){
   const d=String(a&&a.date||''),t=k(a&&a.title);
   return !!t&&(state.schedule||[]).some(s=>s&&s.date===d&&k(s.title)===t);
 }
+/* v625 검토 — 쓸 것이 하나도 없는 요청(현장 이름이 틀림·그날 일정 없음·번호가 든 글 등)은 고르지 않는다. 그런 요청이 열 건이면 한 번에 넣는 10건(HJ_KAKAO_AUTO_MAX) 자리를
+   다 차지해 뒤의 쓸 수 있는 요청이 못 들어가고, 읽을 때마다 안전판을 찍었다. 고르지 않은 요청은 요청함에 그대로 남는다(대표가 보고 고친다).
+   report_worklog: 50줄 이하이고 적을(new·add) 줄이나 이미 적힌(same) 줄이 하나라도 · fill_customer: 100곳 이하이고 이름이 하나뿐인 현장에 넣을 값이 하나라도 · 그 밖의 도구는 예전대로. */
+function hjKakaoAutoCanWrite(q){
+  try{
+    const a=q&&q.args&&typeof q.args==='object'?q.args:{},its=Array.isArray(a.items)?a.items:[];
+    if(q.tool==='report_worklog'){
+      if(!its.length||its.length>HJ_WORKLOG_MAX)return false;
+      const today=localDate();
+      return its.some(it=>['new','add','same'].includes(hjWorklogPlan(it,today).st));   // '이미'뿐이어도 골라 처리로 표시(건너뜀)
+    }
+    if(q.tool==='fill_customer'){
+      if(!its.length||its.length>HJ_CUST_FILL_MAX)return false;
+      return its.some(it=>{const pj=String(it&&typeof it==='object'&&typeof it.project==='string'?it.project:'').trim();
+        if(!pj||(state.projects||[]).filter(p=>p&&p.name===pj).length!==1)return false;
+        const v=hjCustFillValues(it);return !!(v.name||v.phone||v.addr);});
+    }
+    return true;
+  }catch(e){return true;}   // 판단을 못 하면 예전처럼 고른다(넣다가 실패하면 요청함에 남는다)
+}
 async function hjKakaoAutoApply(r){
   try{
     if(!(r&&r.ok)||state._demo)return 0;
     if(r.via==='link')return 0;   // 링크·붙여넣기로 받은 것은 절대 저절로 넣지 않는다
     if(typeof hjStaffOn==='function'&&hjStaffOn())return 0;
     const done=claudeDoneSet(),now=Date.now();
-    const list=(r.requests||[]).filter(q=>q&&!done.has(q.id)&&hjKakaoAutoOk(q,now)).filter(q=>hjKakaoUnitReady(q,now)).slice(0,HJ_KAKAO_AUTO_MAX);   // v619 세대 연결은 사진이 이 기기에 다 있을 때
+    const list=(r.requests||[]).filter(q=>q&&!done.has(q.id)&&hjKakaoAutoOk(q,now)).filter(q=>hjKakaoUnitReady(q,now)).filter(q=>hjKakaoAutoCanWrite(q)).slice(0,HJ_KAKAO_AUTO_MAX);   // v619 세대 연결은 사진이 이 기기에 다 있을 때 · v625 쓸 것이 있는 요청만
     if(!list.length)return 0;
     try{await hjSnapshot('📲 카톡 승인 요청 반영 전 — '+list.length+'건',true);}catch(e){}
     let n=0,same=0,custMiss=0,wlMiss=0;
@@ -33626,7 +33647,7 @@ const HJ_HOLD_DEFAULT=Object.freeze({
   worktime:{why:'안 쓰는 메뉴 — 작업시간 기록 0건(작업 보고는 일정의 📋 에)',n:()=>hjHoldNum(state.workLogs)+(typeof hjStaffOn==='function'&&hjStaffOn()?1:0)},
   //   연락처(contacts — 직접 넣은 연락처 + 명함 사진) — PC 위 연락처 탭·더보기 바로가기·🏷 명함 스캔. 고객 연락처는 현장 👤 고객 칸(v624)에 있다.
   contacts:{why:'안 쓰는 메뉴 — 연락처 0명(고객 연락처는 현장 👤 고객 칸에)',n:()=>hjHoldNum(state.contacts)+(state.files||[]).filter(f=>f&&f.kind==='card').length},
-  scancard:{why:'안 쓰는 메뉴 — 연락처 0명(고객 연락처는 현장 👤 고객 칸에)',n:()=>hjHoldNum(state.contacts)+(state.files||[]).filter(f=>f&&f.kind==='card').length}
+  scancard:{why:'안 쓰는 메뉴 — 명함으로 넣은 거래처·연락처 0건',n:()=>hjHoldNum(state.suppliers)+hjHoldNum(state.contacts)+(state.files||[]).filter(f=>f&&f.kind==='card').length}   // 명함 스캔은 거래처로도 넣는다
 });
 // 자동 보류 — '' 이면 쓸 수 있음(보이기), 아니면 보류 까닭
 function hjHoldPortalOn(){const c=state.portalCfg;return !!(c&&typeof c==='object'&&String(c.base||'').trim());}
@@ -43569,24 +43590,30 @@ function hjWorklogLine(it,today){
   const pj=typeof o.project==='string'?o.project.trim():'',date=typeof o.date==='string'?o.date.trim():'';
   if(!HJ_YMD_RE.test(date)||!isRealIsoDate(date)||date>(today||localDate()))return {pj,date,bad:true};
   if(typeof o.text!=='string')return {pj,date,bad:true};   // 글이 아닌 값은 적지 않는다
-  const full=o.text.replace(/[\u0000-\u001f\u007f<>]/g,' ').replace(/\s+/g,' ').trim();
-  if(!full||HJ_WORKLOG_PHONE_RE.test(full))return {pj,date,bad:true};   // 전화번호 꼴은 자르기 전에 본다(잘린 조각이 빠져나가지 않게)
+  const full=o.text.normalize('NFKC').replace(/[\u0000-\u001f\u007f<>]/g,' ').replace(/\s+/g,' ').trim();   // 전각 숫자(０１０)도 번호로 보게 NFKC 먼저
+  if(!full||HJ_WORKLOG_PHONE_RE.test(full)||hjAiMaskText(full)!==full)return {pj,date,bad:true};   // 전화번호 꼴은 자르기 전에 본다(잘린 조각이 빠져나가지 않게) · AI 비서가 가리는 꼴('010/…/…'·긴 숫자열)도
   const ph=o.photos;
   if(ph!=null&&!(Number.isInteger(ph)&&ph>=0&&ph<=HJ_WORKLOG_PHOTOS_MAX))return {pj,date,bad:true};
-  const text=full.slice(0,HJ_WORKLOG_TEXT_MAX).trim();
+  let base=full;
+  if(ph>0){base=base.replace(/( ?\(사진 \d+장\))+$/,'').trim();if(!base)return {pj,date,bad:true};}   // 글 끝 '(사진 N장)'은 떼고 새로 붙인다(꼬리가 두 번 붙지 않게)
+  const text=base.slice(0,HJ_WORKLOG_TEXT_MAX).trim();
   return {pj,date,text,line:text+(ph>0?' (사진 '+ph+'장)':''),bad:false};
 }
 function hjWorklogFilledAt(date){return new Date(String(date)+'T00:00:00').toISOString();}   // 그 날짜 0시(로컬) — 누른 때가 아니다
 function hjWorklogRepEmpty(r){return !r||HJ_WORKLOG_REP_KEYS.every(k=>!String(r[k]==null?'':r[k]).trim());}
-const hjWorklogKey=v=>String(v==null?'':v).trim().replace(/ ?\(사진 \d+장\)$/,'').replace(/\s+/g,'');
-// 그 현장 일정 가운데 그 날짜를 덮는 것(여러 날 공정 포함) — 💰 수금·세금 자동 일정과 꼴이 깨진 보고가 달린 일정은 뺀다
+const hjWorklogKey=v=>String(v==null?'':v).trim().replace(/( ?\(사진 \d+장\))+$/,'').replace(/\s+/g,'');   // 끝의 '(사진 N장)' 꼬리는 몇 개든 보지 않는다
+// 그 현장 일정 가운데 그 날짜를 덮는 것(여러 날 공정 포함) — 💰 수금·세금 자동 일정과 꼴이 깨진 보고가 달린 일정은 뺀다.
+// 차례(v625 검토): 하루짜리 먼저 · 여러 날 공정은 뒤(그날 따로 잡은 일정이 그날 한 일에 더 가깝다) · 같은 무리는 시각 차례 · 그다음 원래 차례
 function hjWorklogScheds(pj,date){
-  return (state.schedule||[]).filter(s=>{
+  const out=(state.schedule||[]).filter(s=>{
     if(!s||typeof s!=='object'||s.project!==pj||!HJ_YMD_RE.test(String(s.date||''))||!hjPrepOtherOk(s))return false;
     const r=s.report;if(r&&(typeof r!=='object'||Array.isArray(r)))return false;
     const sp=hjSchSpan(s);return date>=sp.from&&date<=sp.to;
   });
+  return out.map((s,i)=>({s,i,m:hjSchSpan(s).days>1?1:0,t:String(s.time||'')})).sort((x,y)=>(x.m-y.m)||(x.t<y.t?-1:x.t>y.t?1:0)||(x.i-y.i)).map(x=>x.s);
 }
+// 계획·방문 일정(상담·실측·AS 방문 — HJ_PLAN_SKIP_RE·hjIsAsVisitSched·AS 기록의 방문 일정)은 그날 작업 일정이 없을 때만 적는다
+function hjWorklogPlanLike(s){return HJ_PLAN_SKIP_RE.test(String(s&&s.title||''))||hjIsAsVisitSched(s)||(s&&s.id!=null&&(state.asLog||[]).some(a=>a&&a.visitSchedId===s.id));}
 // 한 줄을 어떻게 할지(쓰지 않는다) — st: bad·missing·nosch·same·new(빈 보고에 적기, s)·add(첫 일정에 덧붙이기, s). 도구와 승인 화면 미리보기가 같은 판단을 쓴다.
 function hjWorklogPlan(it,today){
   const w=hjWorklogLine(it,today);
@@ -43595,10 +43622,11 @@ function hjWorklogPlan(it,today){
   if(ps.length!==1)return Object.assign(w,{st:'missing'});   // 없는 현장·같은 이름이 여럿 — 어느 현장인지 모른다
   const ss=hjWorklogScheds(w.pj,w.date);
   if(!ss.length)return Object.assign(w,{st:'nosch'});
-  const key=hjWorklogKey(w.text);
-  if(ss.some(s=>s.report&&String(s.report.done==null?'':s.report.done).split('\n').some(l=>hjWorklogKey(l)===key)))return Object.assign(w,{st:'same'});
-  const blank=ss.find(s=>hjWorklogRepEmpty(s.report));
-  return Object.assign(w,blank?{st:'new',s:blank}:{st:'add',s:ss[0]});
+  const lineFor=s=>(hjSchSpan(s).days>1?hjMdDow(w.date)+' ':'')+w.line;   // 여러 날 공정은 날짜를 앞에(다른 날 같은 글이 '이미'로 빠지지 않게)
+  if(ss.some(s=>{const k=hjWorklogKey(lineFor(s));return s.report&&String(s.report.done==null?'':s.report.done).split('\n').some(l=>hjWorklogKey(l)===k);}))return Object.assign(w,{st:'same'});   // 일정마다 그 일정에 적을 글과 견준다
+  const main=ss.filter(s=>!hjWorklogPlanLike(s)),pool=main.length?main:ss;   // 작업 일정 먼저 — 없을 때만 상담·실측·AS 방문 일정
+  const blank=pool.find(s=>hjWorklogRepEmpty(s.report)),to=blank||pool[0];
+  return Object.assign(w,{st:blank?'new':'add',s:to,line:lineFor(to)});
 }
 /* 요청함·AI 비서 승인 카드 미리보기(이 기기 화면에만 — 바깥 LLM 으로 가지 않는다) — 현장·날짜·글 앞부분 · 8줄 + 외 n줄. 못 쓰는 줄은 글을 보이지 않는다. */
 function hjWorklogPreview(a){

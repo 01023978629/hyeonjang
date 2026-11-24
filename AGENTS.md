@@ -10,20 +10,29 @@
   카톡봇이 모은 끝난 작업 보고를 결재(카톡 승인)로 지난 일정의 📋 작업 보고(`schedule[].report`)에 적는다. 옛 `add_worklog`(aiAddWorkLog → workLogSave)는 그대로 둔다 — 카톡 자동에 쓰면
   못 찾음이 {오류} 답이라 처리로 사라지고 · 현장 찾기가 느슨하고 · 두 번 하면 두 번 붙고 · 일정이 없으면 '작업일지' 새 일정을 만들어(파수꾼이 구글 캘린더로 보냄) 새 엄격 도구를 만들었다.
   · 현장은 정확히 같은 이름이 하나일 때만(보관 현장도 이름이 하나면 적는다) · 그 현장 일정 가운데 그 날짜를 덮는 것(`hjSchSpan` — 여러 날 공정 포함 · 💰·세금 자동 일정(`hjPrepOtherOk`)·꼴이 깨진 보고는 뺀다).
+  · 일정 고르기(검토 뒤): `hjWorklogScheds` 는 하루짜리 먼저·여러 날 공정은 뒤 · 같은 무리는 시각 차례 · 그다음 원래 차례. `hjWorklogPlan` 은 계획·방문 일정(`hjWorklogPlanLike` —
+    제목 `HJ_PLAN_SKIP_RE`(상담·실측·AS 방문) · `hjIsAsVisitSched` · AS 기록 `visitSchedId`)을 빼고 고르고, 그날 그런 일정뿐일 때만 거기에 적는다.
+  · 여러 날 공정(`hjSchSpan(s).days>1`)에 적는 줄은 앞에 `hjMdDow(날짜)+' '` — 다른 날 같은 글이 '이미'로 빠지지 않게. '이미'는 일정마다 **그 일정에 적을 줄**과 견준다(미리보기도 그 줄).
   · 차례: 같은 글(줄 단위 · 띄어쓰기·끝 '(사진 N장)' 무시)이 그날 그 일정들 보고에 이미 있으면 `이미`(두 번 승인·다시 읽어도 한 번) → 보고가 빈 일정(null 또는 칸이 모두 빈 것)이 있으면 첫 번째에
     v623 `hjPastRepApply` 꼴 `{done, actualWorkers:'', material:'', issue:'', progress:'완료', weather:'', filledAt: 그 날짜 0시(로컬)}`(누수 '확인' 문자 `hjLeakSmsSent` 가 풀리지 않게) — 여러 날 공정의 **중간 날**(`date < hjSchSpan(s).to`)은 progress '진행'(중간 날 '완료'면 v591 진행률로 공정 전체가 끝난 것으로 보인다), 마지막 날·하루 일정만 '완료' →
-    모두 보고가 있으면 첫 일정 done 에 줄바꿈으로 덧붙임(progress·filledAt 그대로). 그날 덮는 일정이 없으면 **새 일정을 만들지 않고** `일정없음`.
-  · 값 거르기 `hjWorklogLine`: 글만 · 줄바꿈·제어 글자·꺾쇠는 빈칸(한 줄) · 200자 · 전화번호 꼴(`HJ_WORKLOG_PHONE_RE` — 자르기 전에 본다)이면 그 줄은 `잘못된값` ·
-    날짜는 진짜 날짜이고 **오늘까지**(앞날은 잘못된값 — 앞 일정을 '완료'로 만들지 않게) · photos 는 0~9999 정수(아니면 잘못된값), 있으면 글 끝에 ' (사진 N장)'.
+    모두 보고가 있으면 첫 일정 done 에 줄바꿈으로 덧붙임(progress·filledAt 그대로 — 단 여러 날 공정의 **마지막 날**(`date >= hjSchSpan(s).to`) 덧붙임이고 progress 가
+    '하는 중'(`HJ_SCH_GOING_RE`)이면 '완료'·filledAt 그날 0시 · 하루짜리 일정은 그대로). 그날 덮는 일정이 없으면 **새 일정을 만들지 않고** `일정없음`.
+  · 값 거르기 `hjWorklogLine`: 글만 · NFKC 먼저(전각 숫자) · 줄바꿈·제어 글자·꺾쇠는 빈칸(한 줄) · 200자 · 전화번호 꼴(`HJ_WORKLOG_PHONE_RE`) **또는 AI 비서 가림 `hjAiMaskText` 가
+    바꾸는 글**('010/…/…'·9자리 넘는 숫자열·끝이 잘린 번호)이면 그 줄은 `잘못된값`(자르기 전에 본다) · 날짜는 진짜 날짜이고 **오늘까지**(앞날은 잘못된값 — 앞 일정을 '완료'로 만들지 않게) ·
+    photos 는 0~9999 정수(아니면 잘못된값) — 0 보다 크면 글 끝의 '(사진 N장)' 꼬리를 떼고(떼고 나서 비면 잘못된값) ' (사진 N장)' 하나만 붙인다 · '이미' 견줄 때는 끝 꼬리를 몇 개든 뗀다.
   · 한 줄도 못 적었는데 못찾음·일정없음·잘못된값이 있으면 **throw**(카톡 승인 요청이 요청함에 남는다 — v624 문) · 50줄 넘으면 자르지 않고 throw.
   · 답 `{결과:'작업일지 적기', 적음, 덧붙임, 이미, 일정없음, 못찾음, 잘못된값}` — 글·이름·번호 없음(AI 비서 답은 바깥 LLM). 판단은 `hjWorklogPlan` 한 곳(도구·미리보기가 같이 쓴다).
   · `AI_TOOLS`·`AI_WRITE`·`HJ_KAKAO_AUTO_TOOLS`(더하기만 — 카톡 승인이면 저절로)·`AI_ALWAYS_CONFIRM` · `aiActionLabel` '작업일지 적기 → "현장" 외 n건' · `aiResultBrief` ·
     승인 화면 `aiActionWarnings` → `hjWorklogPreview`(이 기기 화면만 · 현장·날짜·글 앞 40자 · 8줄 + 외 n줄 · 못 쓰는 줄은 글을 안 보인다).
   · `hjKakaoAutoApply`: 적음+덧붙임이 0이면(이미뿐) '건너뜀' · 일부만 못 적으면 토스트 '작업일지 못 적은 줄 n개'.
+    **쓸 것이 없는 요청은 고르지 않는다**(`hjKakaoAutoCanWrite` — 한 번에 넣는 10건(`HJ_KAKAO_AUTO_MAX`)을 자르기 **전에** 거른다): report_worklog 는 50줄 이하이고 new·add·same 인 줄이 하나라도,
+    fill_customer 는 100곳 이하이고 이름이 하나뿐인 현장에 `hjCustFillValues` 로 넣을 값이 하나라도, 그 밖의 도구는 예전대로. 고르지 않은 요청은 안전판도 찍지 않고 요청함에 남는다
+    (예전엔 못 쓰는 요청 열 건이 자리를 다 차지해 뒤의 요청이 못 들어가고 읽을 때마다 안전판을 찍었다).
   · 카톡봇: `approvals.py` `AUTO_TOOLS` 에 'report_worklog' · 제안은 config `worklogToApp`(기본 false) — **현장웹 v625 공개 뒤(대표 PC·폰의 판 번호가 v625 로 바뀐 것을 본 뒤) 켠다**
     (옛 판은 '알 수 없는 도구'로 넣지 못해 요청함에 남는다).
 - **H2 ⑮ 안 쓰는 메뉴 더 접기** — v613 ⏸ 보류 표에만 더했다(까닭 + 셈 함수 — 기록이 한 건이라도 생기면 저절로 다시 보인다). `HJ_HOLD_DEFAULT` 에
-  expense·expenseclassify·scanreceipt(n = expenses) · trips(n = trips) · worktime(n = workLogs, **직원 모드 기기면 +1 — 직원 기기는 ⏱ 를 접지 않는다**) · contacts·scancard(n = contacts + 명함 사진 files kind 'card').
+  expense·expenseclassify·scanreceipt(n = expenses) · trips(n = trips) · worktime(n = workLogs, **직원 모드 기기면 +1 — 직원 기기는 ⏱ 를 접지 않는다**) · contacts(n = contacts + 명함 사진 files kind 'card') ·
+  scancard(n = suppliers + contacts + 명함 사진 — 명함 스캔은 거래처로도 넣는다 · 까닭 '안 쓰는 메뉴 — 명함으로 넣은 거래처·연락처 0건').
   `HJ_HOLD_EXTRA`(더보기 칸이 아닌 것): trips(💼 회계 탭 [🚗 운행일지]·현장 화면 🚗 → `tripView(true)`) · worktime(현장 화면 ⏱ 시작·📋 → `workView()`) ·
   contacts(PC 위 연락처 탭·더보기 바로가기 → `hjGoTab('contacts')`). **보류 id 'contacts' 는 탭 이름과 같다** — `hjMoreNavItems(held)`(바로가기에서 뺌)·`hjHoldTabsSync()`(PC 위 탭 숨김 —
   보고 있는 동안은 그대로 · render 와 보류를 바꾼 뒤)가 그 이름으로 본다. 탭 ←/→ 는 숨긴 탭을 건너뛴다 · `hjHoldAfterChange` 는 회계 탭·현장 화면도 다시 그린다 ·
@@ -34,7 +43,8 @@
 - **H3 ④ 첫 화면 🧹 단계 정리 한 줄** — ✅ 오늘 현장 업무 칸(🤖 요청함 알림 아래 자리 `#dashboardStageTidy`)에 `hjStageTidyBtnN()`(v613 규칙 그대로 — 새 판단 없음 · 직원·체험 0)이 1 이상이면
   '🧹 단계 정리 — 완료로 볼 현장 N곳 [보기]'(`[data-stage-tidy-dash]` → 기존 `hjStageTidyView` — 체크한 것만 바뀐다). 세기는 실자료 20~25ms 라 그릴 때마다 세지 않는다 —
   지난번 수(`__hjStageTidyDashN`)로 그리고 `HJ_STAGE_TIDY_SIDE_MS` 뒤 `hjStageTidyDashRefresh` 가 그 자리만 고친다(수가 같으면 그대로 · 첫 화면이 아니면 세지 않음).
-- 검사 `tests/worklog-v625.unit.js` 5/5(앱 스크립트를 VM 에 올림 · 변이 `HJ_V625_MUTATION` 40개 — 머리글 목록대로 ①~⑤ 의도한 곳에서 실패 · 기준선 `HJ_V625_BASELINE=6f4b990` 은 ①에서 '알 수 없는 도구').
+- 검사 `tests/worklog-v625.unit.js` 5/5(앱 스크립트를 VM 에 올림 · 변이 `HJ_V625_MUTATION` 60개 — 머리글 목록대로 ①~⑤ 의도한 곳에서 실패 · 기준선 `HJ_V625_BASELINE=6f4b990` 은 ①에서 '알 수 없는 도구').
+  custfill-v624 머리글: v625 부터 넣을 값이 없는 요청은 고르지 않아 그 ③ '요청함에 남김'은 no-throw-empty 와 상관없이 지켜진다(변이는 ①에서 그대로 실패).
   PC 빠른 검사 71/71. 바꾼 e2e 셋(hold-v612·stopmemo-v541·mobile-more-tools)은 PC 에 브라우저 검사 도구가 없어 못 돌렸다 — PR 검사(CI)에서 처음 돈다.
 
 ## 2026-11-24 배포 — 올린 사이트 묶음이 목록에 보일 때까지 기다렸다 배포

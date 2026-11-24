@@ -3,17 +3,22 @@
    한 번도 반영 안 한 v613 단계 정리 제안을 첫 화면 한 줄로.
    ① 적기 — 정확히 같은 이름 현장 하나 · 그 날짜를 덮는 일정(여러 날 공정 포함, 💰·세금 일정 빼고) · 빈 보고면 v623 꼴 '완료'(filledAt = 그날 0시 — 누수 확인 문자 그대로) ·
       모두 보고가 있으면 첫 일정에 덧붙임(progress·filledAt 그대로) · 같은 글은 '이미'(두 번 해도 한 번) · 그날 일정이 없으면 새 일정 없이 '일정없음' ·
-      글만·한 줄·꺾쇠 빈칸·200자 · 전화번호 꼴은 자르기 전에 잘못된값 · 앞날·가짜 날짜·이상한 사진 수 잘못된값 · 50줄 넘으면 throw · 한 줄도 못 적으면 throw (WRITE)
+      글만·한 줄·꺾쇠 빈칸·200자 · 전화번호 꼴(NFKC·AI 비서 가림 꼴 포함)은 자르기 전에 잘못된값 · 앞날·가짜 날짜·이상한 사진 수 잘못된값 · 50줄 넘으면 throw · 한 줄도 못 적으면 throw ·
+      (v625 검토) 여러 날 공정 중간 날은 '진행', 마지막 날 덧붙임은 '하는 중'을 '완료'로 · 하루짜리 먼저·시각 차례 · 상담·실측·AS 방문은 작업 일정이 없을 때만 ·
+      여러 날 공정은 날짜를 앞에(다른 날 같은 글도 적힘) · 사진 꼬리는 한 번만 (WRITE)
    ② 답에는 셈만(글·현장 이름·번호 없음) · 요청함이 아는 도구 · 장부를 바꾸는 작업 · 이름표 · 승인 화면 미리보기(못 쓰는 줄은 글을 안 보임) · AI 비서는 ⚡자동이어도 늘 확인 (ANSWER)
-   ③ 카톡·관리 프로그램 승인이면 저절로 — 링크·붙여넣기는 아님 · '이미'뿐이면 '건너뜀' · 한 줄도 못 적으면 요청함에 남김 · 일부만이면 토스트 (AUTO)
+   ③ 카톡·관리 프로그램 승인이면 저절로 — 링크·붙여넣기는 아님 · '이미'뿐이면 '건너뜀' · 한 줄도 못 적으면 요청함에 남김 · 일부만이면 토스트 ·
+      쓸 것이 없는 요청은 고르지 않는다(10건 자리를 막지 않고 안전판도 안 찍음 — v625 검토) (AUTO)
    ④ 보류 — 지출 셋(간편 장부·경비 분류·영수증 스캔)·🚗 운행일지·⏱ 작업시간·연락처·🏷 명함 스캔은 0건이면 보류, 기록이 생기면 보임 · 직원 모드는 작업시간 그대로 ·
-      회계 탭 🚗·현장 화면 ⏱/🚗 · 더보기 바로가기·PC 위 연락처 탭 · 보류 묶음에서 연다 · 사용설명서 한 줄 (HOLD)
+      명함 스캔은 명함으로 넣은 거래처도 센다 · 회계 탭 🚗·현장 화면 ⏱/🚗 · 더보기 바로가기·PC 위 연락처 탭 · 보류 묶음에서 연다 · 사용설명서 한 줄 (HOLD)
    ⑤ 첫 화면 — 체크해 둘 단계 정리 제안(v613 규칙 그대로)이 있으면 '🧹 단계 정리 — 완료로 볼 현장 N곳 [보기]' · 직원·체험 없음 · 그릴 때마다 세지 않음 · 자리만 고침 (DASH)
    브라우저 없이 돈다: index.html 앱 스크립트를 통째로 VM 에 올려(custfill-v624.unit.js 와 같은 틀) 진짜 aiToolRun·hjKakaoAutoTick·hjHold*·viewLedger·viewProject·dashboardTodoHTML 을 부른다.
    중계는 가짜 relayCall(합성 요청 파일). 날짜는 이 기기 오늘 기준 앞뒤 며칠(pastreport-v623 과 같은 셈). 실제 중계·드라이브·고객 없음 — 현장 이름·글·번호는 모두 가짜.
    변이(HJ_V625_MUTATION): no-same-check·new-schedule·span-start-only·money-ok·dup-names·no-phone-check·phone-cut-first·non-string-ok·no-clean·future-ok·photos-any·
-   overwrite-report·new-in-progress·midday-done·filled-now·append-resets·no-cap·no-throw-empty 는 ①, pii-in-answer·not-write·label-first-empty·no-preview·preview-bad-text·auto-confirm-off 는 ②,
-   not-auto·same-counted-new·no-miss-toast 는 ③(no-throw-empty 는 ③ 의 '요청함에 남김'도 깬다), expense-shown·trips-no-data·worktime-staff·contacts-no-cards·ledger-trip-shown·
+   overwrite-report·new-in-progress·midday-done·filled-now·append-resets·no-cap·no-throw-empty·lastday-no-complete·complete-any-append·lastday-any-day·lastday-any-progress·
+   sched-no-sort·plan-not-skipped·plan-only-dropped·aslog-visit-not-plan·multi-no-prefix·same-plain-line·tail-doubled·key-single-tail·no-nfkc·no-mask-check 는 ①,
+   pii-in-answer·not-write·label-first-empty·no-preview·preview-bad-text·auto-confirm-off 는 ②, not-auto·same-counted-new·no-miss-toast·no-can-write-filter·can-write-worklog-any·
+   can-write-fill-any·can-write-no-cap 는 ③, expense-shown·trips-no-data·worktime-staff·contacts-no-cards·scancard-no-suppliers·ledger-trip-shown·
    project-card-shown·nav-contacts-shown·tab-not-hidden·help-adpost-text 는 ④, dash-no-slot·dash-in-staff·dash-count-each-render·dash-no-click·dash-no-refresh-paint 는 ⑤ 에서 실패해야 한다.
    HJ_V625_BASELINE=<commit>(예: 6f4b990 = v624) 은 ①에서 실패한다. */
 'use strict';
@@ -27,18 +32,33 @@ let html = process.env.HJ_V625_BASELINE
   ? execFileSync('git', ['show', process.env.HJ_V625_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   : fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
-  'no-same-check': ["  if(ss.some(s=>s.report&&String(s.report.done==null?'':s.report.done).split('\\n').some(l=>hjWorklogKey(l)===key)))return Object.assign(w,{st:'same'});\n", ''],
+  'no-same-check': ["  if(ss.some(s=>{const k=hjWorklogKey(lineFor(s));return s.report&&String(s.report.done==null?'':s.report.done).split('\\n').some(l=>hjWorklogKey(l)===k);}))return Object.assign(w,{st:'same'});", ''],
   'new-schedule': ["        if(w.st==='nosch'){noSch++;continue;}", "        if(w.st==='nosch'){state.schedule.push({id:'mut',date:w.date,time:'',title:'작업일지',project:w.pj,report:{done:w.line,progress:'진행'}});wrote++;continue;}"],
   'span-start-only': ['    const sp=hjSchSpan(s);return date>=sp.from&&date<=sp.to;', '    return s.date===date;'],
   'money-ok': ["s.project!==pj||!HJ_YMD_RE.test(String(s.date||''))||!hjPrepOtherOk(s))return false;", "s.project!==pj||!HJ_YMD_RE.test(String(s.date||'')))return false;"],
   'dup-names': ["  if(ps.length!==1)return Object.assign(w,{st:'missing'});", "  if(!ps.length)return Object.assign(w,{st:'missing'});"],
-  'no-phone-check': ['  if(!full||HJ_WORKLOG_PHONE_RE.test(full))return {pj,date,bad:true};', '  if(!full)return {pj,date,bad:true};'],
-  'phone-cut-first': ['HJ_WORKLOG_PHONE_RE.test(full))return {pj,date,bad:true};', 'HJ_WORKLOG_PHONE_RE.test(full.slice(0,HJ_WORKLOG_TEXT_MAX)))return {pj,date,bad:true};'],
-  'non-string-ok': [["  if(typeof o.text!=='string')return {pj,date,bad:true};", '  if(o.text==null)return {pj,date,bad:true};'], ['  const full=o.text.replace(', '  const full=String(o.text).replace(']],
-  'no-clean': ["  const full=o.text.replace(/[\\u0000-\\u001f\\u007f<>]/g,' ').replace(/\\s+/g,' ').trim();", '  const full=o.text.trim();'],
+  'no-phone-check': ['  if(!full||HJ_WORKLOG_PHONE_RE.test(full)||hjAiMaskText(full)!==full)return {pj,date,bad:true};', '  if(!full)return {pj,date,bad:true};'],
+  'phone-cut-first': ['HJ_WORKLOG_PHONE_RE.test(full)||hjAiMaskText(full)!==full)return {pj,date,bad:true};',
+    'HJ_WORKLOG_PHONE_RE.test(full.slice(0,HJ_WORKLOG_TEXT_MAX))||hjAiMaskText(full.slice(0,HJ_WORKLOG_TEXT_MAX))!==full.slice(0,HJ_WORKLOG_TEXT_MAX))return {pj,date,bad:true};'],
+  'non-string-ok': [["  if(typeof o.text!=='string')return {pj,date,bad:true};", '  if(o.text==null)return {pj,date,bad:true};'], ['  const full=o.text.normalize(', '  const full=String(o.text).normalize(']],
+  'no-clean': ["  const full=o.text.normalize('NFKC').replace(/[\\u0000-\\u001f\\u007f<>]/g,' ').replace(/\\s+/g,' ').trim();", "  const full=o.text.normalize('NFKC').trim();"],
+  'no-nfkc': ["  const full=o.text.normalize('NFKC').replace(", '  const full=o.text.replace('],
+  'no-mask-check': ['||hjAiMaskText(full)!==full)return {pj,date,bad:true};', ')return {pj,date,bad:true};'],
+  'tail-doubled': ["  if(ph>0){base=base.replace(/( ?\\(사진 \\d+장\\))+$/,'').trim();if(!base)return {pj,date,bad:true};}", ''],
+  'key-single-tail': ["const hjWorklogKey=v=>String(v==null?'':v).trim().replace(/( ?\\(사진 \\d+장\\))+$/,'')", "const hjWorklogKey=v=>String(v==null?'':v).trim().replace(/ ?\\(사진 \\d+장\\)$/,'')"],
+  'multi-no-prefix': ["  const lineFor=s=>(hjSchSpan(s).days>1?hjMdDow(w.date)+' ':'')+w.line;", '  const lineFor=s=>w.line;'],
+  'same-plain-line': ['{const k=hjWorklogKey(lineFor(s));', '{const k=hjWorklogKey(w.line);'],
+  'sched-no-sort': ['.sort((x,y)=>(x.m-y.m)||(x.t<y.t?-1:x.t>y.t?1:0)||(x.i-y.i))', ''],
+  'plan-not-skipped': ['pool=main.length?main:ss;', 'pool=ss;'],
+  'plan-only-dropped': ['pool=main.length?main:ss;', 'pool=main;'],
+  'aslog-visit-not-plan': ['||(s&&s.id!=null&&(state.asLog||[]).some(a=>a&&a.visitSchedId===s.id))', ''],
+  'lastday-no-complete': ["if(sp.days>1&&w.date>=sp.to&&HJ_SCH_GOING_RE.test(String(rep.progress||'').trim())){rep.progress='완료';", "if(false){rep.progress='완료';"],
+  'complete-any-append': ['if(sp.days>1&&w.date>=sp.to&&HJ_SCH_GOING_RE', 'if(w.date>=sp.to&&HJ_SCH_GOING_RE'],
+  'lastday-any-day': ['if(sp.days>1&&w.date>=sp.to&&HJ_SCH_GOING_RE', 'if(sp.days>1&&HJ_SCH_GOING_RE'],
+  'lastday-any-progress': ["&&HJ_SCH_GOING_RE.test(String(rep.progress||'').trim())){rep.progress='완료';", "){rep.progress='완료';"],
   'future-ok': ['||date>(today||localDate()))return {pj,date,bad:true};', ')return {pj,date,bad:true};'],
   'photos-any': ['  if(ph!=null&&!(Number.isInteger(ph)&&ph>=0&&ph<=HJ_WORKLOG_PHOTOS_MAX))return {pj,date,bad:true};\n', ''],
-  'overwrite-report': ['  const blank=ss.find(s=>hjWorklogRepEmpty(s.report));', '  const blank=ss[0];'],
+  'overwrite-report': ['  const blank=pool.find(s=>hjWorklogRepEmpty(s.report)),to=blank||pool[0];', '  const blank=pool[0],to=blank;'],
   'new-in-progress': ["issue:'',progress:(w.date<hjSchSpan(w.s).to?'진행':'완료'),weather:''", "issue:'',progress:'진행',weather:''"],
   'midday-done': ["progress:(w.date<hjSchSpan(w.s).to?'진행':'완료')", "progress:'완료'"],
   'filled-now': ['filledAt:hjWorklogFilledAt(w.date)};wrote++;', 'filledAt:new Date().toISOString()};wrote++;'],
@@ -54,9 +74,14 @@ const MUT = {
   'not-auto': ["HJ_KAKAO_AUTO_TOOLS.add('report_worklog');", ''],
   'same-counted-new': ["||(q.tool==='report_worklog'&&out&&!out.적음&&!out.덧붙임)", ''],
   'no-miss-toast': ["+(wlMiss?' · 작업일지 못 적은 줄 '+wlMiss+'개(현장 이름·날짜·그날 일정 확인)':'')", ''],
+  'no-can-write-filter': ['.filter(q=>hjKakaoAutoCanWrite(q))', ''],
+  'can-write-worklog-any': ["      return its.some(it=>['new','add','same'].includes(hjWorklogPlan(it,today).st));", '      return true;'],
+  'can-write-fill-any': ['        const v=hjCustFillValues(it);return !!(v.name||v.phone||v.addr);});', '        return true;});'],
+  'can-write-no-cap': ['      if(!its.length||its.length>HJ_WORKLOG_MAX)return false;', '      if(!its.length)return false;'],
   'expense-shown': ["  expense:{why:'안 쓰는 메뉴 — 지출 기록 0건',n:()=>hjHoldNum(state.expenses)},\n", ''],
   'trips-no-data': ["  trips:{why:'안 쓰는 메뉴 — 운행 기록 0건',n:()=>hjHoldNum(state.trips)},", "  trips:{why:'안 쓰는 메뉴 — 운행 기록 0건'},"],
   'worktime-staff': ["n:()=>hjHoldNum(state.workLogs)+(typeof hjStaffOn==='function'&&hjStaffOn()?1:0)}", 'n:()=>hjHoldNum(state.workLogs)}'],
+  'scancard-no-suppliers': ['n:()=>hjHoldNum(state.suppliers)+hjHoldNum(state.contacts)+', 'n:()=>hjHoldNum(state.contacts)+'],
   'contacts-no-cards': ["  contacts:{why:'안 쓰는 메뉴 — 연락처 0명(고객 연락처는 현장 👤 고객 칸에)',n:()=>hjHoldNum(state.contacts)+(state.files||[]).filter(f=>f&&f.kind==='card').length},",
     "  contacts:{why:'안 쓰는 메뉴 — 연락처 0명(고객 연락처는 현장 👤 고객 칸에)',n:()=>hjHoldNum(state.contacts)},"],
   'ledger-trip-shown': ["(hjHeld('trips')?'':'<button class=\"ghost tiny\" data-trip=\"\" style=\"padding:8px 12px\">🚗 운행일지</button>')",
@@ -164,7 +189,7 @@ function reset(projects, schedule) {
   ctx.__seed__ = { projects: projects || PROJECTS(), schedule: schedule || SCHEDULE() };
   vm.runInContext(`__hjCinbox={at:0,result:null,items:null,dismissed:null};__hjCinboxArmed=true;state._demo=false;state.claudeDone=[];
     state.projects=__seed__.projects;state.schedule=__seed__.schedule;state.files=[];state.quotes=[];state.payLog=[];state.asLog=[];
-    state.expenses=[];state.trips=[];state.workLogs=[];state.contacts=[];state.adPosts=[];state.tab='dashboard';state.activeProject=null;
+    state.expenses=[];state.trips=[];state.workLogs=[];state.contacts=[];state.suppliers=[];state.adPosts=[];state.tab='dashboard';state.activeProject=null;
     __relay.url='https://script.google.com/macros/s/AKfyTEST/exec';__relay.token='TEST-RELAY-TOKEN';`, ctx);
 }
 const rep = id => run(`const s=state.schedule.find(x=>x.id===${JSON.stringify(id)});return s?s.report:undefined;`);
@@ -201,12 +226,13 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.deepEqual(Object.keys(a1).sort(), ['actualWorkers', 'done', 'filledAt', 'issue', 'material', 'progress', 'weather'], '📋 일일 작업 보고와 같은 칸(v623 꼴)');
     assert.deepEqual([a1.done, a1.progress, a1.filledAt], ['욕실 방수 1차 완료 (사진 3장)\n실리콘 마감', '완료', new Date(day(-3) + 'T00:00:00').toISOString()], '빈 보고 → 완료 · 그날 0시 · 덧붙임은 첫 일정');
     assert.deepEqual([rep('a2').done, rep('a2').progress], ['줄눈 시공', '완료']);
-    assert.deepEqual([rep('a3').done, rep('a3').progress, rep('a3').filledAt], ['철거 둘째 날', '진행', new Date(day(-7) + 'T00:00:00').toISOString()],
-      '여러 날 공정의 중간 날은 진행(공정이 끝난 것으로 보이지 않게) · filledAt 은 그 보고 날짜 0시');
+    const md = d => run(`return hjMdDow(${JSON.stringify(d)});`);
+    assert.deepEqual([rep('a3').done, rep('a3').progress, rep('a3').filledAt], [md(day(-7)) + ' 철거 둘째 날', '진행', new Date(day(-7) + 'T00:00:00').toISOString()],
+      '여러 날 공정의 중간 날은 진행(공정이 끝난 것으로 보이지 않게) · 날짜를 앞에 · filledAt 은 그 보고 날짜 0시');
     const a3saved = rep('a3');
     run("state.schedule.find(s=>s.id==='a3').report=null;");
     await runA(`return await aiToolRun('report_worklog',{items:[{project:${JSON.stringify(A)},date:${JSON.stringify(day(-6))},text:'철거 마지막 날'}]});`);
-    assert.deepEqual([rep('a3').done, rep('a3').progress], ['철거 마지막 날', '완료'], '여러 날 공정의 마지막 날은 완료');
+    assert.deepEqual([rep('a3').done, rep('a3').progress], [md(day(-6)) + ' 철거 마지막 날', '완료'], '여러 날 공정의 마지막 날은 완료');
     run(`state.schedule.find(s=>s.id==='a3').report=${JSON.stringify(a3saved)};`);   // 아래 '다시 넣어도 이미' 검사를 위해 되돌림
     assert.deepEqual([rep('a4'), rep('a5')], [null, null], '💰 수금·세금 자동 일정에는 적지 않는다');
     const b1 = rep('b1');
@@ -227,9 +253,10 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
       { project: A, date: day(-3), text: 123 }, { project: A, date: day(-3), text: ['욕실'] }, { project: A, date: day(-3), text: '  \n ' },
       { project: A, date: '2026-13-40', text: '날짜 틀림' }, { project: A, date: day(1), text: '내일 일' }, { project: A, date: '11/20', text: '꼴 틀림' }, { project: A, text: '날짜 없음' },
       { project: A, date: day(-3), text: '사진 수', photos: -1 }, { project: A, date: day(-3), text: '사진 수', photos: 2.5 }, { project: A, date: day(-3), text: '사진 수', photos: '3' },
-      null, '글'
+      null, '글',
+      { project: A, date: day(-3), text: '가상 010/0000/0007 연락' }, { project: A, date: day(-3), text: '가상 ０１０－００００－０００８ 연락' }   // AI 비서가 가리는 꼴 · 전각 숫자(NFKC)
     ];
-    await assert.rejects(write(bad), /한 줄도 적지 못했습니다 — 못 찾은 현장 0곳 · 그날 일정 없음 0줄 · 못 쓰는 값 16줄/);
+    await assert.rejects(write(bad), /한 줄도 적지 못했습니다 — 못 찾은 현장 0곳 · 그날 일정 없음 0줄 · 못 쓰는 값 18줄/);
     assert.deepEqual([rep('a1'), rep('a2')], [null, null], '못 쓰는 값은 적지 않는다');
     // 번호처럼 보이지 않는 숫자(날짜·시각·금액·치수)는 그대로 적는다
     const ok = await write([{ project: A, date: day(-3), text: day(-3) + ' 09:00~18:00 · 1,200,000원 · 0.5평 · 600x1200 타일 2차' }]);
@@ -237,7 +264,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     // 거르기 — 줄바꿈·탭·꺾쇠는 빈칸(한 줄) · 200자 · 전화번호는 자르기 전에(200자 언저리에 걸친 번호도 잘못된값)
     reset();
     const o4 = await write([{ project: A, date: day(-3), text: '방수\n<b>2차</b>\t마감' }, { project: A, date: day(-3), text: '가'.repeat(300) },
-      { project: B, date: day(-4), text: '나'.repeat(193) + ' 010-0000-0005' }]);
+      { project: B, date: day(-4), text: '나'.repeat(196) + ' 010-0000-0005' }]);
     assert.deepEqual(counts(o4), [2, 0, 0, 0, 0, 1], JSON.stringify(o4));
     assert.deepEqual([rep('a1').done, rep('a2').done], ['방수 b 2차 /b 마감', '가'.repeat(200)], '한 줄 · 꺾쇠 빈칸 · 200자');
     assert.equal(rep('b2').done, '', '200자 언저리에 걸친 번호가 든 글은 적지 않는다');
@@ -260,6 +287,45 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     await write([{ project: L, date: day(-3), text: '누수 탐지 끝' }]);
     assert.deepEqual([rep('l1').progress, rep('l1').filledAt], ['완료', new Date(day(-3) + 'T00:00:00').toISOString()]);
     assert.equal(run(`return hjLeakSmsSent(state.projects.find(p=>p.name===${JSON.stringify(L)}),'detect');`), true, '보고 뒤에도 그날 보낸 문자는 보냄');
+
+    // (v625 검토) 여러 날 공정 — 날짜를 앞에(다른 날 같은 글도 적힌다) · 중간 날 덧붙임은 '진행' 그대로 · 마지막 날 덧붙임은 '하는 중'을 '완료'로(그날 0시) · 이미 '완료'면 그대로
+    reset();
+    const daily = items => write(items.map(t => ({ project: A, date: t[0], text: t[1] })));
+    assert.deepEqual(counts(await daily([[day(-8), '가상 철거'], [day(-7), '가상 철거']])), [1, 1, 0, 0, 0, 0], '같은 글이어도 다른 날이면 적는다');
+    assert.deepEqual([rep('a3').done, rep('a3').progress, rep('a3').filledAt], [md(day(-8)) + ' 가상 철거\n' + md(day(-7)) + ' 가상 철거', '진행', new Date(day(-8) + 'T00:00:00').toISOString()], '중간 날 덧붙임은 진행 그대로');
+    assert.deepEqual(counts(await daily([[day(-7), '가상 철거']])), [0, 0, 1, 0, 0, 0], '같은 날 같은 글은 이미');
+    assert.deepEqual(counts(await daily([[day(-6), '가상 철거 끝']])), [0, 1, 0, 0, 0, 0]);
+    assert.deepEqual([rep('a3').progress, rep('a3').filledAt], ['완료', new Date(day(-6) + 'T00:00:00').toISOString()], '마지막 날 덧붙임 → 완료 · 그날 0시');
+    reset();
+    run(`state.schedule.find(s=>s.id==='a3').report={done:'가상 앞서 끝냄',progress:'완료',filledAt:${JSON.stringify(OLD_AT)}};`);
+    await daily([[day(-6), '가상 정리']]);
+    assert.deepEqual([rep('a3').done, rep('a3').progress, rep('a3').filledAt], ['가상 앞서 끝냄\n' + md(day(-6)) + ' 가상 정리', '완료', OLD_AT], '이미 완료면 완료 시각 그대로');
+    reset();
+    run(`state.schedule.find(s=>s.id==='a3').report={done:'가상 첫날',progress:'50%',filledAt:${JSON.stringify(OLD_AT)}};`);
+    await daily([[day(-7), '가상 둘째 날']]);
+    assert.deepEqual([rep('a3').progress, rep('a3').filledAt], ['50%', OLD_AT], '중간 날은 50% 그대로');
+    // (v625 검토) 일정 고르기 — 하루짜리 먼저(배열에서 여러 날 공정이 앞이어도) · 시각 차례 · 상담·실측·AS 방문은 작업 일정이 없을 때만
+    const P = '가상고르기현장';
+    const pick = (schedule, asLog) => { reset([{ name: P, stage: 2, received: 0, phases: [] }], schedule); if (asLog) run(`state.asLog=${JSON.stringify(asLog)};`); };
+    pick([{ id: 'm1', date: day(-4), time: '07:00', title: '가상 타일', project: P, report: null, memo: day(-4) + '~' + day(-2) + ' (3일)' },
+      { id: 'p13', date: day(-3), time: '13:00', title: '가상 도배', project: P, report: null }, { id: 'p09', date: day(-3), time: '09:00', title: '가상 목공', project: P, report: null }]);
+    await write([{ project: P, date: day(-3), text: '가상 하루 일' }, { project: P, date: day(-3), text: '가상 둘째 일' }, { project: P, date: day(-3), text: '가상 셋째 일' }]);
+    assert.deepEqual([rep('p09').done, rep('p13').done, rep('m1').done], ['가상 하루 일', '가상 둘째 일', md(day(-3)) + ' 가상 셋째 일'], '하루짜리 · 시각 차례 → 여러 날 공정은 뒤');
+    pick([{ id: 'meet', date: day(-3), time: '08:00', title: '가상 실측', project: P, report: null }, { id: 'asv', date: day(-3), time: '08:30', title: '🔧 AS 방문 — 가상', project: P, report: null },
+      { id: 'asl', date: day(-3), time: '08:40', title: '가상 방문 점검', project: P, report: null }, { id: 'work', date: day(-4), time: '09:00', title: '가상 방수', project: P, report: null, memo: day(-4) + '~' + day(-2) + ' (3일)' }],
+      [{ id: 'as1', visitSchedId: 'asl' }]);
+    await write([{ project: P, date: day(-3), text: '가상 방수 2일차' }]);
+    assert.deepEqual([rep('work').done, rep('meet'), rep('asv'), rep('asl')], [md(day(-3)) + ' 가상 방수 2일차', null, null, null], '작업 일정이 있으면 실측·AS 방문(제목·AS 기록) 일정에는 적지 않는다');
+    pick([{ id: 'meet', date: day(-3), time: '08:00', title: '가상 상담', project: P, report: null }]);
+    await write([{ project: P, date: day(-3), text: '가상 상담 끝' }]);
+    assert.equal(rep('meet').done, '가상 상담 끝', '그날 상담·실측 일정뿐이면 거기에');
+    // (v625 검토) 사진 꼬리 — 글 끝 '(사진 N장)'은 떼고 한 번만 · 꼬리만 있으면 잘못된값 · 꼬리가 겹친 옛 줄도 같은 글
+    reset();
+    assert.deepEqual(counts(await write([{ project: A, date: day(-3), text: '가상 줄눈 (사진 2장)', photos: 2 }, { project: A, date: day(-3), text: '(사진 2장)', photos: 2 }])), [1, 0, 0, 0, 0, 1]);
+    assert.equal(rep('a1').done, '가상 줄눈 (사진 2장)', '사진 꼬리는 한 번만');
+    assert.deepEqual(counts(await write([{ project: A, date: day(-3), text: '가상 줄눈 (사진 2장)', photos: 2 }])), [0, 0, 1, 0, 0, 0], '다시 넣으면 이미');
+    run(`state.schedule.find(s=>s.id==='a2').report={done:'가상 실리콘 (사진 3장) (사진 3장)',progress:'완료'};`);
+    assert.deepEqual(counts(await write([{ project: A, date: day(-3), text: '가상 실리콘' }])), [0, 0, 1, 0, 0, 0], '꼬리가 두 번 붙은 옛 줄도 같은 글');
   });
 
   await test('② 답에는 셈만 · 아는 도구 · 장부 작업 · 이름표 · 미리보기 · 늘 확인 (ANSWER)', async () => {
@@ -293,6 +359,8 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.match(pv[5], /그날 일정이 없어 적지 않아요/);
     assert.match(pv[6], /못 쓰는 값/);
     assert.ok(!pv.join('\n').includes('0000-0009'), '번호가 든 글은 미리보기에도 보이지 않는다');
+    const md7 = run(`return hjMdDow(${JSON.stringify(day(-7))});`);
+    assert.equal(run(`return aiActionWarnings('report_worklog',{items:[{project:${JSON.stringify(A)},date:${JSON.stringify(day(-7))},text:'가상 철거'}]})[1];`), A + ' ' + md7 + ': ' + md7 + ' 가상 철거', '여러 날 공정은 날짜가 앞에 붙은 글 그대로');
     assert.match(run(`return aiActionWarningHTML('report_worklog',{items:[{project:${JSON.stringify(A)},date:${JSON.stringify(day(-3))},text:'<i>x</i>'}]});`), /data-ai-action-warning/);
     const many = Array.from({ length: 12 }, (_, i) => ({ project: A, date: day(-3), text: '가상 ' + i }));
     assert.equal(run(`return aiActionWarnings('report_worklog',{items:${JSON.stringify(many)}}).slice(-1)[0];`), '외 4줄');
@@ -321,7 +389,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.equal(n, 0);
     assert.deepEqual(run('return state.claudeDone.slice();'), ['kb-20261125-090002-a1102'], '처리로는 표시(다시 넣지 않게)');
     assert.ok(!toasts.some(t => /넣었어요/.test(t)), toasts.join(' / '));
-    // 한 줄도 못 적었다(현장 이름이 틀림·그날 일정 없음·번호가 든 글) — 처리로 표시하지 않고 요청함에 남긴다(봇이 '반영됐어요'라고 하지 않게)
+    // 한 줄도 못 적었다(현장 이름이 틀림·그날 일정 없음·번호가 든 글) — 처리로 표시하지 않고 요청함에 남긴다(봇이 '반영됐어요'라고 하지 않게 · v625 검토부터는 고르지도 않는다)
     reset();
     const bad = [req('kb-20261125-090003-a1103', [{ project: '가상 아파트', date: day(-3), text: 'x' }]), req('kb-20261125-090004-a1104', [{ project: A, date: day(-1), text: 'y' }]),
       req('kb-20261125-090005-a1105', [{ project: A, date: day(-3), text: '가상 010-0000-0006' }])];
@@ -334,6 +402,21 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.equal(await runA(`return await hjKakaoAutoApply({ok:true,via:'drive',requests:${JSON.stringify(part)}});`), 1);
     assert.equal(rep('a1').done, '가상 적을 글');
     assert.ok(toasts.some(t => /작업일지 못 적은 줄 2개/.test(t)), toasts.join(' / '));
+    // (v625 검토) 쓸 것이 없는 요청은 고르지 않는다 — 열 건이 막혀도 뒤의 요청이 들어가고, 못 쓰는 요청뿐이면 안전판도 찍지 않는다(요청함에 남는다)
+    const realSnap = ctx.hjSnapshot; let snaps = 0; ctx.hjSnapshot = () => { snaps++; return Promise.resolve(true); };
+    try {
+      reset();
+      const stuck = Array.from({ length: 10 }, (_, i) => req('kb-20261125-0910' + p2(i) + '-a12' + p2(i), [{ project: '가상 없는 현장 ' + i, date: day(-3), text: 'x' }]));
+      const good = req('kb-20261125-092000-a1300', [{ project: A, date: day(-3), text: '가상 뒤의 요청' }]);
+      assert.equal(await runA(`return await hjKakaoAutoApply({ok:true,via:'drive',requests:${JSON.stringify([...stuck, good])}});`), 1);
+      assert.deepEqual([rep('a1').done, run('return state.claudeDone.slice();'), snaps], ['가상 뒤의 요청', [good.id], 1], '못 쓰는 열 건 뒤의 요청도 들어간다');
+      reset(); snaps = 0;
+      const fill = (id, items) => Object.assign(req(id, []), { tool: 'fill_customer', args: { items } });
+      const only = [...stuck, req('kb-20261125-093000-a1400', Array.from({ length: 51 }, (_, i) => ({ project: A, date: day(-3), text: '가상 ' + i }))),
+        fill('kb-20261125-093001-a1401', [{ project: '가상 없는 현장', name: '가상' }]), fill('kb-20261125-093002-a1402', [{ project: A, phone: '+82 10-0000-0001' }])];
+      assert.equal(await runA(`return await hjKakaoAutoApply({ok:true,via:'drive',requests:${JSON.stringify(only)}});`), 0);
+      assert.deepEqual([snaps, run('return state.claudeDone.slice();'), rep('a1')], [0, [], null], '못 쓰는 요청뿐 — 안전판도 안 찍고 요청함에 남김');
+    } finally { ctx.hjSnapshot = realSnap; }
   });
 
   await test('④ 보류 — 지출 셋·운행일지·작업시간·연락처·명함 스캔 · 기록이 생기면 보임 · 직원 모드 · 회계 탭·현장 화면·바로가기·PC 탭 (HOLD)', async () => {
@@ -346,6 +429,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.deepEqual(run(`return ['trips','worktime','contacts'].map(id=>!moreItemInfo(id)&&typeof HJ_HOLD_EXTRA[id].open);`), ['function', 'function', 'function'], '더보기 칸이 아닌 셋은 보류 묶음에서 여는 길');
     assert.match(run("return hjHoldWhy('worktime');"), /작업시간 기록 0건/);
     assert.match(run("return hjHoldWhy('contacts');"), /연락처 0명/);
+    assert.equal(run("return hjHoldWhy('scancard');"), '안 쓰는 메뉴 — 명함으로 넣은 거래처·연락처 0건');
     for (const id of NEW) assert.ok(!/\.js\b|\.md\b|team-config/.test(run(`return hjHoldWhy(${JSON.stringify(id)});`)), id + ' 까닭은 쉬운 말');
     // 고객 관리·리뷰 요청·실측 노트·하자점검표·추가공사·부대사항·AS·아파트 오더·음성 현장일지(📋 작업 보고)는 이번에 보류하지 않는다
     assert.deepEqual(run("return ['crm','repeatcust','reviewreq','measure','punchlist','extrawork','siterules','asmanage','aptorders','worklog','photorep'].filter(id=>hjHeld(id));"), []);
@@ -356,6 +440,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.deepEqual(shownWith("state.workLogs=[{id:'w1',project:'가상아파트',date:'2026-11-20',in:'09:00',out:''}];"), ['expense', 'expenseclassify', 'scanreceipt', 'trips', 'contacts', 'scancard'], '작업시간 1건 → 작업시간 보임');
     assert.deepEqual(shownWith("state.contacts=[{id:'c1',name:'가상'}];"), ['expense', 'expenseclassify', 'scanreceipt', 'trips', 'worktime'], '연락처 1명 → 연락처·명함 스캔 보임');
     assert.deepEqual(shownWith("state.files=[{id:'f1',kind:'card',name:'가상명함.jpg'}];"), ['expense', 'expenseclassify', 'scanreceipt', 'trips', 'worktime'], '명함 사진 1장 → 연락처·명함 스캔 보임');
+    assert.deepEqual(shownWith("state.suppliers=[{id:'s1',name:'가상상회'}];"), ['expense', 'expenseclassify', 'scanreceipt', 'trips', 'worktime', 'contacts'], '명함으로 넣은 거래처 1곳 → 명함 스캔 보임');
     reset(); staff = true;
     assert.deepEqual(held(), ['expense', 'expenseclassify', 'scanreceipt', 'trips', 'contacts', 'scancard'], '직원 모드 기기는 ⏱ 작업시간을 접지 않는다');
     staff = false;
