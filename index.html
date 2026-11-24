@@ -13504,7 +13504,7 @@ async function aiToolRun(name,a){
         if(w.st==='missing'){missing++;continue;}   // 없는 현장·같은 이름이 여럿
         if(w.st==='nosch'){noSch++;continue;}       // 그날 일정이 없다 — 새 일정은 만들지 않는다(새 일정은 파수꾼이 구글 캘린더로 보낸다)
         if(w.st==='same'){same++;continue;}         // 이미 그날 보고에 있는 글(두 번 승인·다시 읽기)
-        if(w.st==='new'){w.s.report={done:w.line,actualWorkers:'',material:'',issue:'',progress:'완료',weather:'',filledAt:hjWorklogFilledAt(w.date)};wrote++;continue;}   // v623 hjPastRepApply 와 같은 꼴
+        if(w.st==='new'){w.s.report={done:w.line,actualWorkers:'',material:'',issue:'',progress:(w.date<hjSchSpan(w.s).to?'진행':'완료'),weather:'',filledAt:hjWorklogFilledAt(w.date)};wrote++;continue;}   // v623 hjPastRepApply 와 같은 꼴 · 여러 날 공정의 중간 날은 '진행'(중간 날 '완료'면 공정 전체가 끝난 것으로 보인다 — v591 진행률)
         const rep=w.s.report,prev=String(rep.done==null?'':rep.done).replace(/\s+$/,'');
         rep.done=(prev?prev+'\n':'')+w.line;added++;   // 모두 보고가 있으면 첫 일정에 줄을 덧붙인다 — progress·filledAt 그대로
       }

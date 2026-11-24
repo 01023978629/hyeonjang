@@ -12,7 +12,7 @@
    브라우저 없이 돈다: index.html 앱 스크립트를 통째로 VM 에 올려(custfill-v624.unit.js 와 같은 틀) 진짜 aiToolRun·hjKakaoAutoTick·hjHold*·viewLedger·viewProject·dashboardTodoHTML 을 부른다.
    중계는 가짜 relayCall(합성 요청 파일). 날짜는 이 기기 오늘 기준 앞뒤 며칠(pastreport-v623 과 같은 셈). 실제 중계·드라이브·고객 없음 — 현장 이름·글·번호는 모두 가짜.
    변이(HJ_V625_MUTATION): no-same-check·new-schedule·span-start-only·money-ok·dup-names·no-phone-check·phone-cut-first·non-string-ok·no-clean·future-ok·photos-any·
-   overwrite-report·new-in-progress·filled-now·append-resets·no-cap·no-throw-empty 는 ①, pii-in-answer·not-write·label-first-empty·no-preview·preview-bad-text·auto-confirm-off 는 ②,
+   overwrite-report·new-in-progress·midday-done·filled-now·append-resets·no-cap·no-throw-empty 는 ①, pii-in-answer·not-write·label-first-empty·no-preview·preview-bad-text·auto-confirm-off 는 ②,
    not-auto·same-counted-new·no-miss-toast 는 ③(no-throw-empty 는 ③ 의 '요청함에 남김'도 깬다), expense-shown·trips-no-data·worktime-staff·contacts-no-cards·ledger-trip-shown·
    project-card-shown·nav-contacts-shown·tab-not-hidden·help-adpost-text 는 ④, dash-no-slot·dash-in-staff·dash-count-each-render·dash-no-click·dash-no-refresh-paint 는 ⑤ 에서 실패해야 한다.
    HJ_V625_BASELINE=<commit>(예: 6f4b990 = v624) 은 ①에서 실패한다. */
@@ -39,7 +39,8 @@ const MUT = {
   'future-ok': ['||date>(today||localDate()))return {pj,date,bad:true};', ')return {pj,date,bad:true};'],
   'photos-any': ['  if(ph!=null&&!(Number.isInteger(ph)&&ph>=0&&ph<=HJ_WORKLOG_PHOTOS_MAX))return {pj,date,bad:true};\n', ''],
   'overwrite-report': ['  const blank=ss.find(s=>hjWorklogRepEmpty(s.report));', '  const blank=ss[0];'],
-  'new-in-progress': ["issue:'',progress:'완료',weather:'',filledAt:hjWorklogFilledAt(w.date)};wrote++;", "issue:'',progress:'진행',weather:'',filledAt:hjWorklogFilledAt(w.date)};wrote++;"],
+  'new-in-progress': ["issue:'',progress:(w.date<hjSchSpan(w.s).to?'진행':'완료'),weather:''", "issue:'',progress:'진행',weather:''"],
+  'midday-done': ["progress:(w.date<hjSchSpan(w.s).to?'진행':'완료')", "progress:'완료'"],
   'filled-now': ['filledAt:hjWorklogFilledAt(w.date)};wrote++;', 'filledAt:new Date().toISOString()};wrote++;'],
   'append-resets': ["        rep.done=(prev?prev+'\\n':'')+w.line;added++;", "        rep.done=(prev?prev+'\\n':'')+w.line;rep.progress='완료';rep.filledAt=new Date().toISOString();added++;"],
   'no-cap': ['      if(all.length>HJ_WORKLOG_MAX)throw new Error(', '      if(false)throw new Error('],
@@ -200,7 +201,13 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS worklog-
     assert.deepEqual(Object.keys(a1).sort(), ['actualWorkers', 'done', 'filledAt', 'issue', 'material', 'progress', 'weather'], '📋 일일 작업 보고와 같은 칸(v623 꼴)');
     assert.deepEqual([a1.done, a1.progress, a1.filledAt], ['욕실 방수 1차 완료 (사진 3장)\n실리콘 마감', '완료', new Date(day(-3) + 'T00:00:00').toISOString()], '빈 보고 → 완료 · 그날 0시 · 덧붙임은 첫 일정');
     assert.deepEqual([rep('a2').done, rep('a2').progress], ['줄눈 시공', '완료']);
-    assert.deepEqual([rep('a3').done, rep('a3').filledAt], ['철거 둘째 날', new Date(day(-7) + 'T00:00:00').toISOString()], '여러 날 공정 · filledAt 은 그 보고 날짜 0시');
+    assert.deepEqual([rep('a3').done, rep('a3').progress, rep('a3').filledAt], ['철거 둘째 날', '진행', new Date(day(-7) + 'T00:00:00').toISOString()],
+      '여러 날 공정의 중간 날은 진행(공정이 끝난 것으로 보이지 않게) · filledAt 은 그 보고 날짜 0시');
+    const a3saved = rep('a3');
+    run("state.schedule.find(s=>s.id==='a3').report=null;");
+    await runA(`return await aiToolRun('report_worklog',{items:[{project:${JSON.stringify(A)},date:${JSON.stringify(day(-6))},text:'철거 마지막 날'}]});`);
+    assert.deepEqual([rep('a3').done, rep('a3').progress], ['철거 마지막 날', '완료'], '여러 날 공정의 마지막 날은 완료');
+    run(`state.schedule.find(s=>s.id==='a3').report=${JSON.stringify(a3saved)};`);   // 아래 '다시 넣어도 이미' 검사를 위해 되돌림
     assert.deepEqual([rep('a4'), rep('a5')], [null, null], '💰 수금·세금 자동 일정에는 적지 않는다');
     const b1 = rep('b1');
     assert.deepEqual([b1.done, b1.progress, b1.filledAt, b1.actualWorkers, b1.weather], ['초배 붙임\n정배 마감', '진행', OLD_AT, '가상 2명', '맑음'], '덧붙이면 다른 칸은 그대로');
