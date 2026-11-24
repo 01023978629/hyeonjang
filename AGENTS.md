@@ -11,13 +11,17 @@
   누르기·키·터치·휠로 센다) 기기에서 30분에 한 번(`hj_ver_idle_at`) 서버 sw.js 번호를 보고, 새 판이면 띠의 [지금 새로고침]과 같은 길
   (`guardedPersistCurrentState` 로 기기 저장을 끝낸 뒤 `appVersionUpdate`)로 바꾼다. 묻는 사이 손을 대거나 저장이 시작되면 그만.
 - `hjVerAutoBlocked`: 체험 · 받는 중 · 사진/서류 넣는 중 · 폴더에 저장 안 한 변경(`dirty&&dirHandle` — 폰의 늘 참인 dirty 는 막지 않음, v450) · 기기 저장 중 ·
-  다른 탭이 더 최근에 저장(`__tabStale` — 그 창은 띠의 '안전판 보관하고 새로고침'으로) · 서버에 못 올린 변경(`__relayUnsynced`) · 서버 저장 중/충돌/인증 · 창(모달) · 글 칸.
-- 같은 판으로 두 번(`HJ_VER_AUTO_TRIES`) 바꿨는데도 그대로면 더 하지 않고 새 판 띠만. 바꾼 뒤 처음 열릴 때 `hjVerAutoNotice` 가 한 번 알린다(`hj_ver_auto`).
+  다른 탭이 더 최근에 저장(`__tabStale` — 그 창은 띠의 '안전판 보관하고 새로고침'으로) · 서버에 못 올린 변경(`__relayUnsynced`) · 서버 저장 중/충돌/인증 · 창(모달) · 글 칸 ·
+  작업 깃발(`__hjScanBusy`·`__hjScanDirtyDeferred`·`__hjPzBusy`·`__relayFlushing`·`__hjOutboxFlushing` — `hjScanBusy()` 는 15분 뒤 놓아서 깃발 그대로) ·
+  편집 중(`relayEditingNow` — 쓰던 견적서 `state.editingQuote` 는 저장 자료에 없다).
+- 깨어난 창: 1분 깨우기가 5분 넘게 멈췄다 보이는 채 돌면(폰 앱·잠든 탭) 방금 손댄 것으로 본다 · 보이게 됨·pageshow·focus 도 손댄 것.
+  받는 사이(최대 15초) 손대면 다시 열기 직전(`hjVerAutoAbort`, appVersionUpdate 의 700ms 뒤)에 그만두고 횟수를 되돌린다 — 단추로 누른 것은 그대로.
+- 같은 판으로 두 번(`HJ_VER_AUTO_TRIES`) 바꿨는데도 그대로면 더 하지 않고 새 판 띠만(횟수는 실제로 바꿀 때만 센다). 바꾼 뒤 처음 열릴 때 `hjVerAutoNotice` 가 한 번 알린다(`hj_ver_auto`).
 - 한계: 이 판을 한 번은 열어야 다음 판부터 저절로 바뀐다(지금 열려 있는 옛 창은 이 코드가 없다). 꺼진 창·잠든 PC·크롬이 버린(메모리 절약) 탭은 못 깨운다 —
   카톡봇 v1.9.17 이 안 들어간 요청을 보고 PC 크롬에 현장웹을 연다.
 - 하지 않은 것: 카톡 요청 읽기를 부팅 끝(드라이브 사진 목록 맞추기 뒤, 11/24 실측 68초)보다 앞당기기 — 사진 목록 맞추기·저장과 겹쳐 서버 저장 충돌 창이 뜰 수 있다.
-- 검사: `tests/autoupdate-v622.unit.js` 5/5(변이 ignore-stale-tab·ignore-unsynced·ignore-modal 은 ①, no-idle-gate·visible-short·no-cadence·no-persist·recheck-after-ask 는 ②,
-  no-loop-guard 는 ③, notice-any 는 ④, no-wiring 은 ⑤에서 실패 · 기준선 `HJ_V622_BASELINE=993c31b` 은 ①에서). 핀 `hyeonjang-v622-autoupdate`.
+- 검사: `tests/autoupdate-v622.unit.js` 6/6(변이 18개 — 파일 머리글의 목록대로 ①~⑥ 의도한 곳에서 실패 · 기준선 `HJ_V622_BASELINE=993c31b` 은 ①에서). 독립 검토(1명)의
+  지적 4건(쓰던 견적서·작업 깃발·깨어난 창·횟수)을 반영. 핀 `hyeonjang-v622-autoupdate`.
 
 ## 2026-11-24 v621 📅 구글에서 온 일정은 구글 캘린더 창을 다시 띄우지 않는다 · 팀 글에서 카톡봇 출처 줄도 뺀다
 

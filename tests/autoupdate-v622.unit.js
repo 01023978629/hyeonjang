@@ -7,8 +7,11 @@
    ④ 바꾼 뒤 처음 열릴 때 한 번 알림 (NOTICE)
    ⑤ 부팅 연결 — 손댄 시각 세기 · 1분마다 · 알림 (WIRE)
    브라우저 없이 돈다: index.html 앱 스크립트를 통째로 VM 에 올려(photoassign-v620.unit.js 와 같은 틀) 진짜 함수를 부른다.
-   변이(HJ_V622_MUTATION): ignore-stale-tab·ignore-unsynced·ignore-modal 은 ①, no-idle-gate·visible-short·no-cadence·no-persist·recheck-after-ask 는 ②,
-   no-loop-guard 는 ③, notice-any 는 ④, no-wiring 은 ⑤에서 실패해야 한다. HJ_V622_BASELINE=<commit>(예: 993c31b) 은 ①에서. */
+   ⑥ 받는 사이 손대면 다시 열기 직전에 그만두고 횟수도 되돌린다 · 단추로 누른 것은 그대로 (ABORT)
+   검토 반영: 쓰던 견적서(relayEditingNow)·폴더 다시 읽기·사진 묶음·보내기 깃발 막기 · 깨어난 창은 방금 손댄 것 · 실제로 바꿀 때만 횟수.
+   변이(HJ_V622_MUTATION): ignore-stale-tab·ignore-unsynced·ignore-modal·ignore-busy-flags·ignore-editing 은 ①,
+   no-idle-gate·visible-short·no-cadence·no-persist·recheck-after-ask·record-before-update·no-resume-reset 는 ②, no-loop-guard 는 ③, notice-any 는 ④,
+   no-wiring·no-abort 는 ⑤, abort-keeps-tries·abort-always 는 ⑥에서 실패해야 한다. HJ_V622_BASELINE=<commit>(예: 993c31b) 은 ①에서. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -31,6 +34,13 @@ const MUT = {
   'no-loop-guard': ['    if(tries>=HJ_VER_AUTO_TRIES){if(__verBannerFor!==s.server)appVersionBanner(s.server);return false;}', ''],
   'notice-any': ["    if(!rec||rec.to!==APP_BUILD)return '';\n", "    if(!rec)return '';\n"],
   'no-wiring': ['setInterval(()=>{hjVerIdleTick();},60*1000);', ''],
+  'ignore-busy-flags': ["    if(window.__hjScanBusy||window.__hjScanDirtyDeferred||window.__hjPzBusy||__relayFlushing||__hjOutboxFlushing)return '작업 중';", '    if(false)return;'],
+  'ignore-editing': ["    if(relayEditingNow())return '편집 중';", '    if(false)return;'],
+  'no-resume-reset': ["    if(gap>HJ_VER_RESUME_GAP_MS&&document.visibilityState!=='hidden'){__hjLastInputAt=now;return false;}", '    if(false){}'],
+  'record-before-update': ["    if(!(await appVersionUpdate())){window.__hjVerAutoRun=false;return false;}", '    try{localStorage.setItem(HJ_VER_AUTO_KEY,JSON.stringify({to:s.server,tries:tries+1}));}catch(e){}if(!(await appVersionUpdate())){window.__hjVerAutoRun=false;return false;}'],
+  'abort-keeps-tries': ["  if(stop){try{const p=window.__hjVerPrevRec;", "  if(false){try{const p=window.__hjVerPrevRec;"],
+  'no-abort': ['if(!appVersionPhotoGuard()&&!hjVerAutoAbort())location.reload();', 'if(!appVersionPhotoGuard())location.reload();'],
+  'abort-always': ['  if(!window.__hjVerAutoRun)return false;\n  window.__hjVerAutoRun=false;\n', '  window.__hjVerAutoRun=false;\n'],
 };
 if (process.env.HJ_V622_MUTATION) {
   const m = MUT[process.env.HJ_V622_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V622_MUTATION);
@@ -85,7 +95,9 @@ const MIN = 60 * 1000;
 const SHELL = run('return APP_BUILD;'), NEWER = 'hyeonjang-v999-future';
 let order = [], toasts = [], banners = [], asks = 0, server = NEWER, persistOk = true, onAsk = null;
 const modal = { children: [] };
-const doc = { visibilityState: 'hidden', activeElement: null, getElementById: id => (id === 'modalRoot' ? modal : null), addEventListener() {} };
+const doc = { visibilityState: 'hidden', activeElement: null, getElementById: id => (id === 'modalRoot' ? modal : null), addEventListener() {},
+  querySelector: sel => (sel === '#modalRoot .modal' && modal.children.length ? {} : null) };
+let updateOk = true;
 ctx.document = doc;
 ctx.navigator = { onLine: true };
 ctx.toast = m => { toasts.push(String(m)); };
@@ -93,15 +105,17 @@ ctx.appVersionBanner = s => { banners.push(s); };
 ctx.photoIntakePending = () => false;
 ctx.appVersionState = async () => { asks++; if (onAsk) onAsk(); return { shell: SHELL, cache: SHELL, server, online: true, err: '' }; };
 ctx.guardedPersistCurrentState = async () => { order.push('persist'); return persistOk; };
-ctx.appVersionUpdate = async () => { order.push('update'); return true; };
+ctx.appVersionUpdate = async () => { order.push('update'); return updateOk; };
 ctx.__T__ = T0;
 vm.runInContext('Date.now=()=>globalThis.__T__;', ctx);
 function reset(idleMin, opts = {}) {
-  order = []; toasts = []; banners = []; asks = 0; server = opts.server || NEWER; persistOk = opts.persistOk !== false; onAsk = null;
+  order = []; toasts = []; banners = []; asks = 0; server = opts.server || NEWER; persistOk = opts.persistOk !== false; onAsk = null; updateOk = true;
   store.clear(); modal.children = []; doc.visibilityState = opts.visible ? 'visible' : 'hidden'; doc.activeElement = null; ctx.navigator = { onLine: true };
   ctx.__T__ = T0;
   vm.runInContext(`state._demo=false;state.dirty=false;state.dirHandle=null;__hjLocalSavePending=false;__tabStale=false;__relayUnsynced=0;__relayState='saved';
-    __appVersionUpdating=false;__verBannerFor='';window.__documentUploadPending=false;__hjLastInputAt=${T0 - idleMin * MIN};`, ctx);
+    __appVersionUpdating=false;__verBannerFor='';window.__documentUploadPending=false;__hjLastInputAt=${T0 - idleMin * MIN};
+    state.editingQuote=null;window.__hjScanBusy=false;window.__hjScanDirtyDeferred=false;window.__hjPzBusy=false;__relayFlushing=false;__hjOutboxFlushing=false;
+    __hjVerLastTick=${T0 - MIN};window.__hjVerAutoRun=false;window.__hjVerPrevRec=null;`, ctx);
 }
 const tick = () => runA('return await hjVerIdleTick();');
 const blocked = () => run('return hjVerAutoBlocked();');
@@ -117,6 +131,8 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS autoupda
       ['체험', 'state._demo=true;'], ['받는 중', '__appVersionUpdating=true;'], ['사진·서류 넣는 중', 'window.__documentUploadPending=true;'],
       ['폴더 저장 전', 'state.dirty=true;state.dirHandle={};'], ['기기 저장 중', '__hjLocalSavePending=true;'], ['다른 탭이 더 최근에 저장', '__tabStale=true;'],
       ['서버에 못 올린 변경', '__relayUnsynced=Date.now();'], ['서버 saving', "__relayState='saving';"], ['서버 conflict', "__relayState='conflict';"], ['서버 auth', "__relayState='auth';"],
+      ['작업 중', 'window.__hjScanBusy=true;'], ['작업 중', 'window.__hjScanDirtyDeferred=true;'], ['작업 중', 'window.__hjPzBusy=true;'],
+      ['작업 중', '__relayFlushing=true;'], ['작업 중', '__hjOutboxFlushing=true;'], ['편집 중', 'state.editingQuote={id:"q1"};'],
     ];
     for (const [why, src] of cases) { reset(120); run(src); assert.equal(blocked(), why, src); }
     reset(120); modal.children = [{}]; assert.equal(blocked(), '창이 열려 있음');
@@ -152,6 +168,36 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS autoupda
     assert.equal(await tick(), false); assert.deepEqual(order, [], '묻는 사이 손을 대면 그만');
     reset(16); onAsk = () => { modal.children = [{}]; };
     assert.equal(await tick(), false); assert.deepEqual(order, [], '묻는 사이 창이 열리면 그만');
+    reset(16); updateOk = false;
+    assert.equal(await tick(), false); assert.equal(store.has('hj_ver_auto'), false, '못 바꿨으면 횟수에 넣지 않는다');
+    reset(180, { visible: true }); vm.runInContext(`__hjVerLastTick=${T0 - 240 * MIN};`, ctx);
+    assert.equal(await tick(), false); assert.equal(asks, 0, '1분 깨우기가 4시간 멈췄다 보이는 채 깨어남 — 대표가 방금 열었다');
+    assert.equal(run('return __hjLastInputAt;'), T0, '방금 손댄 것으로');
+    reset(16); vm.runInContext(`__hjVerLastTick=${T0 - 240 * MIN};`, ctx);
+    assert.equal(await tick(), true, '숨은 채 늦게 돈 것은 깨어난 것이 아니다');
+  });
+
+  await test('⑥ 받는 사이 손대면 다시 열지 않고 횟수도 되돌린다 (ABORT)', async () => {
+    reset(16);
+    assert.equal(await tick(), true);
+    assert.equal(run('return window.__hjVerAutoRun;'), true);
+    assert.equal(run('return hjVerAutoAbort();'), false, '그대로 손 안 댐 — 다시 연다');
+    assert.equal(JSON.parse(store.get('hj_ver_auto')).tries, 1);
+    reset(16); store.set('hj_ver_auto', JSON.stringify({ from: SHELL, to: NEWER, tries: 1 }));
+    assert.equal(await tick(), true);
+    assert.equal(JSON.parse(store.get('hj_ver_auto')).tries, 2);
+    vm.runInContext('__hjLastInputAt=Date.now();', ctx);
+    assert.equal(run('return hjVerAutoAbort();'), true, '받는 사이 손댐 — 열지 않는다');
+    assert.equal(JSON.parse(store.get('hj_ver_auto')).tries, 1, '횟수는 되돌린다');
+    reset(16);
+    assert.equal(await tick(), true);
+    run("state.editingQuote={id:'q'};");
+    assert.equal(run('return hjVerAutoAbort();'), true, '받는 사이 견적서를 쓰기 시작');
+    assert.equal(store.has('hj_ver_auto'), false, '처음이었으면 기록도 없앤다');
+    reset(16);
+    assert.equal(run('return hjVerAutoAbort();'), false, '단추로 누른 새로고침(저절로가 아님)은 그대로');
+    vm.runInContext('__hjLastInputAt=Date.now();', ctx);
+    assert.equal(run('return hjVerAutoAbort();'), false);
   });
 
   await test('③ 같은 판으로 두 번 바꿨는데도 그대로면 띠만 (LOOP)', async () => {
@@ -180,10 +226,14 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS autoupda
     assert.match(line, /\['pointerdown','keydown','touchstart','wheel'\]\.forEach\(t=>document\.addEventListener\(t,\(\)=>\{__hjLastInputAt=Date\.now\(\);\},\{capture:true,passive:true\}\)\)/);
     assert.match(line, /setInterval\(\(\)=>\{hjVerIdleTick\(\);\},60\*1000\)/);
     assert.match(line, /setTimeout\(\(\)=>\{hjVerAutoNotice\(\);\},3000\)/);
+    assert.match(line, /visibilitychange',\(\)=>\{if\(document\.visibilityState==='visible'\)__hjLastInputAt=Date\.now\(\);\}\)/, '보이게 되면 손댄 것');
+    assert.match(line, /addEventListener\('pageshow',\(\)=>\{__hjLastInputAt=Date\.now\(\);\}\)/);
+    assert.match(line, /addEventListener\('focus',\(\)=>\{__hjLastInputAt=Date\.now\(\);\}\)/);
+    assert.match(appCode, /if\(!appVersionPhotoGuard\(\)&&!hjVerAutoAbort\(\)\)location\.reload\(\);/, '다시 열기 직전에 한 번 더');
     assert.match(appCode, /setTimeout\(\(\)=>\{appVersionAutoCheck\(\)\.catch\(\(\)=>\{\}\);\},2500\)/, '예전 확인(켤 때·다시 볼 때)은 그대로');
   });
 
   assert.equal(writes, fetchAtBoot, '바깥 요청 없음');
-  console.log('autoupdate-v622: ' + passed + '/5');
-  if (passed !== 5) process.exit(1);
+  console.log('autoupdate-v622: ' + passed + '/6');
+  if (passed !== 6) process.exit(1);
 })().catch(e => { console.error('FAIL autoupdate-v622', e && e.stack || e); process.exit(1); });

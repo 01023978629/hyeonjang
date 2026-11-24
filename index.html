@@ -4148,7 +4148,7 @@ async function appVersionUpdate(){
     if(appVersionPhotoGuard())return false;
     toast('새 버전을 받습니다 — 화면이 다시 열립니다');
     setTimeout(function(){
-      try{if(!appVersionPhotoGuard())location.reload();}catch(e){}
+      try{if(!appVersionPhotoGuard()&&!hjVerAutoAbort())location.reload();}catch(e){}   // v622 저절로 바꾸는 중 손댔으면 그만
       finally{appVersionUnlock();}
     },700);
     scheduled=true;return true;
@@ -4218,19 +4218,23 @@ async function appVersionAutoCheck(force){
    단추와 같은 길(기기 저장을 끝낸 뒤 appVersionUpdate — 캐시를 비우고 다시 연다)로 바꾼다.
    안 바꾸는 때(hjVerAutoBlocked): 체험 · 받는 중 · 사진/서류 넣는 중 · 폴더에 저장 안 한 변경 · 기기 저장 중 · 다른 탭이 더 최근에 저장한 창
    (__tabStale — 띠의 '안전판 보관하고 새로고침'으로) · 서버에 못 올린 변경 · 서버 저장 중/충돌/인증 · 창(모달) · 글 칸.
-   같은 판으로 두 번 바꿨는데도 그대로면 더 하지 않고 띠만 띄운다. 바꾼 뒤 처음 열릴 때 한 번 알린다(hjVerAutoNotice). */
+   같은 판으로 두 번 바꿨는데도 그대로면 더 하지 않고 띠만 띄운다. 바꾼 뒤 처음 열릴 때 한 번 알린다(hjVerAutoNotice).
+   검토 반영: 쓰던 견적서(relayEditingNow)·폴더 다시 읽기·사진 묶음·서버/사진 보내기 깃발도 막고, 깨어난 창(1분 깨우기가 5분 넘게 멈췄다 보이는 채 돎)은
+   방금 손댄 것으로 보며, 받는 사이(최대 15초) 손을 대면 다시 열기 직전(hjVerAutoAbort)에 그만두고 횟수도 되돌린다. 횟수는 실제로 바꿀 때만 센다. */
 const HJ_VER_IDLE_HIDDEN_MS=15*60*1000,HJ_VER_IDLE_SHOWN_MS=60*60*1000,HJ_VER_IDLE_CHECK_MS=30*60*1000;
 const HJ_VER_AUTO_KEY='hj_ver_auto',HJ_VER_IDLE_AT_KEY='hj_ver_idle_at',HJ_VER_AUTO_TRIES=2;
-let __hjLastInputAt=Date.now();
+let __hjLastInputAt=Date.now(),__hjVerLastTick=Date.now();
+const HJ_VER_RESUME_GAP_MS=5*60*1000;
 function hjVerIdleEnough(){
   const hidden=document.visibilityState==='hidden';
   return Date.now()-__hjLastInputAt>=(hidden?HJ_VER_IDLE_HIDDEN_MS:HJ_VER_IDLE_SHOWN_MS);
 }
-function hjVerAutoBlocked(){
+function hjVerAutoBlocked(ignoreUpdating){
   try{
     if(state._demo)return '체험';
-    if(__appVersionUpdating)return '받는 중';
+    if(__appVersionUpdating&&!ignoreUpdating)return '받는 중';
     if(window.__documentUploadPending||photoIntakePending())return '사진·서류 넣는 중';
+    if(window.__hjScanBusy||window.__hjScanDirtyDeferred||window.__hjPzBusy||__relayFlushing||__hjOutboxFlushing)return '작업 중';   // 폴더 다시 읽기·사진 묶음·서버/사진 보내기 — hjScanBusy() 는 15분 뒤 놓으니 깃발 그대로 본다(검토)
     if(state.dirty&&state.dirHandle)return '폴더 저장 전';
     if(__hjLocalSavePending)return '기기 저장 중';
     if(__tabStale)return '다른 탭이 더 최근에 저장';
@@ -4238,13 +4242,15 @@ function hjVerAutoBlocked(){
     if(__relayState==='saving'||__relayState==='conflict'||__relayState==='auth')return '서버 '+__relayState;
     const mr=document.getElementById('modalRoot');if(mr&&mr.children&&mr.children.length)return '창이 열려 있음';
     const a=document.activeElement;if(a&&(/^(INPUT|TEXTAREA|SELECT)$/.test(String(a.tagName||''))||a.isContentEditable===true))return '글 칸';
+    if(relayEditingNow())return '편집 중';   // 쓰던 견적서(state.editingQuote — 저장 자료에 없다) 등 서버 저장(v530)이 기다리는 때
   }catch(e){return '확인 실패';}
   return '';
 }
 async function hjVerIdleTick(){
   try{
+    const now=Date.now(),gap=now-__hjVerLastTick;__hjVerLastTick=now;
+    if(gap>HJ_VER_RESUME_GAP_MS&&document.visibilityState!=='hidden'){__hjLastInputAt=now;return false;}   // 깨어난 창 — 대표가 방금 열었다
     if(navigator.onLine===false||!hjVerIdleEnough())return false;
-    const now=Date.now();
     let last=0;try{last=Number(localStorage.getItem(HJ_VER_IDLE_AT_KEY))||0;}catch(e){}
     if(now-last<HJ_VER_IDLE_CHECK_MS||hjVerAutoBlocked())return false;
     try{localStorage.setItem(HJ_VER_IDLE_AT_KEY,String(now));}catch(e){}   // 묻기 전에 적는다 — 탭이 여럿이어도 기기에서 30분에 한 번
@@ -4256,9 +4262,19 @@ async function hjVerIdleTick(){
     if(!hjVerIdleEnough()||hjVerAutoBlocked())return false;   // 묻는 사이 손을 댔거나 저장이 시작됐다
     clearTimeout(__idbSaveTimer);
     if(!(await guardedPersistCurrentState()))return false;
-    try{localStorage.setItem(HJ_VER_AUTO_KEY,JSON.stringify({from:APP_BUILD,to:s.server,tries:tries+1,at:new Date(now).toISOString()}));}catch(e){}
-    return !!(await appVersionUpdate());
+    window.__hjVerAutoRun=true;
+    if(!(await appVersionUpdate())){window.__hjVerAutoRun=false;return false;}   // 못 바꿨으면 횟수에 넣지 않는다(검토)
+    try{window.__hjVerPrevRec=localStorage.getItem(HJ_VER_AUTO_KEY);localStorage.setItem(HJ_VER_AUTO_KEY,JSON.stringify({from:APP_BUILD,to:s.server,tries:tries+1,at:new Date(now).toISOString()}));}catch(e){}
+    return true;
   }catch(e){return false;}
+}
+/* 다시 열기 직전(appVersionUpdate 의 700ms 뒤) — 저절로 바꾸는 중에 손을 댔거나 일이 시작됐으면 열지 않고 횟수도 되돌린다. 단추로 누른 것은 그대로. */
+function hjVerAutoAbort(){
+  if(!window.__hjVerAutoRun)return false;
+  window.__hjVerAutoRun=false;
+  let stop=true;try{stop=!hjVerIdleEnough()||!!hjVerAutoBlocked(true);}catch(e){stop=true;}
+  if(stop){try{const p=window.__hjVerPrevRec;if(p==null)localStorage.removeItem(HJ_VER_AUTO_KEY);else localStorage.setItem(HJ_VER_AUTO_KEY,p);}catch(e){}}
+  return stop;
 }
 function hjVerAutoNotice(){
   try{
@@ -57450,8 +57466,8 @@ function hjBuildTagApply(){
   try{hjBuildTagApply();}catch(e){}
   // 새 버전 자동 안내 — 부팅 2.5초 뒤 한 번, 앱을 다시 볼 때 6시간에 한 번
   try{setTimeout(()=>{appVersionAutoCheck().catch(()=>{});},2500);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')appVersionAutoCheck().catch(()=>{});});}catch(e){}
-  // v622 손대지 않은 창은 새 판을 저절로 — 손댄 시각을 세고(누르기·키·터치·휠) 1분마다 hjVerIdleTick · 바꾼 뒤 첫 부팅에 한 번 알림
-  try{['pointerdown','keydown','touchstart','wheel'].forEach(t=>document.addEventListener(t,()=>{__hjLastInputAt=Date.now();},{capture:true,passive:true}));setInterval(()=>{hjVerIdleTick();},60*1000);setTimeout(()=>{hjVerAutoNotice();},3000);}catch(e){}
+  // v622 손대지 않은 창은 새 판을 저절로 — 손댄 시각을 세고(누르기·키·터치·휠 · 보이게 됨·다시 보임·창 선택) 1분마다 hjVerIdleTick · 바꾼 뒤 첫 부팅에 한 번 알림
+  try{['pointerdown','keydown','touchstart','wheel'].forEach(t=>document.addEventListener(t,()=>{__hjLastInputAt=Date.now();},{capture:true,passive:true}));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')__hjLastInputAt=Date.now();});window.addEventListener('pageshow',()=>{__hjLastInputAt=Date.now();});window.addEventListener('focus',()=>{__hjLastInputAt=Date.now();});setInterval(()=>{hjVerIdleTick();},60*1000);setTimeout(()=>{hjVerAutoNotice();},3000);}catch(e){}
   // v614 🤖 클로드 요청함 알림 — 부팅 때(중계 설정 복원 순간) 이미 연결된 기기만 켠다(__hjCinboxArmed). 중계 부팅(동기화)이 끝나고 4초 뒤 한 번, 앱을 다시 볼 때,
   // 첫 화면을 그릴 때(viewDashboard) — 합쳐 30분에 한 번 · 읽기만. 쓰다가 방금 연결한 기기는 다음에 열 때부터.
   try{Promise.all([window.__hjRelayConfigDone,window.__hjRelayBootDone]).catch(()=>[]).then(r=>{if(!(r&&r[0]&&r[0].ready&&relayReady()))return;__hjCinboxArmed=true;setTimeout(()=>{hjClaudeInboxAutoCheck('boot');},4000);setTimeout(()=>{hjKakaoOpenCheck();},6000);setInterval(()=>{hjKakaoAutoTick();},60*1000);});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){hjClaudeInboxAutoCheck('visible');setTimeout(()=>{hjKakaoOpenCheck();},1500);}});}catch(e){}
