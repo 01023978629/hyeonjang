@@ -3,6 +3,22 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-24 v622 🔄 손대지 않은 창은 새 판을 저절로
+
+대표 결정(11/24 'A' — 승인한 일이 PC 창에 묶이지 않게). 11/24 PC 크롬의 현장웹 창이 11/23 07:00 부터 v618 그대로 열려 있어
+카톡 승인 요청(1011~1014)을 7시간 넘게 못 넣었다 — 새 판 확인(`appVersionAutoCheck`)은 켤 때·다시 볼 때(6시간에 한 번)뿐, 숨은 창은 확인조차 안 했다.
+- `hjVerIdleTick`(1분마다): 손을 안 댄 지 오래면(`HJ_VER_IDLE_HIDDEN_MS` 숨은 창 15분 · `HJ_VER_IDLE_SHOWN_MS` 보이는 창 60분 — 손댄 시각 `__hjLastInputAt` 은
+  누르기·키·터치·휠로 센다) 기기에서 30분에 한 번(`hj_ver_idle_at`) 서버 sw.js 번호를 보고, 새 판이면 띠의 [지금 새로고침]과 같은 길
+  (`guardedPersistCurrentState` 로 기기 저장을 끝낸 뒤 `appVersionUpdate`)로 바꾼다. 묻는 사이 손을 대거나 저장이 시작되면 그만.
+- `hjVerAutoBlocked`: 체험 · 받는 중 · 사진/서류 넣는 중 · 폴더에 저장 안 한 변경(`dirty&&dirHandle` — 폰의 늘 참인 dirty 는 막지 않음, v450) · 기기 저장 중 ·
+  다른 탭이 더 최근에 저장(`__tabStale` — 그 창은 띠의 '안전판 보관하고 새로고침'으로) · 서버에 못 올린 변경(`__relayUnsynced`) · 서버 저장 중/충돌/인증 · 창(모달) · 글 칸.
+- 같은 판으로 두 번(`HJ_VER_AUTO_TRIES`) 바꿨는데도 그대로면 더 하지 않고 새 판 띠만. 바꾼 뒤 처음 열릴 때 `hjVerAutoNotice` 가 한 번 알린다(`hj_ver_auto`).
+- 한계: 이 판을 한 번은 열어야 다음 판부터 저절로 바뀐다(지금 열려 있는 옛 창은 이 코드가 없다). 꺼진 창·잠든 PC·크롬이 버린(메모리 절약) 탭은 못 깨운다 —
+  카톡봇 v1.9.17 이 안 들어간 요청을 보고 PC 크롬에 현장웹을 연다.
+- 하지 않은 것: 카톡 요청 읽기를 부팅 끝(드라이브 사진 목록 맞추기 뒤, 11/24 실측 68초)보다 앞당기기 — 사진 목록 맞추기·저장과 겹쳐 서버 저장 충돌 창이 뜰 수 있다.
+- 검사: `tests/autoupdate-v622.unit.js` 5/5(변이 ignore-stale-tab·ignore-unsynced·ignore-modal 은 ①, no-idle-gate·visible-short·no-cadence·no-persist·recheck-after-ask 는 ②,
+  no-loop-guard 는 ③, notice-any 는 ④, no-wiring 은 ⑤에서 실패 · 기준선 `HJ_V622_BASELINE=993c31b` 은 ①에서). 핀 `hyeonjang-v622-autoupdate`.
+
 ## 2026-11-24 v621 📅 구글에서 온 일정은 구글 캘린더 창을 다시 띄우지 않는다 · 팀 글에서 카톡봇 출처 줄도 뺀다
 
 11/24 카톡 승인 1011번(카톡봇이 구글 캘린더에서 가져온 일정)을 현장웹 v620 이 저절로 넣자 📅 구글 캘린더 자동 열기(`hj_gcal_auto`)가 PC 에

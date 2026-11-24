@@ -4069,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v621-gcalskip';
+const APP_BUILD='hyeonjang-v622-autoupdate';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4210,6 +4210,64 @@ async function appVersionAutoCheck(force){
   const v=appVersionVerdict(s);
   if(v.stale&&s.server!==s.shell&&__verBannerFor!==s.server)appVersionBanner(s.server);
   return v;
+}
+/* v622 손대지 않은 창은 새 판을 저절로 — 대표 결정(11/24 'A' — 승인한 일이 PC 창에 묶이지 않게).
+   11/24 PC 크롬의 현장웹 창이 11/23 07:00 부터 v618 그대로 열려 있어 카톡 승인 요청(1011~1014)을 7시간 넘게 못 넣었다 —
+   새 판 확인(appVersionAutoCheck)은 켤 때·다시 볼 때(6시간에 한 번)뿐이고, 숨은 창은 확인조차 안 했다. 새로고침은 띠의 단추였다.
+   1분마다 깨어, 손을 안 댄 지 오래면(숨은 창 15분 · 보이는 창 60분) 기기에서 30분에 한 번 서버 sw.js 번호를 보고, 새 판이면
+   단추와 같은 길(기기 저장을 끝낸 뒤 appVersionUpdate — 캐시를 비우고 다시 연다)로 바꾼다.
+   안 바꾸는 때(hjVerAutoBlocked): 체험 · 받는 중 · 사진/서류 넣는 중 · 폴더에 저장 안 한 변경 · 기기 저장 중 · 다른 탭이 더 최근에 저장한 창
+   (__tabStale — 띠의 '안전판 보관하고 새로고침'으로) · 서버에 못 올린 변경 · 서버 저장 중/충돌/인증 · 창(모달) · 글 칸.
+   같은 판으로 두 번 바꿨는데도 그대로면 더 하지 않고 띠만 띄운다. 바꾼 뒤 처음 열릴 때 한 번 알린다(hjVerAutoNotice). */
+const HJ_VER_IDLE_HIDDEN_MS=15*60*1000,HJ_VER_IDLE_SHOWN_MS=60*60*1000,HJ_VER_IDLE_CHECK_MS=30*60*1000;
+const HJ_VER_AUTO_KEY='hj_ver_auto',HJ_VER_IDLE_AT_KEY='hj_ver_idle_at',HJ_VER_AUTO_TRIES=2;
+let __hjLastInputAt=Date.now();
+function hjVerIdleEnough(){
+  const hidden=document.visibilityState==='hidden';
+  return Date.now()-__hjLastInputAt>=(hidden?HJ_VER_IDLE_HIDDEN_MS:HJ_VER_IDLE_SHOWN_MS);
+}
+function hjVerAutoBlocked(){
+  try{
+    if(state._demo)return '체험';
+    if(__appVersionUpdating)return '받는 중';
+    if(window.__documentUploadPending||photoIntakePending())return '사진·서류 넣는 중';
+    if(state.dirty&&state.dirHandle)return '폴더 저장 전';
+    if(__hjLocalSavePending)return '기기 저장 중';
+    if(__tabStale)return '다른 탭이 더 최근에 저장';
+    if(__relayUnsynced>0)return '서버에 못 올린 변경';
+    if(__relayState==='saving'||__relayState==='conflict'||__relayState==='auth')return '서버 '+__relayState;
+    const mr=document.getElementById('modalRoot');if(mr&&mr.children&&mr.children.length)return '창이 열려 있음';
+    const a=document.activeElement;if(a&&(/^(INPUT|TEXTAREA|SELECT)$/.test(String(a.tagName||''))||a.isContentEditable===true))return '글 칸';
+  }catch(e){return '확인 실패';}
+  return '';
+}
+async function hjVerIdleTick(){
+  try{
+    if(navigator.onLine===false||!hjVerIdleEnough())return false;
+    const now=Date.now();
+    let last=0;try{last=Number(localStorage.getItem(HJ_VER_IDLE_AT_KEY))||0;}catch(e){}
+    if(now-last<HJ_VER_IDLE_CHECK_MS||hjVerAutoBlocked())return false;
+    try{localStorage.setItem(HJ_VER_IDLE_AT_KEY,String(now));}catch(e){}   // 묻기 전에 적는다 — 탭이 여럿이어도 기기에서 30분에 한 번
+    const s=await appVersionState();
+    if(!s.server||s.server===s.shell)return false;
+    let rec=null;try{rec=JSON.parse(localStorage.getItem(HJ_VER_AUTO_KEY)||'null');}catch(e){}
+    const tries=(rec&&rec.to===s.server)?(Number(rec.tries)||0):0;
+    if(tries>=HJ_VER_AUTO_TRIES){if(__verBannerFor!==s.server)appVersionBanner(s.server);return false;}   // 바꿔도 그대로였다 — 단추로
+    if(!hjVerIdleEnough()||hjVerAutoBlocked())return false;   // 묻는 사이 손을 댔거나 저장이 시작됐다
+    clearTimeout(__idbSaveTimer);
+    if(!(await guardedPersistCurrentState()))return false;
+    try{localStorage.setItem(HJ_VER_AUTO_KEY,JSON.stringify({from:APP_BUILD,to:s.server,tries:tries+1,at:new Date(now).toISOString()}));}catch(e){}
+    return !!(await appVersionUpdate());
+  }catch(e){return false;}
+}
+function hjVerAutoNotice(){
+  try{
+    const rec=JSON.parse(localStorage.getItem(HJ_VER_AUTO_KEY)||'null');
+    if(!rec||rec.to!==APP_BUILD)return '';
+    localStorage.removeItem(HJ_VER_AUTO_KEY);
+    const msg='🔄 손대지 않은 사이에 새 판 '+APP_VER_SHORT+' 으로 바꿨어요';
+    toast(msg);return msg;
+  }catch(e){return '';}
 }
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
@@ -57392,6 +57450,8 @@ function hjBuildTagApply(){
   try{hjBuildTagApply();}catch(e){}
   // 새 버전 자동 안내 — 부팅 2.5초 뒤 한 번, 앱을 다시 볼 때 6시간에 한 번
   try{setTimeout(()=>{appVersionAutoCheck().catch(()=>{});},2500);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')appVersionAutoCheck().catch(()=>{});});}catch(e){}
+  // v622 손대지 않은 창은 새 판을 저절로 — 손댄 시각을 세고(누르기·키·터치·휠) 1분마다 hjVerIdleTick · 바꾼 뒤 첫 부팅에 한 번 알림
+  try{['pointerdown','keydown','touchstart','wheel'].forEach(t=>document.addEventListener(t,()=>{__hjLastInputAt=Date.now();},{capture:true,passive:true}));setInterval(()=>{hjVerIdleTick();},60*1000);setTimeout(()=>{hjVerAutoNotice();},3000);}catch(e){}
   // v614 🤖 클로드 요청함 알림 — 부팅 때(중계 설정 복원 순간) 이미 연결된 기기만 켠다(__hjCinboxArmed). 중계 부팅(동기화)이 끝나고 4초 뒤 한 번, 앱을 다시 볼 때,
   // 첫 화면을 그릴 때(viewDashboard) — 합쳐 30분에 한 번 · 읽기만. 쓰다가 방금 연결한 기기는 다음에 열 때부터.
   try{Promise.all([window.__hjRelayConfigDone,window.__hjRelayBootDone]).catch(()=>[]).then(r=>{if(!(r&&r[0]&&r[0].ready&&relayReady()))return;__hjCinboxArmed=true;setTimeout(()=>{hjClaudeInboxAutoCheck('boot');},4000);setTimeout(()=>{hjKakaoOpenCheck();},6000);setInterval(()=>{hjKakaoAutoTick();},60*1000);});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){hjClaudeInboxAutoCheck('visible');setTimeout(()=>{hjKakaoOpenCheck();},1500);}});}catch(e){}
