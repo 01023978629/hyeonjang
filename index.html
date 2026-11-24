@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="현장">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="./manifest.webmanifest">
-<!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·AI_TOOLS 169종 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 📈 거래처 장부 · 💾 수금 이력 -->
+<!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·AI_TOOLS 170종 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 📈 거래처 장부 · 💾 수금 이력 -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>현장 — 인테리어 파일 정리</title>
 <!-- v574 외부 스크립트·CSS 는 전부 jsDelivr /npm/<패키지>@<버전> 고정 주소 + integrity(sha384) + crossorigin. 해시 정본은 본문 _CDN 표(같은 값을 여기 글자 그대로) — tests/sri.check.js 가 태그와 표를 대조한다 -->
@@ -1422,7 +1422,7 @@ body.mobile-mode .apo-tools select.apoStat{font-size:16px!important;min-height:4
    ╚══════════════════════════════════════════════════════════════════════╝
    구조: 헬퍼/COMPANY → 저장(serializeData/applyData ⇄ 폴더 _현장.json·드라이브·
         IndexedDB 스냅샷 'hj_snaps') → render()+view*() → setupDelegation(위임)
-        → AI(AI_TOOLS 169종·aiToolRun·AI_WRITE 승인) → 기능블록(아래 마커 앞에 v1~v11 순).
+        → AI(AI_TOOLS 170종·aiToolRun·AI_WRITE 승인) → 기능블록(아래 마커 앞에 v1~v11 순).
    ⚠ 위임 규약: 새 버튼은 ①click 셀렉터 문자열 ②click 체인 핸들러 — 반드시 둘 다.
         change 리스너에 click 핸들러를 두면 절대 안 탄다(과거 죽은 버튼 3건의 원인).
    ⚠ 새 state 필드는 serializeData·applyData 양쪽 등록. 일정(schedule)은 통짜라 자동.
@@ -4069,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v619-kakaotick';
+const APP_BUILD='hyeonjang-v620-photoassign';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13050,7 +13050,7 @@ window.__aiAuto = localStorage.getItem('hj_ai_auto')==='1';
 window.__aiHist = window.__aiHist || [];          // Gemini contents 원형(세션 동안 유지)
 window.__aiBusy = false;
 
-const AI_WRITE = new Set(['apt_unit_link','add_project','assign_photos','set_phase','add_schedule','set_stage','set_received','create_quote_draft','auto_organize_photos','as_add','as_done','set_labor','send_settle_doc','delete_project','delete_schedule','add_note','send_receipt','batch_receive','add_expense','add_supplier','set_goal','add_worklog','set_budget','ai_quote']);
+const AI_WRITE = new Set(['apt_unit_link','add_project','assign_photos','assign_photo_files','set_phase','add_schedule','set_stage','set_received','create_quote_draft','auto_organize_photos','as_add','as_done','set_labor','send_settle_doc','delete_project','delete_schedule','add_note','send_receipt','batch_receive','add_expense','add_supplier','set_goal','add_worklog','set_budget','ai_quote']);
 
 const AI_TOOLS = [
  {name:'get_overview',description:'앱 전체 현황(현장·견적·수금·오늘 일정·미배정 사진 수). 브리핑이나 현황 질문이면 먼저 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -13063,6 +13063,7 @@ const AI_TOOLS = [
  {name:'apt_unit_link',description:'[변경] 아파트 현장에 동·호수(세대) 또는 공용부를 등록하고(이미 있으면 그대로), 사진을 파일 이름으로 그 세대에 연결한다. 그 현장 사진·미배정 사진만(미배정은 그 현장으로 배정) — 다른 현장 사진·다른 세대에 연결된 사진·같은 이름이 여럿인 사진은 건드리지 않는다. 사진을 폴더로 옮긴 뒤(경로가 바뀌면 세대 연결이 풀린다) 다시 연결할 때도 쓴다.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},dong:{type:'STRING'},ho:{type:'STRING'},area:{type:'STRING',description:'공용부 이름(동·호 대신)'},note:{type:'STRING'},files:{type:'ARRAY',items:{type:'STRING'},description:'사진 파일 이름(최대 300)'}},required:['project']}},
  {name:'add_project',description:'[변경] 새 현장(공사 건)을 만든다. name 필수(정확한 현장/고객 명칭). 이미 있으면 중복 생성하지 말 것 — 먼저 list_projects로 확인. 사진·견적을 붙이기 전 현장부터 생성.',parameters:{type:'OBJECT',properties:{name:{type:'STRING'}},required:['name']}},
  {name:'assign_photos',description:'[변경] 조건에 맞는 사진들을 지정 현장에 배정. 조건 없이 to_project만 주면 미배정 전체가 대상이 되므로 반드시 조건을 명확히. 제안(suggest_photo_organization)의 실행힌트는 ids(사진 id 목록)까지 그대로 넘길 것.',parameters:{type:'OBJECT',properties:{to_project:{type:'STRING'},unassigned:{type:'BOOLEAN'},ids:{type:'ARRAY',items:{type:'STRING'},description:'이 사진들만(제안 실행힌트의 ids)'},from_project:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},limit:{type:'INTEGER'}},required:['to_project']}},
+ {name:'assign_photo_files',description:'[변경] 사진 파일 이름으로 그 현장에 넣는다(카톡봇이 현장사진 폴더로 옮긴 사진). 현장이 없는 사진만 — 이미 그 현장인 사진은 그대로, 다른 현장 사진·같은 이름이 여럿인 사진은 건드리지 않는다. 최대 300장.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},files:{type:'ARRAY',items:{type:'STRING'},description:'사진 파일 이름(최대 300)'}},required:['project','files']}},
  {name:'set_phase',description:'[변경] 현장 사진에 공정 이름을 붙임(예: 철거, 방수, 타일, 완료). 조건으로 대상 한정 가능.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},phase:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},only_unphased:{type:'BOOLEAN'}},required:['project','phase']}},
  {name:'add_schedule',description:'[변경] 일정을 추가한다. title·date(YYYY-MM-DD) 필수, time(HH:MM)·project·workers·memo 선택. 수금 예정일이 아니라 방문·작업 일정용. 캘린더 자동이 켜져 있으면 구글 캘린더도 함께 열림.',parameters:{type:'OBJECT',properties:{title:{type:'STRING'},date:{type:'STRING',description:'YYYY-MM-DD'},time:{type:'STRING',description:'HH:MM (기본 09:00)'},project:{type:'STRING'},workers:{type:'STRING'},memo:{type:'STRING'}},required:['title','date']}},
  {name:'set_stage',description:'[변경] 현장 진행 단계 변경. stage는 상담/실측/시공/완료 중 하나.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},stage:{type:'STRING'}},required:['project','stage']}},
@@ -13326,6 +13327,25 @@ async function aiToolRun(name,a){
       markDirty();render();
       return {결과:'배정 완료',배정:fs.length,현장:to,예시:fs.slice(0,3).map(f=>cut(f.name,30))};
     }
+    case 'assign_photo_files':{
+      /* v620 대표 요청(11/24) '사진을 현장에 넣는 요청 도구' — 카톡봇이 현장사진\\<현장> 으로 옮긴 사진을 파일 이름으로 그 현장에(동·호 없는 현장 사진 — 11/23 16장은
+         폴더만으로는 배정되지 않아 손으로 골랐다). 현장이 없는 사진만 넣는다: 이미 그 현장이면 그대로, 다른 현장 사진·같은 이름이 여럿이면 건드리지 않는다(apt_unit_link 와 같은 문). */
+      const pj=String(a.project||'').trim();
+      if(!pj||(state.projects||[]).filter(p=>p&&p.name===pj).length!==1)throw new Error('현장 "'+cut(pj)+'"이(가) 없거나 같은 이름이 여럿입니다.');
+      const names=[...new Set((Array.isArray(a.files)?a.files:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))].slice(0,300);
+      if(!names.length)throw new Error('사진 파일 이름이 없습니다.');
+      let put=0,already=0,skipped=0,missing=0;
+      for(const nm of names){
+        const fs=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f._fromQuote&&String(f.name||'').toLowerCase()===nm);
+        if(fs.some(f=>f.project===pj)){already++;continue;}
+        const free=fs.filter(f=>!f.project);
+        if(!free.length){if(fs.length)skipped++;else missing++;continue;}   // 다른 현장 사진은 건드리지 않는다
+        if(free.length!==1){skipped++;continue;}                          // 같은 이름이 여럿 — 어느 사진인지 모른다
+        free[0].project=pj;put++;
+      }
+      if(put){if(typeof __photoCache!=='undefined')__photoCache.key=null;markDirty();render();}
+      return {결과:'사진 넣기',현장:pj,넣음:put,이미:already,건너뜀:skipped,못찾음:missing};
+    }
     case 'set_phase':{
       const pj=String(a.project||'').trim(),ph=String(a.phase||'').trim();
       const p=state.projects.find(x=>x.name===pj);
@@ -13374,7 +13394,7 @@ async function aiToolRun(name,a){
       if(!t)throw new Error('일정 제목이 비었습니다.');
       if(!/^\d{4}-\d{2}-\d{2}$/.test(d))throw new Error('날짜는 YYYY-MM-DD 형식이어야 합니다: '+d);
       {const _p=d.split('-').map(Number);const _vd=new Date(_p[0],_p[1]-1,_p[2]);if(_vd.getFullYear()!==_p[0]||_vd.getMonth()!==_p[1]-1||_vd.getDate()!==_p[2])throw new Error('존재하지 않는 날짜입니다: '+d);}
-      const s=Object.assign(newSchedule(),{title:t,date:d,time:(a.allDay===true&&!a.time)?'':String(a.time||'09:00').slice(0,5),project:String(a.project||''),workers:String(a.workers||''),memo:String(a.memo||'')});
+      const s=Object.assign(newSchedule(),{title:t,date:d,time:(a.allDay===true&&!a.time)?'':String(a.time||'09:00').slice(0,5),project:String(a.project||'')||hjSchGuessProject(t),workers:String(a.workers||''),memo:String(a.memo||'')});   // v620 현장이 없으면 제목으로
       state.schedule=state.schedule||[];state.schedule.push(s);
       markDirty();render();
       if(hjGcalAutoOn())setTimeout(()=>hjGcalMaybeOpen(s),80);
@@ -13735,6 +13755,7 @@ function aiActionLabel(name,a){
     case 'add_project':return '현장 추가 "'+(a.name||'')+'"';
     case 'apt_unit_link':return '동·호수 연결 "'+(a.project||'')+'" '+(String(a.area||'').trim()||((a.dong||'')+'동 '+(a.ho||'')+'호'))+' · 사진 '+(Array.isArray(a.files)?a.files.length:0)+'장';
     case 'assign_photos':return '사진 배정 → "'+(a.to_project||'')+'"'+cond();
+    case 'assign_photo_files':return '사진 넣기 → "'+(a.project||'')+'" · '+(Array.isArray(a.files)?a.files.length:0)+'장';
     case 'set_phase':return '공정 "'+(a.phase||'')+'" 지정 @ '+(a.project||'')+cond();
     case 'add_schedule':return '일정 추가 '+(a.date||'')+' '+(a.time||'')+' '+(a.title||'')+(a.project?' @'+a.project:'');
     case 'set_stage':return '"'+(a.project||'')+'" 단계 → '+(a.stage||'');
@@ -13909,6 +13930,7 @@ function aiActionWarningHTML(name,a){
 function aiResultBrief(name,out){
   if(!out||typeof out!=='object')return '';
   if(name==='assign_photos')return ' — '+(out.배정||0)+'장';
+  if(name==='assign_photo_files')return ' — '+(out.넣음||0)+'장';
   if(name==='set_phase')return ' — '+(out.대상||0)+'장';
   if(name==='list_photos')return ' — '+(out.조건일치||0)+'장 일치';
   if(name==='suggest_photo_organization')return ' — 미배정 '+(out.미배정||0)+'장 · 묶음 '+((out.제안||[]).length)+'개';
@@ -14491,6 +14513,8 @@ async function hjClaudeInboxAutoCheck(reason){
    · 넣기 전에 안전판(hjSnapshot) 한 번 · 넣은 뒤 claudeDone(기기끼리 공유 — 두 번 넣지 않게) · markDirty · 토스트 한 번.
    · 넣다가 실패한 요청은 처리로 표시하지 않는다 — 요청함에 남아 대표가 손으로 본다. */
 const HJ_KAKAO_AUTO_TOOLS=new Set(['add_schedule','add_project','apt_unit_link']);   // v618 동·호수 연결도(더하기만 — 다른 현장·다른 세대 사진은 안 건드림)
+HJ_KAKAO_AUTO_TOOLS.add('assign_photo_files');   // v620 사진 넣기(더하기만 — 현장이 없는 사진만 · 다른 현장 사진은 그대로)
+const HJ_KAKAO_PHOTO_TOOLS=new Set(['apt_unit_link','assign_photo_files']);   // v620 사진이 이 기기에 다 있을 때만 넣는 도구
 const HJ_KAKAO_AUTO_VIA=new Set(['kakao','manager']);
 const HJ_KAKAO_AUTO_DAYS=7;
 const HJ_KAKAO_AUTO_MAX=10;
@@ -14511,7 +14535,7 @@ function hjKakaoAutoOk(q,now){
    승인 뒤 이틀(HJ_KAKAO_UNIT_WAIT_MS)이 지나면 있는 것만이라도 넣는다. 다른 도구는 그대로. */
 const HJ_KAKAO_UNIT_WAIT_MS=2*86400000;
 function hjKakaoUnitReady(q,now){
-  if(!q||q.tool!=='apt_unit_link')return true;
+  if(!q||!HJ_KAKAO_PHOTO_TOOLS.has(q.tool))return true;   // v620 사진 넣기도
   const a=q.args||{};
   const names=[...new Set((Array.isArray(a.files)?a.files:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];
   if(!names.length)return true;
@@ -14534,6 +14558,26 @@ async function hjKakaoAutoTick(){
     let last=0;try{last=Number(localStorage.getItem(HJ_KAKAO_TICK_AT_KEY))||0;}catch(e){}
     if(now-Math.max(last,hjClaudeInboxCheckedAt())<HJ_KAKAO_TICK_MS)return false;
     try{localStorage.setItem(HJ_KAKAO_TICK_AT_KEY,String(now));}catch(e){}   // 받기 전에 적는다 — 느린 중계를 겹쳐 두드리지 않게
+    try{await window.__hjRelayBootDone;}catch(e){}
+    if(!relayReady())return false;
+    const r=await claudeInboxFetch();
+    if(!(r&&r.ok))return false;
+    try{await hjKakaoAutoApply(r);}catch(e){}
+    return true;
+  }catch(e){return false;}
+}
+/* v620 대표 요청(11/24) — 현장웹을 열거나(부팅) 다시 볼 때 카톡·관리 프로그램 승인 요청을 바로 읽는다. v619 는 30분 알림 확인
+   (hjClaudeInboxAutoCheck)이 30분 안이라 쉬면 5분 깨우기(hjKakaoAutoTick)를 기다려 최대 5분 걸렸다(11/24 1011번). 새로 고침을 거듭해도
+   중계를 두드리지 않게 기기에서 1분에 한 번(같은 시각 열쇠 — 방금 다른 길로 읽었으면 쉰다). 문(중계·부팅·직원·체험·오프라인)은 같다. */
+const HJ_KAKAO_OPEN_GAP_MS=60*1000;
+async function hjKakaoOpenCheck(){
+  try{
+    if(state._demo||typeof relayReady!=='function'||!relayReady()||!__hjCinboxArmed||(typeof hjStaffOn==='function'&&hjStaffOn()))return false;
+    try{if(navigator.onLine===false)return false;}catch(e){}
+    const now=Date.now();
+    let last=0;try{last=Number(localStorage.getItem(HJ_KAKAO_TICK_AT_KEY))||0;}catch(e){}
+    if(now-Math.max(last,hjClaudeInboxCheckedAt())<HJ_KAKAO_OPEN_GAP_MS)return false;
+    try{localStorage.setItem(HJ_KAKAO_TICK_AT_KEY,String(now));}catch(e){}
     try{await window.__hjRelayBootDone;}catch(e){}
     if(!relayReady())return false;
     const r=await claudeInboxFetch();
@@ -43003,6 +43047,7 @@ function viewSchedule(){
   if(sch.length){
     html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button> <button class="ghost tiny" id="schCalSync" style="min-height:44px" title="구글 캘린더 일정을 읽어 앱 일정표와 견주고, 미리보기에서 고른 것만 넣습니다 — 구글 캘린더는 바꾸지 않아요">🔄 구글 캘린더 맞추기</button>${hjSchNoSiteBtnHtml()}${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
+  html+=hjSchLinkBanner();   // v620 현장 없는 일정 — 현장 잇기
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
     return html;
@@ -43159,6 +43204,56 @@ function calNav(dir){
   __calYM=`${y}-${String(m).padStart(2,'0')}`;render();
 }
 function calSelectDay(ds){__calSelDate=(__calSelDate===ds)?null:ds;render();}
+/* v620 대표 요청(11/24) '일정과 현장 자동 연결' — 일정 제목에 현장 이름이 하나만 들어 있으면 그 현장. 띄어쓰기·대소문자 무시,
+   '○○A'처럼 단지 뒤 A 는 '아파트'로 읽는다, 괄호 안(지역 등)은 뺀 이름으로, 3글자 이상만. 더 긴 이름이 짧은 이름을 품으면 긴 것(단지 < 단지+동호).
+   진행 현장에서 먼저 찾고 없을 때만 보관 현장. 둘 이상 맞으면 ''(짐작하지 않는다). */
+function hjSchGuessProject(title){
+  const k=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
+  const t=k(title);if(!t)return '';
+  const tA=t.replace(/([가-힣])a(?=[0-9]|$|[^a-z0-9])/g,'$1아파트');
+  const nameKey=p=>k(String(p.name||'').replace(/\([^)]*\)/g,''));
+  const pick=list=>{
+    const hit=list.filter(p=>{const n=nameKey(p);return n.length>=3&&(t.includes(n)||tA.includes(n));});
+    const top=hit.filter(h=>!hit.some(o=>o!==h&&nameKey(o).length>nameKey(h).length&&nameKey(o).includes(nameKey(h))));
+    return top.length===1?top[0].name:(top.length>1?null:'');
+  };
+  const all=(state.projects||[]).filter(p=>p&&p.name);
+  const live=pick(all.filter(p=>!p.archived));
+  if(live===null)return '';
+  if(live)return live;
+  return pick(all.filter(p=>p.archived))||'';
+}
+/* v620 현장이 비어 있는데 제목으로 현장을 짐작할 수 있는 일정 — 일정 탭 '현장 잇기'(체크한 것만 잇는다) */
+function hjSchLinkCands(){
+  return (state.schedule||[]).filter(s=>s&&!s.project&&String(s.title||'').trim()).map(s=>({s,name:hjSchGuessProject(s.title)})).filter(r=>r.name);
+}
+function hjSchLinkBanner(){
+  try{
+    if(state._demo||(typeof hjStaffOn==='function'&&hjStaffOn()))return '';
+    const n=hjSchLinkCands().length;if(!n)return '';
+    return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:11px;padding:9px 11px;margin:0 0 12px;font-size:13px">'+
+      '🔗 현장 없는 일정 <b>'+n+'건</b> — 제목에 현장 이름이 있어요 <button class="ghost tiny" data-sch-link="1">현장 잇기</button></div>';
+  }catch(e){return '';}
+}
+function hjSchLinkView(){
+  const rows=hjSchLinkCands();
+  if(!rows.length){toast('현장을 이을 일정이 없어요');return;}
+  const body='<p class="hint" style="margin:0 0 10px">현장이 비어 있는데 제목에 현장 이름이 들어 있는 일정이에요. 맞는 것만 체크된 채로 두고 [잇기]를 누르세요.</p>'+
+    rows.map((r,i)=>'<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px dashed var(--line-soft)"><input type="checkbox" data-schlink-row="'+i+'" checked style="margin-top:3px">'+
+      '<span><b>'+escapeHtml(String(r.s.date||'')+' '+String(r.s.time||''))+'</b> '+escapeHtml(String(r.s.title||''))+'<br><span style="color:var(--muted)">→ 현장 '+escapeHtml(r.name)+'</span></span></label>').join('');
+  openModal('🔗 일정에 현장 잇기',body,[{label:'닫기',cls:'ghost',fn:closeModal},{label:'잇기',cls:'clay',fn:()=>{
+    const pick=[...document.querySelectorAll('[data-schlink-row]')].filter(x=>x.checked).map(x=>rows[+x.dataset.schlinkRow]).filter(Boolean);
+    const n=hjSchLinkApply(pick);
+    closeModal();toast(n?'🔗 일정 '+n+'건에 현장을 이었어요':'바뀐 일정이 없어요');}}],true);
+}
+/* 고른 것만 잇는다 — 그사이 현장이 생긴 일정·없어진 현장은 건너뛴다 */
+function hjSchLinkApply(pick){
+  let n=0;
+  (pick||[]).forEach(r=>{const s=(state.schedule||[]).find(x=>x&&r&&r.s&&x.id===r.s.id);
+    if(s&&!s.project&&(state.projects||[]).some(p=>p&&p.name===r.name)){s.project=r.name;n++;}});
+  if(n){markDirty();render();}
+  return n;
+}
 function newSchedule(){
   return {id:uid(),date:localDate(),time:'09:00',title:'',project:'',workers:'',memo:'',hours:8,
     report:null}; // report: {done, actualWorkers, material, issue, progress, weather, filledAt}
@@ -45238,6 +45333,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
+    const schLinkTarget=e.target.closest('[data-sch-link]');if(schLinkTarget)return hjSchLinkView();   // v620 일정에 현장 잇기
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
     const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-draft],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-claude-inbox-open],[data-claude-inbox-dismiss],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],[data-stmtproof],[data-stmtdetail],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schNoSite,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure,[data-unbilled-photo]');
     if(!t)return;
@@ -57293,7 +57389,7 @@ function hjBuildTagApply(){
   try{setTimeout(()=>{appVersionAutoCheck().catch(()=>{});},2500);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')appVersionAutoCheck().catch(()=>{});});}catch(e){}
   // v614 🤖 클로드 요청함 알림 — 부팅 때(중계 설정 복원 순간) 이미 연결된 기기만 켠다(__hjCinboxArmed). 중계 부팅(동기화)이 끝나고 4초 뒤 한 번, 앱을 다시 볼 때,
   // 첫 화면을 그릴 때(viewDashboard) — 합쳐 30분에 한 번 · 읽기만. 쓰다가 방금 연결한 기기는 다음에 열 때부터.
-  try{Promise.all([window.__hjRelayConfigDone,window.__hjRelayBootDone]).catch(()=>[]).then(r=>{if(!(r&&r[0]&&r[0].ready&&relayReady()))return;__hjCinboxArmed=true;setTimeout(()=>{hjClaudeInboxAutoCheck('boot');},4000);setInterval(()=>{hjKakaoAutoTick();},60*1000);});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')hjClaudeInboxAutoCheck('visible');});}catch(e){}
+  try{Promise.all([window.__hjRelayConfigDone,window.__hjRelayBootDone]).catch(()=>[]).then(r=>{if(!(r&&r[0]&&r[0].ready&&relayReady()))return;__hjCinboxArmed=true;setTimeout(()=>{hjClaudeInboxAutoCheck('boot');},4000);setTimeout(()=>{hjKakaoOpenCheck();},6000);setInterval(()=>{hjKakaoAutoTick();},60*1000);});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){hjClaudeInboxAutoCheck('visible');setTimeout(()=>{hjKakaoOpenCheck();},1500);}});}catch(e){}
 }catch(e){}})();
 </script>
 

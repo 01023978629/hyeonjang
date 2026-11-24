@@ -137,7 +137,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS kakaoaut
     assert.deepEqual(relayLog, ['listFiles', 'download'], '요청 파일만 읽음');
     assert.deepEqual(schedule(), [
       { title: '가상래미안 욕실 타일', date: '2026-11-24', time: '', memo: '2026-11-24~2026-11-25 (2일)\n카톡봇 3번\n구글 캘린더에서 가져옴 (카톡봇)', project: '가상래미안' },
-      { title: '가상빌 바닥 미장', date: '2026-11-26', time: '10:00', memo: '', project: '' }
+      { title: '가상빌 바닥 미장', date: '2026-11-26', time: '10:00', memo: '', project: '가상빌' }   // v620 현장 없이 온 일정은 제목에 든 현장으로(같은 묶음에서 만든 현장)
     ], '종일(allDay)·메모(여러 날·가져옴 표시)·시각 그대로');
     assert.deepEqual(projects(), ['가상래미안', '가상빌']);
     assert.deepEqual(done(), ['kb-20261121-140000-a1001', 'kb-20261121-140000-a1002', 'kb-20261121-140000-a1003'], '처리한 id(기기끼리 공유)');
