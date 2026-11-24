@@ -3,6 +3,16 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-24 배포 — 올린 사이트 묶음이 목록에 보일 때까지 기다렸다 배포
+
+11/24 배포 실패 5번(v620 3번·v621·v622 각 1번 + 다시 돌린 1번)이 모두 같은 꼴: `Upload site artifact` 가 묶음을 올린 바로 그 초(0~1초 뒤)에
+`Deploy to GitHub Pages` 가 'Fetching artifact metadata failed · No artifacts named "github-pages"' 로 끝났다. 묶음은 실제로 있었고(API 로 보임)
+성공한 실행은 1초 뒤에 시작했다 · GitHub 상태 페이지는 정상. → 두 단계 사이에 `Wait until the site artifact is listed`
+(`gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages` 가 1개 이상일 때까지 5초마다 · 최대 2분 · 보이면 10초 더).
+- 이 단계는 **실패로 끝나지 않는다**(`exit 1` 없음 · 못 보면 경고만 남기고 배포를 해 본다). 이름에 'Deploy to GitHub Pages' 를 넣지 마라 —
+  카톡봇(v1.9.16~)은 실패한 단계가 모두 그 이름이면 GitHub 쪽 실패로 보고 새 실행(workflow_dispatch)으로 다시 돌린다. 읽기만(권한 `actions: read` — B 에서 더함).
+- 검사 `tests/deploy-wait.check.js`(올리기 → 기다리기 → 배포 순서 · 실패 없음 · 같은 실행의 github-pages 만 · 변이 표).
+
 ## 2026-11-24 v623 📋 지난 일정 보고 정리
 
 대표 결정(11/24 'C ⑧ 지난 일정 작업 보고'). 그날 자료: 일정 84건 중 작업 보고(📋 report) 있는 일정 0건 · 현장이 이어진 지난 일정 15건 가운데 8건은
