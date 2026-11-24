@@ -5,8 +5,9 @@
    ② 자동 열기 — 구글에서 온 일정은 안 띄우고, 손으로 만든 일정은 지금처럼 띄운다 (OPEN)
    ③ 실제 길 — aiToolRun add_schedule · 카톡 승인 저절로(hjKakaoAutoApply) 가 일정을 넣어도 구글에서 온 것이면 창 없음 (ADD)
    ④ 팀 글 — 카톡봇 출처 줄도 v605 처럼 뺀다(📤 일정 공유·작업자 문안·하루치 지시) (TEAM)
+   ⑤ 📄 일정 복사 — 복사본은 구글에 없는 새 일정: 출처 줄을 옮기지 않아 자동 열기가 뜬다 (COPY)
    브라우저 없이 돈다: index.html 앱 스크립트를 통째로 VM 에 올려(photoassign-v620.unit.js 와 같은 틀) 진짜 함수를 부른다. 실제 중계·드라이브·고객 없음.
-   변이(HJ_V621_MUTATION): origin-any-text·origin-first-line·origin-no-trim·origin-no-bot 은 ①, open-ignores-origin 은 ②에서 실패해야 한다
+   변이(HJ_V621_MUTATION): origin-any-text·origin-first-line·origin-no-trim·origin-no-bot 은 ①, open-ignores-origin 은 ②, copy-keeps-origin 은 ⑤에서 실패해야 한다
    (③·④는 ①·②가 지키는 같은 함수를 실제 길로 다시 본다). HJ_V621_BASELINE=<commit>(예: 16f485a) 은 ①에서. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -22,8 +23,9 @@ const MUT = {
   'origin-any-text': ["function hjSchFromGcal(s){return String(s&&s.memo||'').split('\\n').some(l=>HJ_CALSYNC_FROM_RE.test(l.replace(/\\s+/g,' ').trim()));}",
     "function hjSchFromGcal(s){return /구글 캘린더에서 가져옴/.test(String(s&&s.memo||''));}"],
   'origin-first-line': ["String(s&&s.memo||'').split('\\n').some(", "String(s&&s.memo||'').split('\\n').slice(0,1).some("],
-  'origin-no-trim': ["HJ_CALSYNC_FROM_RE.test(l.replace(/\\s+/g,' ').trim())", 'HJ_CALSYNC_FROM_RE.test(l)'],
+  'origin-no-trim': [".some(l=>HJ_CALSYNC_FROM_RE.test(l.replace(/\\s+/g,' ').trim()))", '.some(l=>HJ_CALSYNC_FROM_RE.test(l))'],
   'origin-no-bot': ['(?:@ 제미나이 입력|카톡봇)', '@ 제미나이 입력'],
+  'copy-keeps-origin': [".split('\\n').filter(l=>!HJ_CALSYNC_FROM_RE.test(l.replace(/\\s+/g,' ').trim())).join('\\n').trim();\n  const base=HJ_YMD_RE", ".trim();\n  const base=HJ_YMD_RE"],
   'open-ignores-origin': ["/^💰/.test(s.title||'')||hjSchFromGcal(s))return false;", "/^💰/.test(s.title||''))return false;"],
 };
 if (process.env.HJ_V621_MUTATION) {
@@ -166,7 +168,20 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS gcalskip
     assert.equal(run(`return hjWoMemoSafe({customer:{}},${JSON.stringify('주차 B2\n' + BOT)});`), '주차 B2', '📤 하루치 팀 지시도');
   });
 
+  await test('⑤ 📄 일정 복사 — 출처 줄은 옮기지 않아 복사본은 자동 열기가 뜬다 (COPY)', async () => {
+    reset();
+    for (const memo of [botArgs('x').memo, '장소: 가상시 달빛로 5\n' + APPSYNC, '줄눈 회색\r\n' + BOT]) {
+      const d = run(`return hjScheduleCopyDraft({id:'g1',date:'2026-11-26',time:'09:00',title:'가상빌라 타일',project:'가상빌라',memo:${JSON.stringify(memo)}});`);
+      assert.equal(run(`return hjSchFromGcal({memo:${JSON.stringify(d.memo)}});`), false, '복사본 메모에 출처 줄 없음: ' + JSON.stringify(d.memo));
+      opened = [];
+      assert.equal(run(`return hjGcalMaybeOpen(Object.assign(newSchedule(),${JSON.stringify(d)}));`), true);
+      assert.equal(opened.length, 1, '복사본은 구글에 없는 새 일정 — 창이 뜬다');
+    }
+    const d = run("return hjScheduleCopyDraft({id:'g2',date:'2026-11-26',title:'가상빌라 타일',memo:'2026-11-26~2026-11-27 (2일)\\n줄눈 회색\\n구글 캘린더에서 가져옴 (카톡봇)'});");
+    assert.equal(d.memo, '줄눈 회색', '기간 줄(v361)과 출처 줄을 떼고 나머지는 그대로');
+  });
+
   assert.equal(writes, fetchAtBoot, '바깥 요청 없음');
-  console.log('gcalskip-v621: ' + passed + '/4');
-  if (passed !== 4) process.exit(1);
+  console.log('gcalskip-v621: ' + passed + '/5');
+  if (passed !== 5) process.exit(1);
 })().catch(e => { console.error('FAIL gcalskip-v621', e && e.stack || e); process.exit(1); });

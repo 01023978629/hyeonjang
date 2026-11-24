@@ -43316,11 +43316,12 @@ function ensureBuiltInCalendarImports(){
 }
 /* v361 📄 일정 복사 — 같은 작업을 다른 날에 또 잡을 때(같은 현장·시간·인원·담당·메모) 처음부터 다시 적던 것을 줄인다.
    새 일정 창을 그 값으로 채워 연다(저장 전엔 아무것도 생기지 않는다). 날짜는 다음 작업일(일요일 건너뜀).
-   옮겨 오지 않는 것: 작업 보고·시작 기록·준비물 체크·일당·캘린더/세금/분할납/AS 연결 표시, 공정표 기간 메모와 '(N일차 시작)' 꼬리표
+   옮겨 오지 않는 것: 작업 보고·시작 기록·준비물 체크·일당·캘린더/세금/분할납/AS 연결 표시, 공정표 기간 메모와 '(N일차 시작)' 꼬리표,
+   v621 구글 출처 줄('구글 캘린더에서 가져옴 …' — 복사본은 구글에 없는 새 일정이라 📅 구글 캘린더 자동 열기가 떠야 한다: hjSchFromGcal)
    (복사본은 하루짜리 일정이다 — 여러 날로 늘리려면 🗓 공정표나 v353 같이 옮기기를 쓴다). */
 function hjScheduleCopyDraft(src){
   if(!src)return null;
-  const memo=String(src.memo||'').replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'').trim();
+  const memo=String(src.memo||'').replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'').split('\n').filter(l=>!HJ_CALSYNC_FROM_RE.test(l.replace(/\s+/g,' ').trim())).join('\n').trim();
   const base=HJ_YMD_RE.test(String(src.date||''))?src.date:localDate();
   return {date:hjShiftWorkDays(base,1),time:src.time||'',title:String(src.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim(),project:src.project||'',
     workers:src.workers||'',memo,hours:src.hours??8,crew:hjCrewText(src.crew)};

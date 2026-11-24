@@ -9,9 +9,11 @@
 '새 일정 만들기' 창을 띄웠다 — 이미 구글에 있는 일정이라 저장하면 둘이 된다. 카톡 승인 요청은 손대지 않아도 들어오므로 창이 아무 때나 뜬다.
 - `hjSchFromGcal(s)`: 메모 어느 줄이든 그 줄 전체가 출처 표시(`HJ_CALSYNC_FROM_RE` — 꼬리 없음 · 🔄 맞추기 '(@ 제미나이 입력)' · 카톡봇 '(카톡봇)')면 참
   (띄어쓰기·줄끝 \r 무시). `hjGcalMaybeOpen` 이 이것이면 띄우지 않는다 — 손으로 만든 새 일정은 지금처럼 띄운다.
+  📄 일정 복사(`hjScheduleCopyDraft`)는 출처 줄을 옮기지 않는다 — 복사본은 구글에 없는 새 일정이라 창이 떠야 한다(검토에서 찾음).
+  구글 출처가 아닌 카톡 승인 일정은 그대로 창을 띄운다(구글에 없는 일정 — 안 띄우면 구글에 영영 안 들어간다).
 - `HJ_CALSYNC_FROM_RE` 에 '(카톡봇)' 꼬리를 더함 — 카톡봇 v1.9.x `approvals.schedule_args` 가 메모 끝줄에 '구글 캘린더에서 가져옴 (카톡봇)' 을 적는다.
   v605 처럼 📤 일정 공유 글·작업자 문안·📤 하루치 팀 지시(`hjMemoOut`·`hjWoMemoSafe`)에서 이 줄이 빠진다(그 글을 바꾸면 카톡봇도 같이).
-- 검사: `tests/gcalskip-v621.unit.js` 4/4(변이 origin-any-text·origin-first-line·origin-no-trim·origin-no-bot 은 ①, open-ignores-origin 은 ②에서 실패 ·
+- 검사: `tests/gcalskip-v621.unit.js` 5/5(변이 origin-any-text·origin-first-line·origin-no-trim·origin-no-bot 은 ①, open-ignores-origin 은 ②, copy-keeps-origin 은 ⑤에서 실패 ·
   기준선 `HJ_V621_BASELINE=16f485a` 은 ①에서). 핀 `hyeonjang-v621-gcalskip`.
 
 ## 2026-11-24 v620 🖼 사진 넣기(assign_photo_files) · 일정 ↔ 현장 · 열면 카톡 승인 요청을 바로
