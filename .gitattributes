@@ -1,0 +1,2 @@
+# 바이트가 그대로여야 하는 고정 파일 — 윈도우(core.autocrlf=true)가 줄끝을 CRLF 로 바꾸면 sri.check 의 sha384 가 달라져 PC 빠른 검사가 늘 실패했다(11/24).
+tests/fixtures/vendor/** -text
