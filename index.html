@@ -4069,7 +4069,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v622-autoupdate';
+const APP_BUILD='hyeonjang-v623-pastreport';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -43126,6 +43126,7 @@ function viewSchedule(){
     html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button> <button class="ghost tiny" id="schCalSync" style="min-height:44px" title="구글 캘린더 일정을 읽어 앱 일정표와 견주고, 미리보기에서 고른 것만 넣습니다 — 구글 캘린더는 바꾸지 않아요">🔄 구글 캘린더 맞추기</button>${hjSchNoSiteBtnHtml()}${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
   html+=hjSchLinkBanner();   // v620 현장 없는 일정 — 현장 잇기
+  html+=hjPastRepBanner();   // v623 보고 없는 지난 일정 — 보고 정리
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
     return html;
@@ -43329,6 +43330,66 @@ function hjSchLinkApply(pick){
   let n=0;
   (pick||[]).forEach(r=>{const s=(state.schedule||[]).find(x=>x&&r&&r.s&&x.id===r.s.id);
     if(s&&!s.project&&(state.projects||[]).some(p=>p&&p.name===r.name)){s.project=r.name;n++;}});
+  if(n){markDirty();render();}
+  return n;
+}
+/* v623 대표 결정(11/24 'C ⑧ 지난 일정 작업 보고') — 지난 현장 일정이 작업 보고(📋) 없이 남는다(11/24: 일정 84건 중 보고 0건 ·
+   현장이 이어진 지난 일정 15건 가운데 8건은 그날 그 현장 사진이 있다). 보고가 없으면 공정 진행(hjPhaseProgress)·🐢 공정 지연(hjPhaseDelays)·
+   누수 출동 기록이 그 일을 '안 한 일'로 본다. 일정 탭 '📋 지난 일정 보고 정리' — 지난 60일 · 진행 현장에 이어진 · 보고가 없는(쓰다 만 보고도
+   있으면 건드리지 않는다) 일정만. 상담·실측·AS 방문·💰·세금 일정은 뺀다. 그날(여러 날 공정은 그 기간) 그 현장 사진이 있으면 미리 체크.
+   체크한 것만 '완료' 보고(제목 + 사진 장수 — v403 📷 사진으로 기록과 같은 꼴)를 남긴다. 일정을 지우거나 옮기지 않는다. */
+const HJ_PAST_REP_DAYS=60;
+function hjPastRepCands(today){
+  today=today||localDate();
+  const cut=new Date(today+'T00:00:00');cut.setDate(cut.getDate()-HJ_PAST_REP_DAYS);const from=localDate(cut);
+  const live=new Set((state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name));   // 진행 현장만(보관 현장은 정리 끝)
+  const asIds=new Set((state.asLog||[]).map(a=>a&&a.visitSchedId).filter(Boolean));
+  const rows=(state.schedule||[]).filter(s=>{
+    if(!s||s.report||s._taxAuto||!live.has(s.project)||!HJ_YMD_RE.test(String(s.date||''))||s.date<from)return false;
+    const t=String(s.title||'').trim();
+    if(!t||HJ_PLAN_SKIP_RE.test(t)||HJ_INQ_MONEY_RE.test(t)||hjIsAsVisitSched(s)||asIds.has(s.id))return false;
+    return hjSchSpan(s).to<today;   // 여러 날 공정은 끝난 뒤에만
+  });
+  if(!rows.length)return [];
+  const want=new Set(rows.map(s=>s.project)),days=new Map();   // 현장 → (날 → 사진 수)
+  (state.files||[]).forEach(f=>{
+    if(!f||f.kind!=='photo'||!want.has(f.project)||!f.when)return;
+    const at=new Date(f.when);if(isNaN(at.getTime()))return;
+    let m=days.get(f.project);if(!m){m=new Map();days.set(f.project,m);}
+    const d=localDate(at);m.set(d,(m.get(d)||0)+1);
+  });
+  return rows.map(s=>{const sp=hjSchSpan(s);let n=0;
+    (days.get(s.project)||new Map()).forEach((c,d)=>{if(d>=sp.from&&d<=sp.to)n+=c;});
+    return {s,n};}).sort((a,b)=>(String(b.s.date)+String(b.s.time||'')).localeCompare(String(a.s.date)+String(a.s.time||'')));
+}
+function hjPastRepBanner(){
+  try{
+    if(hjStaffOn()||state._demo)return '';   // 체험·직원 모드엔 없음
+    const rows=hjPastRepCands();if(!rows.length)return '';
+    const m=rows.filter(r=>r.n>0).length;
+    return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:11px;padding:9px 11px;margin:0 0 12px;font-size:13px">'+
+      '📋 보고 없는 지난 일정 <b>'+rows.length+'건</b>'+(m?' — 그날 현장 사진이 있는 일정 '+m+'건':'')+' <button class="ghost tiny" data-past-rep="1">보고 정리</button></div>';
+  }catch(e){return '';}
+}
+function hjPastRepView(){
+  const rows=hjPastRepCands();
+  if(!rows.length){toast('보고를 남길 지난 일정이 없어요');return;}
+  const body='<p class="hint" style="margin:0 0 10px">지난 '+HJ_PAST_REP_DAYS+'일 동안 작업 보고(📋) 없이 지나간 현장 일정이에요. 그날 그 현장 사진이 있는 일정은 미리 체크해 두었어요. '+
+    '한 일만 체크된 채로 두고 [완료로 기록]을 누르세요 — 체크한 일정에 \'완료\' 보고가 남아요(일정의 📋에서 고칠 수 있어요).</p>'+
+    rows.map((r,i)=>'<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px dashed var(--line-soft)"><input type="checkbox" data-pastrep-row="'+i+'"'+(r.n>0?' checked':'')+' style="margin-top:3px">'+
+      '<span><b>'+escapeHtml(String(r.s.date||'')+' '+String(r.s.time||''))+'</b> '+escapeHtml(String(r.s.title||''))+'<br><span style="color:var(--muted)">'+escapeHtml(String(r.s.project||''))+' · '+(r.n>0?'그날 사진 '+r.n+'장':'사진 없음')+'</span></span></label>').join('');
+  openModal('📋 지난 일정 보고 정리',body,[{label:'닫기',cls:'ghost',fn:closeModal},{label:'완료로 기록',cls:'clay',fn:()=>{
+    const pick=[...document.querySelectorAll('[data-pastrep-row]')].filter(x=>x.checked).map(x=>rows[+x.dataset.pastrepRow]).filter(Boolean);
+    const n=hjPastRepApply(pick);
+    closeModal();toast(n?'📋 지난 일정 '+n+'건에 완료 보고를 남겼어요':'바뀐 일정이 없어요');}}],true);
+}
+/* 고른 것만 — 그사이 보고가 생긴(다른 기기·📋) 일정은 건너뛴다. 보고 꼴은 📋 일일 작업 보고와 같은 칸(새 칸 없음). */
+function hjPastRepApply(pick){
+  let n=0;const at=new Date().toISOString();
+  (pick||[]).forEach(r=>{const s=(state.schedule||[]).find(x=>x&&r&&r.s&&x.id===r.s.id);
+    if(!s||s.report)return;   // 그사이 보고가 생긴 일정(다른 기기·📋)은 그대로
+    const title=String(s.title||'').trim()||'현장 작업';
+    s.report={done:title+(r.n>0?' (사진 '+r.n+'장)':''),actualWorkers:'',material:'',issue:'',progress:'완료',weather:'',filledAt:at};n++;});
   if(n){markDirty();render();}
   return n;
 }
@@ -45413,6 +45474,7 @@ function setupDelegation(){
       return;
     }
     const schLinkTarget=e.target.closest('[data-sch-link]');if(schLinkTarget)return hjSchLinkView();   // v620 일정에 현장 잇기
+    const pastRepTarget=e.target.closest('[data-past-rep]');if(pastRepTarget)return hjPastRepView();   // v623 지난 일정 보고 정리
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
     const t=e.target.closest('#schMyWork,[data-unbilled-skip],[data-unbilled-copy],[data-unbilled-draft],[data-unbilled-unskip],[data-stmt-ym],[data-stmt-basis],[data-stmt-go],[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-claude-inbox-open],[data-claude-inbox-dismiss],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefweather],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],[data-stmtproof],[data-stmtdetail],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSync,#schCalSend,#schNoSite,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure,[data-unbilled-photo]');
     if(!t)return;

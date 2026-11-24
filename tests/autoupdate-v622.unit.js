@@ -213,7 +213,7 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS autoupda
 
   await test('④ 바꾼 뒤 처음 열릴 때 한 번 알림 (NOTICE)', async () => {
     reset(0); store.set('hj_ver_auto', JSON.stringify({ from: 'hyeonjang-v621-gcalskip', to: SHELL, tries: 1 }));
-    assert.match(run('return hjVerAutoNotice();'), /손대지 않은 사이에 새 판 v622-autoupdate 으로 바꿨어요/);
+    assert.ok(run('return hjVerAutoNotice();').includes('손대지 않은 사이에 새 판 ' + SHELL.replace(/^hyeonjang-/, '') + ' 으로 바꿨어요'), '지금 판 이름(v623 부터 판이 올라도 그대로)');
     assert.equal(toasts.length, 1); assert.equal(store.has('hj_ver_auto'), false, '한 번만');
     assert.equal(run('return hjVerAutoNotice();'), '');
     reset(0); store.set('hj_ver_auto', JSON.stringify({ from: SHELL, to: NEWER, tries: 1 }));

@@ -3,6 +3,18 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-24 v623 📋 지난 일정 보고 정리
+
+대표 결정(11/24 'C ⑧ 지난 일정 작업 보고'). 그날 자료: 일정 84건 중 작업 보고(📋 report) 있는 일정 0건 · 현장이 이어진 지난 일정 15건 가운데 8건은
+그날 그 현장 사진이 있다. 보고가 없으면 공정 진행(`hjPhaseProgress`)·🐢 공정 지연(`hjPhaseDelays`)·누수 출동 기록(`s.urgent` + 완료 보고)이 '안 한 일'로 본다.
+- 일정 탭 띠 `hjPastRepBanner`(체험·직원 모드 없음) → `hjPastRepView` 창 → 체크한 것만 `hjPastRepApply`. 후보 `hjPastRepCands(today)`:
+  지난 60일(`HJ_PAST_REP_DAYS`) · 진행 현장(보관 빼고)에 이어진 · `s.report` 가 비어 있는(쓰다 만 보고도 있으면 안 건드림) · 여러 날 공정은 끝난 뒤(`hjSchSpan(s).to<today`) ·
+  상담·실측(`HJ_PLAN_SKIP_RE`)·💰(`HJ_INQ_MONEY_RE`)·세금(`_taxAuto`)·AS 방문(`hjIsAsVisitSched`·asLog visitSchedId) 빼고. 최근 날짜 먼저.
+- 사진 수: `state.files` 사진(kind photo) 중 같은 현장 · `localDate(new Date(f.when))` 가 그 일정 기간 안(v403 `hjPhotoDayGroups` 와 같은 날 셈). 사진이 있으면 미리 체크.
+- 남기는 보고: 📋 일일 작업 보고와 같은 칸만 `{done:'제목 (사진 N장)', actualWorkers:'', material:'', issue:'', progress:'완료', weather:'', filledAt}`(v403 📷 사진으로 기록과 같은 꼴, 새 칸 없음).
+  그사이 보고가 생긴 일정은 건너뛴다. 일정을 지우거나 옮기지 않는다. 알림·고객 문자·다음 공정 묻기 없음(지난 일 정리라서).
+- 검사 `tests/pastreport-v623.unit.js`(앱 스크립트를 VM 에 올림 · 변이 `HJ_V623_MUTATION`).
+
 ## 2026-11-24 배포 검사 — 병합 전 검사를 통과한 같은 내용이면 배포 때는 빠른 검사만 · PC 빠른 검사 2개
 
 대표 결정(11/24 'B' — 공개 빨리, 덜 깨지게). 공개 한 번에 같은 전체 검사가 두 번 돌았다: PR 검사(verify-release.yml, 최근 30번 중앙 20분)를 통과한
