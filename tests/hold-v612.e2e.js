@@ -1,6 +1,6 @@
 /* v613 ⏸ 보류 묶음 — 더보기 '쓰는 것만'(23) · ✍ 새 견적서 보류(14) · 할 일 하나(18) · 🧰 옮긴 명령(22). 합성 자료, 바깥 쓰기 0, 폰 390·PC 1280.
    판정 함수는 hold-v612.unit.js 가 따로 본다 — 여기는 실제 화면.
-   ① 더보기 — 분류 6개에서 보류 기능이 빠지고 맨 아래 접힌 [⏸ 보류 18개 보기] · 칸 126개는 그대로(분류 113 + 보류 13) · 보류 칸에서 바로 연다 ·
+   ① 더보기 — 분류 6개에서 보류 기능이 빠지고 맨 아래 접힌 [⏸ 보류 25개 보기] · 칸 126개는 그대로(분류 109 + 보류 17 — v625 ⑮ 지출 셋·명함 스캔 더함) · 보류 칸에서 바로 연다 ·
       검색은 보류 기능도 찾고 '⏸ 보류' 표시 · 둘러보기만으로 자료·이 기기 설정 불변 (MORE)
    ② 다시 보이기 — [다시 보이기] 누르면 그 기능이 원래 분류로·묶음 수 줄어듦·설정 {show:[id]} · [처음 보류로 되돌리기] · 대시보드 단추 줄은 제자리에서 바뀜 (UNHOLD)
    ③ 자동 — 고객 페이지 주소·OfficeOps 주소+토큰이 있으면 그 기능이 분류로 돌아온다 · 중계(Apps Script)가 있어도 ☁ 팀 공유 할일은 접힌 채(할 일 하나 — v613 검토) (AUTO)
@@ -38,8 +38,9 @@ if (process.env.HJ_V612_MUTATION) {
   const m = MUT[process.env.HJ_V612_MUTATION]; assert.ok(m, 'unknown mutation ' + process.env.HJ_V612_MUTATION);
   assert.equal(SRC.split(m[0]).length, 2, 'mutation anchor'); html = SRC.replace(m[0], () => m[1]);
 }
-const HELD = ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom', 'sharedtodo', 'quotenew', 'aiquote', 'photoquote', 'inventory', 'materials', 'matdue', 'suppliers', 'satisfaction', 'goal', 'budget', 'budgetalert', 'adpostlog'];
-const HELD_MORE = HELD.filter(id => !['quotenew', 'teamboard', 'teamroom', 'sharedtodo', 'adpostlog'].includes(id));
+const HELD = ['kakaoin', 'ptlist', 'officeops', 'teamboard', 'teamroom', 'sharedtodo', 'quotenew', 'aiquote', 'photoquote', 'inventory', 'materials', 'matdue', 'suppliers', 'satisfaction', 'goal', 'budget', 'budgetalert', 'adpostlog',
+  'expense', 'expenseclassify', 'scanreceipt', 'trips', 'worktime', 'contacts', 'scancard'];   // v625 ⑮
+const HELD_MORE = HELD.filter(id => !['quotenew', 'teamboard', 'teamroom', 'sharedtodo', 'adpostlog', 'trips', 'worktime', 'contacts'].includes(id));
 let browser, passed = 0;
 const errors = [], network = { writes: 0 };
 async function test(name, fn) { await fn(); passed++; console.log('PASS hold-v612 ' + name); }
@@ -78,6 +79,7 @@ async function seed(page) {
     state.quotes = [Object.assign(newQuote(false), { id: 'qs1', title: '가온아파트 내역서', project: '가온아파트', stmt: { doc: '작업내역서', date: '2026-11-10', file: 'TEST_STMT.xlsx' }, items: [{ name: '방수', spec: '', qty: 1, price: 100000 }] })];
     state.files = []; state.schedule = []; state.notes = [{ id: 'n1', todo: true, text: '자재 주문', done: false }];
     state.inventory = []; state.materials = []; state.suppliers = []; state.supplierMap = {}; state.satisfaction = []; state.adPosts = []; state.goals = { salesBasis: 'stmt' };
+    state.expenses = []; state.trips = []; state.workLogs = []; state.contacts = [];   // v625 ⑮ 지출·운행·작업시간·연락처도 0건(대표 자료 꼴)
     state.portalCfg = {}; state.kakaoLastAt = ''; state.editingQuote = null; state.activeProject = null; state.tab = 'dashboard'; state._demo = false;
     try { localStorage.removeItem('hj_role'); } catch (e) {}
     render();
@@ -103,16 +105,16 @@ const moreInfo = page => page.evaluate(() => {
   try {
     const { context, page } = await open(390);
 
-    await test('① 더보기 — 분류에서 빠지고 맨 아래 접힌 보류 18개 · 칸 126개 그대로 · 보류 칸에서 바로 열기 · 검색 · 자료 불변 (MORE)', async () => {
+    await test('① 더보기 — 분류에서 빠지고 맨 아래 접힌 보류 25개 · 칸 126개 그대로 · 보류 칸에서 바로 열기 · 검색 · 자료 불변 (MORE)', async () => {
       await seed(page);
       const before = await dataSig(page);
       await openMore(page);
       const m = await moreInfo(page);
       assert.deepEqual(m.cats, ['ai', 'money', 'customer', 'site', 'report', 'tool'], '분류 6개 그대로');
       assert.deepEqual(m.catIds.filter(id => HELD.includes(id)), [], '보류 기능은 분류에 없다 ' + JSON.stringify(m.catIds.filter(id => HELD.includes(id))));
-      assert.equal(m.counts.reduce((a, b) => a + b, 0), 126 - HELD_MORE.length, '분류 칸 수 = 126 − 보류 13');
+      assert.equal(m.counts.reduce((a, b) => a + b, 0), 126 - HELD_MORE.length, '분류 칸 수 = 126 − 보류 17');
       assert.equal(m.all, 126, '더보기 칸 126개 — 지운 것 없음');
-      assert.ok(m.holdLast && !m.holdOpen && /보류 18개 보기/.test(m.title), '맨 아래 접힌 보류 ' + JSON.stringify(m));
+      assert.ok(m.holdLast && !m.holdOpen && /보류 25개 보기/.test(m.title), '맨 아래 접힌 보류 ' + JSON.stringify(m));
       assert.deepEqual(m.rows, HELD, '보류 줄 차례(서버 없음 먼저)');
       assert.deepEqual(m.auto, HELD.slice(0, 6));
       assert.equal(m.reset, false);
@@ -136,7 +138,7 @@ const moreInfo = page => page.evaluate(() => {
       await openMore(page);
       await page.evaluate(() => { document.getElementById('moreHold').open = true; });
       await page.click('#moreHold [data-more-unhold="kakaoin"]');
-      await page.waitForFunction(() => /보류 17개 보기/.test(document.querySelector('#moreHold summary').textContent));
+      await page.waitForFunction(() => /보류 24개 보기/.test(document.querySelector('#moreHold summary').textContent));
       let m = await moreInfo(page);
       assert.ok(m.catIds.includes('kakaoin') && !m.rows.includes('kakaoin') && m.reset && m.holdOpen, '원래 분류로 · 묶음은 펼친 채 ' + JSON.stringify(m.rows));
       assert.ok(await page.evaluate(() => [...document.querySelectorAll('details[data-cat="customer"] [data-moreaction]')].some(b => b.dataset.moreaction === 'kakaoin')), '고객·영업 분류');
@@ -149,7 +151,7 @@ const moreInfo = page => page.evaluate(() => {
       await page.waitForFunction(() => !!document.getElementById('dashboardTeamOpen'));
       assert.ok(await page.evaluate(() => document.getElementById('dashboardTodo') === window.__dashNode && !document.getElementById('dashboardTeamSummary').hidden), '제자리 · 팀 업무 줄도 보임');
       await page.click('#moreHold [data-more-holdreset]');
-      await page.waitForFunction(() => /보류 18개 보기/.test(document.querySelector('#moreHold summary').textContent));
+      await page.waitForFunction(() => /보류 25개 보기/.test(document.querySelector('#moreHold summary').textContent));
       m = await moreInfo(page);
       assert.ok(!m.catIds.includes('kakaoin') && !m.reset, '처음 보류로');
       assert.equal(await page.evaluate(() => localStorage.getItem('hj_more_hold')), null);
@@ -165,7 +167,7 @@ const moreInfo = page => page.evaluate(() => {
       assert.match(await page.locator('#dashboardTodoHint').innerText(), /✅ 할 일 한 곳에/);
       await openMore(page);
       const m = await moreInfo(page);
-      assert.ok(['kakaoin', 'ptlist', 'officeops'].every(id => m.catIds.includes(id)) && /보류 15개 보기/.test(m.title), '연결된 셋은 분류로 ' + m.title);
+      assert.ok(['kakaoin', 'ptlist', 'officeops'].every(id => m.catIds.includes(id)) && /보류 22개 보기/.test(m.title), '연결된 셋은 분류로 ' + m.title);
       assert.ok(m.rows.includes('sharedtodo'), '☁ 팀 공유 할일은 보류 묶음에 남는다 ' + JSON.stringify(m.rows));
       assert.deepEqual(m.auto, ['teamboard', 'teamroom'], '직원 작업실은 team-config.js 주소가 빈 채로 보류');
       await page.evaluate(() => { document.getElementById('moreSheetClose').click(); relayReady = () => false; __relay.url = ''; __relay.token = ''; __officeOps.url = ''; __officeOps.token = ''; });
