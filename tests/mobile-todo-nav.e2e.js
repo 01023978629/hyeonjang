@@ -47,7 +47,7 @@ async function openTodo(page){
         await context.route('**/*',r=>new URL(r.request().url()).origin===ORIGIN?r.continue():r.abort());
         const page=await context.newPage();page.setDefaultTimeout(9000);
         const errors=[],effects=[];page.on('pageerror',e=>errors.push(String(e)));page.on('popup',()=>effects.push('popup'));page.on('download',()=>effects.push('download'));
-        await page.addInitScript(()=>{localStorage.setItem('hj_onboard_done','1');localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));});
+        await page.addInitScript(()=>{localStorage.setItem('hj_more_hold',JSON.stringify({show:['contacts']}));/* v625 연락처 0명이면 바로가기 [연락처] 보류 — 이 검사는 바로가기 8개를 센다 */localStorage.setItem('hj_onboard_done','1');localStorage.setItem('pref_mobile','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));});
         await page.goto(ORIGIN+'/index.html',{waitUntil:'domcontentloaded'});
         await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
         await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone]);clearTimeout(__idbSaveTimer);await __appStateWriteQueue;});
