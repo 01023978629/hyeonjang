@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-27 v629 🤖 요청함 '내역서 줄 고치기'(stmt_line_edit)
+
+대표 요청(11/27) "고쳐줘" — v628 공개 뒤 9/17 누수나라 내역서 ⚠ 4줄('10/15' → 실제 9/15)을 Claude 가 대신 고치게. Claude 는 현장웹 자료를 요청함(결재)으로만 바꾼다. 핀 `hyeonjang-v629-stmtfix`.
+- 도구 `stmt_line_edit`(AI_TOOLS·AI_WRITE·AI_ALWAYS_CONFIRM·HJ_KAKAO_AUTO_TOOLS): items [{src, project, d, work, loc, amt, to_d, to_amt, skip}] 최대 50줄.
+- `hjStmtFixResolve`: 원본 파일·현장이 같은 내역서 견적에서 작업명이 같고 날짜·금액이 지금 값이나 파일 원래 값(d0·amt0)과 같은 줄, 여럿이면 위치까지 — 하나가 아니면 못 찾음.
+- `hjStmtFixApply`: 줄마다 v628 `hjStmtLineEditPlan`(✏ 와 같은 막기) → `hjStmtLineEditWrite`(✏ 저장과 같이 쓰는 쓰기). 이미 그 값이면 '이미'. 한 줄도 못 고쳤는데
+  못 찾은·막힌 줄이 있으면 throw(요청함에 남음). 안전판은 부르는 쪽(카톡 승인 반영·요청함 ✓). 카톡 승인 반영(`hjKakaoAutoCanWrite`)은 고칠(또는 이미 그 값인) 줄이 하나라도 있을 때만.
+- 미리보기 `hjStmtFixPreview` · 답 줄 `aiResultBrief`. 검사 `tests/stmtfix-v629.unit.js`(변이 `HJ_V629_MUTATION`).
+
 ## 2026-11-27 v628 📑 내역서 월 = 작업한 날 · 내역서 줄 고치기(날짜·금액·미포함)
 
 대표 요청(11/27) "현장웹에 내역서가 월 분류가 잘못되었어 내역서에 미 포함 이나 금액 수정 기능 추가해줘". 핀 `hyeonjang-v628-stmtedit`.
