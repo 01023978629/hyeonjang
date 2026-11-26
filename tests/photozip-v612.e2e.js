@@ -298,7 +298,7 @@ const photosOf = z => zipNames(z).filter(n => !n.startsWith('_목록/'));
         box: await __T.list(top, '_사진보관'),
         left: { A: await __T.list(top, A), A2D: await __T.list(top, A2D), B: await __T.list(top, B), U: await __T.list(top, '현장사진/'), R: await __T.list(top, '_정리완료/T612 최근/') },
         zipA: await __T.zip(top, 'T612 현장A_사진보관.zip'), zipB: await __T.zip(top, 'T612 B_동_사진보관.zip'),
-        e: { A1: await __T.entry(top, 'T612 현장A_사진보관.zip', '2026-09-10/IMG_A1.jpg'), A2: await __T.entry(top, 'T612 현장A_사진보관.zip', '2026-09-10/IMG_A2.jpg'), AX: await __T.entry(top, 'T612 현장A_사진보관.zip', '2026-09-12/IMG_AX.jpg'), B1: await __T.entry(top, 'T612 B_동_사진보관.zip', '2026-08-01/IMG_B1.jpg') },
+        e: { A1: await __T.entry(top, 'T612 현장A_사진보관.zip', '101동 501호/2026-09-10/IMG_A1.jpg'), A2: await __T.entry(top, 'T612 현장A_사진보관.zip', '2026-09-10/IMG_A2.jpg'), AX: await __T.entry(top, 'T612 현장A_사진보관.zip', '2026-09-12/IMG_AX.jpg'), B1: await __T.entry(top, 'T612 B_동_사진보관.zip', '2026-08-01/IMG_B1.jpg') },
         last: hjPzLastGet(), toast: document.getElementById('toast').textContent,
       };
     });
@@ -313,12 +313,12 @@ const photosOf = z => zipNames(z).filter(n => !n.startsWith('_목록/'));
       assert.deepEqual(r.box, ['T612 B_동_사진보관.zip', 'T612 현장A_사진보관.zip'], '_사진보관 에 ZIP 둘만(.작성중 없음)');
       const zA = pyZip(r.zipA, 'a1'), zB = pyZip(r.zipB, 'b1');
       assert.equal(zA.bad, null, 'python zipfile CRC 검사'); assert.equal(zB.bad, null); assert.equal(zA.comment, 'hj-photozip-v2', '줄인 사진 ZIP 표시');
-      assert.deepEqual(photosOf(zA), ['2026-09-10/IMG_A1.jpg', '2026-09-10/IMG_A2.jpg', '2026-09-12/IMG_AX.jpg', '2026-10-18/사진 한글.heic'], 'PNG 는 .jpg 로 · AF 는 안 담음');
+      assert.deepEqual(photosOf(zA), ['101동 501호/2026-09-10/IMG_A1.jpg', '2026-09-10/IMG_A2.jpg', '2026-09-12/IMG_AX.jpg', '2026-10-18/사진 한글.heic'], 'PNG 는 .jpg 로 · AF 는 안 담음');
       const e = n => zA.entries.find(x => x.name === n);
-      assert.ok(e('2026-09-10/IMG_A1.jpg').size < r.sizes.A1 && e('2026-09-10/IMG_A2.jpg').size < r.sizes.A2 && e('2026-09-12/IMG_AX.jpg').size < r.sizes.AX, '줄인 사진은 더 작다');
+      assert.ok(e('101동 501호/2026-09-10/IMG_A1.jpg').size < r.sizes.A1 && e('2026-09-10/IMG_A2.jpg').size < r.sizes.A2 && e('2026-09-12/IMG_AX.jpg').size < r.sizes.AX, '줄인 사진은 더 작다');
       assert.equal(e('2026-10-18/사진 한글.heic').sha, sha(gen(4002, 13)), 'HEIC 은 그 바이트 그대로');
       assert.ok(zA.entries.every(x => x.method === 0 && x.size === x.csize && x.utf8), '무압축 STORE · 이름 UTF-8 표시');
-      assert.equal(e('2026-09-10/IMG_A1.jpg').comment, '_정리완료/T612 현장A/현장사진/IMG_A1.jpg', '주석 = 원래 위치'); assert.deepEqual(e('2026-09-10/IMG_A1.jpg').date, [2026, 9, 10, 10, 0, 0]);
+      assert.equal(e('101동 501호/2026-09-10/IMG_A1.jpg').comment, '_정리완료/T612 현장A/현장사진/IMG_A1.jpg', '주석 = 원래 위치'); assert.deepEqual(e('101동 501호/2026-09-10/IMG_A1.jpg').date, [2026, 9, 10, 10, 0, 0]);
       assert.deepEqual([r.e.A1.w, r.e.A1.h], [2000, 1500], '긴 변 2000'); assert.deepEqual([r.e.A2.w, r.e.A2.h], [1200, 900], '작은 사진은 키우지 않음'); assert.deepEqual([r.e.B1.w, r.e.B1.h], [1600, 1200]);
       assert.deepEqual(r.e.A1.soi, [0xFF, 0xD8, 0xFF, 0xE1]);
       assert.equal(r.e.A1.exif.dt, '2026:09:10 10:00:00', '촬영일시 EXIF'); assert.ok(Math.abs(r.e.A1.exif.lat - 36.35) < 1e-6 && Math.abs(r.e.A1.exif.lng - 127.38) < 1e-6, 'GPS EXIF ' + JSON.stringify(r.e.A1.exif));
@@ -326,10 +326,10 @@ const photosOf = z => zipNames(z).filter(n => !n.startsWith('_목록/'));
       const rows = csvRows(zA.csv[0]);
       assert.equal(zA.csv.length, 1);
       assert.match(zA.csv[0], /^압축 안 파일,원래 위치,현장,촬영일시,공정,작업명,동·호수,위도,경도,주소,원본 크기\(바이트\),보관 크기\(바이트\),줄임,구글 사본 ID,원본 CRC32,CRC32\r\n/);
-      const a1 = rows.find(x => x['압축 안 파일'] === '2026-09-10/IMG_A1.jpg');
+      const a1 = rows.find(x => x['압축 안 파일'] === '101동 501호/2026-09-10/IMG_A1.jpg');
       assert.deepEqual([a1['원래 위치'], a1['현장'], a1['촬영일시'], a1['공정'], a1['작업명'], a1['동·호수'], a1['위도'], a1['경도'], a1['주소'], +a1['원본 크기(바이트)'], +a1['보관 크기(바이트)'], a1['줄임'], a1['구글 사본 ID']],
-        ['_정리완료/T612 현장A/현장사진/IMG_A1.jpg', 'T612 현장A', '2026-09-10 10:00:00', '1차', '철거', '101동 501호', '36.35', '127.38', '대전 중구 시험로 1', r.sizes.A1, e('2026-09-10/IMG_A1.jpg').size, '예', 'DA1drivefileid']);
-      assert.equal(a1['CRC32'], e('2026-09-10/IMG_A1.jpg').crc); assert.match(a1['원본 CRC32'], /^[0-9a-f]{8}$/);
+        ['_정리완료/T612 현장A/현장사진/IMG_A1.jpg', 'T612 현장A', '2026-09-10 10:00:00', '1차', '철거', '101동 501호', '36.35', '127.38', '대전 중구 시험로 1', r.sizes.A1, e('101동 501호/2026-09-10/IMG_A1.jpg').size, '예', 'DA1drivefileid']);
+      assert.equal(a1['CRC32'], e('101동 501호/2026-09-10/IMG_A1.jpg').crc); assert.match(a1['원본 CRC32'], /^[0-9a-f]{8}$/);
       const a3 = rows.find(x => x['압축 안 파일'] === '2026-10-18/사진 한글.heic');
       assert.equal(a3['줄임'], '원본 그대로'); assert.equal(a3['구글 사본 ID'], r.recs.A3.driveId); assert.equal(a3['원본 CRC32'], a3['CRC32']);
       assert.deepEqual(photosOf(zB), ['2026-08-01/IMG_B1.jpg']);
@@ -409,8 +409,8 @@ const photosOf = z => zipNames(z).filter(n => !n.startsWith('_목록/'));
       assert.equal(two.a6left, false, 'A6 원본은 이번에 지움'); assert.equal(two.a7left, false); assert.deepEqual(two.a6, { handle: false, virtual: true });
       const z = pyZip(two.zip, 'a2');
       assert.equal(z.bad, null); assert.equal(z.comment, 'hj-photozip-v2');
-      assert.deepEqual(photosOf(z), ['2026-09-10/IMG_A1.jpg', '2026-09-10/IMG_A2.jpg', '2026-09-12/IMG_AX.jpg', '2026-10-18/사진 한글.heic', '2026-09-20/IMG_A5.jpg', '2026-09-21/IMG_A6.jpg', '2026-09-10/IMG_A1 (2).jpg'], '같은 ZIP 에 덧붙임 · A6 한 번 · 내용이 다른 A1 자리 파일은 새 이름');
-      assert.equal(z.entries.find(x => x.name === '2026-09-10/IMG_A1 (2).jpg').sha, sha(gen(S2.sizes.A1, 25)), '못 그리는 바이트는 그대로');
+      assert.deepEqual(photosOf(z), ['101동 501호/2026-09-10/IMG_A1.jpg', '2026-09-10/IMG_A2.jpg', '2026-09-12/IMG_AX.jpg', '2026-10-18/사진 한글.heic', '2026-09-20/IMG_A5.jpg', '2026-09-21/IMG_A6.jpg', '2026-09-10/IMG_A1.jpg'], '같은 ZIP 에 덧붙임 · A6 한 번 · 내용이 다른 A1 자리 파일(동·호수 없음)은 날짜 폴더 — v626 A1 은 101동 501호 폴더라 겹치지 않음');
+      assert.equal(z.entries.find(x => x.name === '2026-09-10/IMG_A1.jpg').sha, sha(gen(S2.sizes.A1, 25)), '못 그리는 바이트는 그대로');
       assert.equal(zipNames(z).filter(n => n.startsWith('_목록/')).length, 3, '실행마다 csv 하나');
       assert.ok(two.box.every(n => !/작성중|crswap/.test(n)), '.작성중·임시 파일 없음 ' + two.box.join(','));
       assert.equal(two.sumA.n, 7, '요약은 ZIP 사진 목록에서 다시 셈'); assert.equal(two.sumA.v, 2);
