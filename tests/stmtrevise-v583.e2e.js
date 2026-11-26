@@ -30,7 +30,7 @@ const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone',
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
-  'no-revise': ['byK.forEach((ls,k)=>{const cs=exist.filter(x=>!x.used&&x.k===k);if(cs.length)ls.forEach(l=>rev.set(l,{cands:cs,sure:ls.length===1&&cs.length===1}));});', ''],
+  'no-revise': ['byK.forEach((ls,k)=>{const cs=exist.filter(x=>!x.used&&x.ks.includes(k));if(cs.length)ls.forEach(l=>rev.set(l,{cands:cs,sure:ls.length===1&&cs.length===1}));});', ''],
   'no-reprice': ['  q.items.forEach((it,i)=>{it.price=prices[i];});\n', ''],
   'no-dirty': ['||res.newProjects.length||res.replaced.length)markDirty();', '||res.newProjects.length)markDirty();'],
   'no-memo': ["x.q.memo=[String(x.q.memo||'')]", "void [String(x.q.memo||'')]"],
@@ -43,8 +43,8 @@ const MUT = {
   'no-vendor': ["    if(!a||!b)return '다른 파일이고 거래처를 알 수 없어 골라 주세요';\n    if(a!==b)return '다른 거래처(‘'+a+'’) 내역서라 골라 주세요';\n", ''],
   'no-deadproj': ["  if(!pj)return '지운 현장의 견적이라 골라 주세요';\n  if(pj.archived)return '보관한 현장의 견적이라 골라 주세요';\n", ''],
   'no-exsumdef': ["  if(q.exSum)return '집계 제외한 견적이라 골라 주세요';\n", ''],
-  'no-itemcheck': ["  for(let i=0;i<ls.length;i++){const a=Math.round(num(ls[i].amt)),base=st.vat==='separate'?a:Math.round(a/1.1);if(Math.abs(num(items[i].price)-base)>tol)return '품목 금액을 손으로 고쳤어요';}\n", ''],
-  'no-namecheck': ["  for(let i=0;i<ls.length;i++){if(num(items[i].qty)!==1||String(items[i].name||'')!==(hjStmtCell(ls[i].work)||hjStmtCell(ls[i].loc)||'작업'))return '품목 이름·수량이 내역서 줄과 달라요';}\n", ''],
+  'no-itemcheck': ["  for(let i=0;i<ls.length;i++){const a=hjStmtLineAmt(ls[i]),base=st.vat==='separate'?a:Math.round(a/1.1);if(Math.abs(num(items[i].price)-base)>tol)return '품목 금액을 손으로 고쳤어요';}   // v628 미포함 줄 = 0원\n", ''],
+  'no-namecheck': ["  for(let i=0;i<ls.length;i++){if(num(items[i].qty)!==1||!loose&&String(items[i].name||'')!==(hjStmtCell(ls[i].work)||hjStmtCell(ls[i].loc)||'작업'))return '품목 이름·수량이 내역서 줄과 달라요';}\n", ''],
   'no-projpaid': ["    if(t.after<t.before&&paid>t.after)throw new Error(", "    if(false)throw new Error("],
   'no-exsum': ["(state.quotes||[]).forEach(q=>{if(!q||!q.stmt||q.exSum||!q.project||hjStmtSrcOf(q)!==src)return;const x=qs.find(y=>y.q===q)", "(state.quotes||[]).forEach(q=>{if(!q||!q.stmt||hjStmtSrcOf(q)!==src)return;const x=qs.find(y=>y.q===q)"],
   'no-editingq': ["    if(state.editingQuote&&state.editingQuote.id===q.id)throw new Error(", "    if(false)throw new Error("],

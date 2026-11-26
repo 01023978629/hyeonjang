@@ -21,12 +21,12 @@ const APP = process.env.HJ_TEST_APP || 'http://127.0.0.1:8299/index.html', ORIGI
 const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const FILTER = 'if(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key)))out.push(r);';
+const FILTER = 'if(!(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key))))return;';   // v628 거르기 줄(작업한 달 조각 앞)
 let html = process.env.HJ_V565_BASELINE ? execFileSync('git', ['show', process.env.HJ_V565_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V565_MUTATION) {
   assert.equal(process.env.HJ_V565_MUTATION, 'count-all', 'unknown mutation ' + process.env.HJ_V565_MUTATION);
   assert.equal(SRC.split(FILTER).length, 2, 'mutation anchor');
-  html = SRC.replace(FILTER, 'if(r)out.push(r);');
+  html = SRC.replace(FILTER, 'if(!r)return;');
 }
 
 let browser, passed = 0;
