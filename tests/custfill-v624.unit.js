@@ -41,7 +41,7 @@ const MUT = {
   'preview-full-phone': ["parts.push('연락처 '+hjBriefMaskPhone(w.phone));", "parts.push('연락처 '+w.phone);"],
   'auto-confirm-off': ["AI_ALWAYS_CONFIRM.add('fill_customer');", ''],
   'not-auto': ["HJ_KAKAO_AUTO_TOOLS.add('fill_customer');", ''],
-  'same-counted-new': ["||(q.tool==='fill_customer'&&out&&!out.칸))same++;else n++;", ")same++;else n++;"],
+  'same-counted-new': ["||(q.tool==='fill_customer'&&out&&!out.칸)||(q.tool==='stmt_line_edit'&&out&&!out.고침))same++;else n++;", "||(q.tool==='stmt_line_edit'&&out&&!out.고침))same++;else n++;"],   // v629 같은 줄에 내역서 줄 고치기가 붙음
   'no-throw-empty': ["      if(!put&&(missing||bad))throw new Error(", "      if(false)throw new Error("],
   'no-miss-toast': ["+(custMiss?' · 고객 칸 못 넣은 줄 '+custMiss+'개(현장 이름·번호 확인)':'')", ""]
 };
