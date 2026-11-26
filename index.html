@@ -4070,7 +4070,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v627-unitsplit';
+const APP_BUILD='hyeonjang-v628-stmtedit';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10912,9 +10912,10 @@ function hjEstSumWord(){return hjSalesBasis()==='stmt'?'견적 합계':'매출';
 function hjMarginWord(){return hjSalesBasis()==='stmt'?'매출(내역서)':'매출';}   // 마진의 바탕 매출 이름(수익 분석·월말 결산 완료 현장·수익성 순위)
 /* v564 작업내역서 월 매출 — 오늘의 브리핑 💰 칸(대표 지시 11/8 "7번은 내역서로 월 매출로 표시해줘"). 매출 기준 설정과 상관없이 내역서만 센다.
    매출 한 벌(hjSalesEntries — 사본·집계 제외 규칙 그대로)에서 작업내역서 가상 파일(_stmt)·내역서 견적(q.stmt)만 골라 그 달(ym)을 더한다. 읽기만. */
+// v628 대표 요청(11/27) "내역서가 월 분류가 잘못되었어" — 내역서 탭과 같은 한 벌(hjStmtEntries: 줄마다 작업한 달 조각)로 센다.
 function hjStmtMonthSales(ym){
   let total=0,n=0;
-  hjSalesEntries().forEach(r=>{if(!r||r.ym!==ym)return;if(!((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key)))return;total+=num(r.amount);n++;});
+  hjStmtEntries().forEach(r=>{if(!r||r.ym!==ym)return;total+=num(r.amount);n++;});
   return {ym,mm:+String(ym).slice(5,7),total,n};
 }
 function hjMarginShort(s){if(hjSalesBasis()!=='stmt')return hjMan(s.marginEff);return s.marginNA?'내역서 없음':s.marginRateEff+'% · '+hjMan(s.marginEff);}
@@ -40131,9 +40132,17 @@ function hjStmtTabApply(){   // render 마다 — 탭·폰 하단 이름만 바�
     if(nb.getAttribute('aria-label')!==lab){nb.setAttribute('aria-label',lab);const sp=nb.querySelectorAll('span');if(sp[0])sp[0].textContent=on?'📑':'💰';if(sp[1])sp[1].textContent=on?'내역서':'정산';}}
   return on;
 }
-function hjStmtEntries(){   // 매출 한 벌에서 작업내역서 줄만(v564 hjStmtMonthSales 와 같은 거르기 — 사본·집계 제외 규칙 그대로)
+/* v628 대표 요청(11/27) "현장웹에 내역서가 월 분류가 잘못되었어" — 월은 내역서 작성일이 아니라 줄마다 작업한 날(작업 날짜).
+   10/13 내역서에 든 9/21 작업은 9월, 내역서 한 장이 두 달에 걸치면 두 달로 나눈다(hjStmtQuoteMonths — 조각 합은 그 견적 매출 그대로).
+   작성일보다 늦은 작업 날짜(9/17 내역서의 '10/15' — 실제 9/15 오기)는 있을 수 없어 작성 월로 세고 ⚠ 날짜 확인으로 띄운다(hjStmtLineOdd).
+   이 셈은 내역서 탭(월별 매출·이번 달·지난달·올해)과 브리핑 💰(hjStmtMonthSales)만 — 부가세·세무사 자료·대시보드가 쓰는 매출 한 벌(hjSalesEntries)은
+   청구(세금계산서) 날인 작성일 그대로다. 미포함 줄(skip)은 금액 0 이라 조각을 만들지 않는다. */
+function hjStmtEntries(){   // 매출 한 벌에서 작업내역서 줄만(사본·집계 제외 규칙 그대로) → 작업한 달 조각
   const out=[];
-  try{hjSalesEntries().forEach(r=>{if(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key)))out.push(r);});}catch(e){}
+  try{hjSalesEntries().forEach(r=>{if(!(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key))))return;
+    if(!(r.quote&&r.quote.stmt)){out.push(r);return;}
+    hjStmtQuoteMonths(r.quote,r.amount).forEach(m=>{const sp=num(r.amount)?Math.round(num(r.supply)*m.amount/num(r.amount)):0;
+      out.push(Object.assign({},r,{ym:m.ym||r.ym,amount:m.amount,supply:sp,vat:m.amount-sp,stmtLines:m.lines,stmtYm0:r.ym}));});});}catch(e){}
   return out;
 }
 function hjStmtTabData(ym){
@@ -40143,10 +40152,10 @@ function hjStmtTabData(ym){
   const nowYm=localDate().slice(0,7),sel=ym&&by.has(ym)?ym:(by.has(nowYm)?nowYm:(months[0]?months[0].ym:nowYm));
   const pidx=hjStmtPhotoIndex();
   const rows=ent.filter(r=>r.ym===sel).map(r=>{
-    const q=r.quote,s=(q&&q.stmt)||{},lines=Array.isArray(s.lines)?s.lines.filter(Boolean):[];
+    const q=r.quote,s=(q&&q.stmt)||{},lines=Array.isArray(r.stmtLines)?r.stmtLines.map(x=>x.l):(Array.isArray(s.lines)?s.lines.filter(l=>l&&!l.skip):[]);   // v628 이 달에 든 줄만
     const days=[...new Set(lines.map(l=>String(l.d||'')).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
     const works=[...new Set(lines.map(l=>String(l.work||'').replace(/\s+/g,' ').trim()).filter(Boolean))];
-    return {project:r.project||'',amount:num(r.amount),to:String(s.to||''),date:String(s.date||(q&&q.date)||''),days,works,photos:r.project?hjStmtPhotoCount(pidx,r.project,days.length?days:[String(s.date||(q&&q.date)||'')]):null};   // v568 📷
+    return {project:r.project||'',amount:num(r.amount),to:String(s.to||''),date:String(s.date||(q&&q.date)||''),days,works,odd:lines.filter(l=>hjStmtLineOdd(l,s.date||(q&&q.date))).length,src:q?hjStmtSrcOf(q):'',photos:r.project?hjStmtPhotoCount(pidx,r.project,days.length?days:[String(s.date||(q&&q.date)||'')]):null};   // v568 📷
   }).sort((a,b)=>String(a.days[0]||a.date).localeCompare(String(b.days[0]||b.date))||a.project.localeCompare(b.project,'ko'));
   let led=[];try{led=hjStmtLedger();}catch(e){}
   const paidYm={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt){const k=String(x.d||'').slice(0,7);paidYm[k]=(paidYm[k]||0)+Math.round(num(x.amt));}});
@@ -40172,13 +40181,13 @@ function viewStatements(){
   h+=led||'<div class="empty" data-stmt-empty><b>반영한 작업내역서가 없습니다</b>위 [📑 작업내역서 반영]으로 협력사에 보낸 작업내역서 엑셀을 넣으세요.</div>';
   h+=hjUnbilledHTML();   // v566 🧾 내역서에 아직 없는 작업(사진·일정 대조)
   if(D.months.length){
-    h+='<div data-stmt-months style="margin:14px 0 0"><div style="font-size:12px;letter-spacing:.08em;color:#0b4ea2;margin-bottom:6px">📅 월별 매출(내역서)</div>';
+    h+='<div data-stmt-months style="margin:14px 0 0"><div style="font-size:12px;letter-spacing:.08em;color:#0b4ea2;margin-bottom:6px">📅 월별 매출(내역서) <span data-stmt-month-basis style="letter-spacing:0;color:var(--muted)">· 작업한 날 기준</span></div>';
     D.months.forEach(m=>{const on=m.ym===D.sel,p=D.paidYm[m.ym]||0;
       h+='<button type="button" data-stmt-ym="'+m.ym+'" aria-pressed="'+on+'" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:2px 10px;width:100%;min-height:44px;text-align:left;padding:8px 12px;margin:0 0 6px;border-radius:10px;border:1px solid '+(on?'var(--blueprint)':'var(--line-soft)')+';background:'+(on?'var(--paper-2)':'var(--paper)')+';color:var(--ink);font-size:13px"><span><b>'+yy(m.ym)+'</b> · 내역서 '+m.n+'건 · 현장 '+m.pj.size+'곳'+(p?' · 받은 돈 '+won(p):'')+'</span><b style="white-space:nowrap">'+won(m.total)+'</b></button>';});
     h+='</div>';
     h+='<div data-stmt-month-list="'+D.sel+'" style="margin:8px 0 0"><div style="font-size:12.5px;font-weight:800;margin-bottom:4px">'+yy(D.sel)+' 현장별 '+D.rows.length+'건 · '+won(D.rows.reduce((a,r)=>a+r.amount,0))+(D.rows.some(r=>r.photos===0)?' <span data-stmt-nophoto style="font-weight:400;color:var(--hj-warn-fg,#b45309)">· 📷 사진 없는 줄 '+D.rows.filter(r=>r.photos===0).length+'건</span>':'')+'</div>';
     D.rows.forEach(r=>{const day=r.days.length?hjStmtMd(r.days[0])+(r.days.length>1?'~'+hjStmtMd(r.days[r.days.length-1]):''):hjStmtMd(r.date);
-      h+='<div data-stmt-item style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(day)+'</span> '+(r.project?'<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">'+escapeHtml(r.project)+'</button>':'<b>현장 미지정</b>')+' <span>'+escapeHtml(r.works.slice(0,2).join(' · ')+(r.works.length>2?' 외 '+(r.works.length-2)+'건':''))+'</span>'+(r.to?' <span style="color:var(--muted)">· '+escapeHtml(r.to)+'</span>':'')+(r.photos==null?'':' '+hjStmtPhotoBadge(r.photos))+'</div><b style="white-space:nowrap;font-size:13px">'+won(r.amount)+'</b></div>';});
+      h+='<div data-stmt-item style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(day)+'</span> '+(r.project?'<button type="button" class="mini-btn" data-open="'+escapeAttr(r.project)+'" style="min-height:44px">'+escapeHtml(r.project)+'</button>':'<b>현장 미지정</b>')+' <span>'+escapeHtml(r.works.slice(0,2).join(' · ')+(r.works.length>2?' 외 '+(r.works.length-2)+'건':''))+'</span>'+(r.to?' <span style="color:var(--muted)">· '+escapeHtml(r.to)+'</span>':'')+(r.photos==null?'':' '+hjStmtPhotoBadge(r.photos))+(r.odd&&r.src&&r.project?' <button type="button" class="mini-btn" data-stmtdetail="'+escapeAttr(r.src)+'" data-stmt-odd-go style="min-height:44px;color:var(--hj-warn-fg,#b45309)" title="작업 날짜가 내역서 작성일보다 늦은 줄 — 내역서 보기에서 ✏ 로 고쳐 주세요">⚠ 날짜 확인 '+r.odd+'줄</button>':'')+'</div><b style="white-space:nowrap;font-size:13px">'+won(r.amount)+'</b></div>';});
     h+='</div>';
   }
   const estN=state.files.filter(f=>f&&f.kind==='estimate'&&!f._stmt).length;
@@ -40208,8 +40217,9 @@ function hjUnbilledPlan(opts){
   const billed=new Map(),hasStmt=new Set(),hasEst=new Set();
   (state.quotes||[]).forEach(q=>{if(!q||!q.project)return;if(!q.stmt){hasEst.add(q.project);return;}
     hasStmt.add(q.project);if(!billed.has(q.project))billed.set(q.project,[]);
-    const ds=(Array.isArray(q.stmt.lines)?q.stmt.lines:[]).map(l=>String(l&&l.d||'')).filter(d=>ISO.test(d));
-    (ds.length?ds:[String(q.stmt.date||q.date||'')].filter(d=>ISO.test(d))).forEach(d=>billed.get(q.project).push(d));});
+    const all=Array.isArray(q.stmt.lines)?q.stmt.lines.filter(Boolean):[],live=all.filter(l=>!l.skip);   // v628 미포함(skip) 줄은 청구하지 않은 일
+    const ds=live.map(l=>String(l.d||'')).filter(d=>ISO.test(d));
+    (ds.length?ds:all.length&&!live.length?[]:[String(q.stmt.date||q.date||'')].filter(d=>ISO.test(d))).forEach(d=>billed.get(q.project).push(d));});
   (state.files||[]).forEach(f=>{if(f&&f.kind==='estimate'&&f.project&&!f._stmt&&!f._fromQuote)hasEst.add(f.project);});
   const rows=[],refs=[];let skipped=0;
   ev.forEach((m,name)=>{
@@ -40371,7 +40381,7 @@ function hjProjStmtData(p){
   qs.forEach(q=>{const s=q.stmt,ex=!!q.exSum;if(!ex)total+=quoteCalc(q).total;
     const ls=(Array.isArray(s.lines)?s.lines:[]).filter(Boolean);
     (ls.length?ls:[{d:s.date||q.date||'',work:q.title||'작업내역서',amt:quoteCalc(q).total}]).forEach(l=>{const d=String(l.d||s.date||'');
-      lines.push({d,work:String(l.work||'').replace(/\s+/g,' ').trim()||'작업',amt:Math.round(num(l.amt)),to:String(s.to||''),ex,photos:hjStmtPhotoCount(idx,name,[d])});});});
+      lines.push({d,work:String(l.work||'').replace(/\s+/g,' ').trim()||'작업',amt:Math.round(num(l.amt)),skip:!!l.skip,to:String(s.to||''),ex,photos:hjStmtPhotoCount(idx,name,[d])});});});
   lines.sort((a,b)=>String(b.d).localeCompare(String(a.d))||a.work.localeCompare(b.work,'ko'));
   let paid=0;(state.payLog||[]).forEach(x=>{if(x&&x.stmt&&x.project===name)paid+=Math.round(num(x.amt));});
   // v590 남은 돈은 아직 다 받지 않은 내역서만 — 내역서마다 (이 현장 몫 − 이 현장으로 받은 돈). 다 받은 내역서(장부 '✓ 다 받음')에 남은
@@ -40385,7 +40395,7 @@ function hjProjStmtData(p){
 function hjProjStmtCard(p){
   let D=null;try{D=hjProjStmtData(p);}catch(e){}
   if(!D)return '';
-  const SHOW=8,rows=D.lines.slice(0,SHOW).map(l=>'<div data-pjstmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:6px 0;border-top:1px dashed var(--line-soft);font-size:12.5px"><div style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.work)+(l.to?' <span style="color:var(--muted)">· '+escapeHtml(l.to)+'</span>':'')+(l.ex?' <span style="color:var(--muted)">· 집계 제외</span>':'')+' '+hjStmtPhotoBadge(l.photos)+'</div><b style="white-space:nowrap">'+won(l.amt)+'</b></div>').join('');
+  const SHOW=8,rows=D.lines.slice(0,SHOW).map(l=>'<div data-pjstmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:6px 0;border-top:1px dashed var(--line-soft);font-size:12.5px"><div style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.work)+(l.to?' <span style="color:var(--muted)">· '+escapeHtml(l.to)+'</span>':'')+(l.ex?' <span style="color:var(--muted)">· 집계 제외</span>':'')+(l.skip?' <span data-pjstmt-skip style="color:var(--hj-warn-fg,#b45309)">· 미포함</span>':'')+' '+hjStmtPhotoBadge(l.photos)+'</div><b style="white-space:nowrap'+(l.skip?';text-decoration:line-through':'')+'">'+won(l.amt)+'</b></div>').join('');
   return '<div class="cust-card" data-pjstmt style="margin-top:10px"><div class="cust-h">📑 이 현장 작업내역서 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">협력사 청구 '+D.lines.length+'줄</span></div>'+
     '<div data-pjstmt-sum style="font-size:12.5px;margin:2px 0 4px">합계 <b>'+won(D.total)+'</b> · 받은 돈 <b style="color:var(--ok)">'+won(D.paid)+'</b> · '+(D.left?'남은 돈 <b>'+won(D.left)+'</b>':'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+
     rows+(D.lines.length>SHOW?'<div style="font-size:11.5px;color:var(--muted);padding-top:4px">…외 '+(D.lines.length-SHOW)+'줄</div>':'')+
@@ -42043,7 +42053,7 @@ function hjStmtAppend(q,lines){
   const amts=lines.map(l=>Math.round(num(l.amt))),prices=hjStmtPrices(amts,vat);
   lines.forEach((l,i)=>q.items.push({name:hjStmtCell(l.work)||hjStmtCell(l.loc)||'작업',spec:((hjStmtMd(l.d)?hjStmtMd(l.d)+' ':'')+(hjStmtCell(l.loc)!==hjStmtCell(l.work)?hjStmtCell(l.loc):'')).trim(),qty:1,price:prices[i]}));
   st.lines=(st.lines||[]).concat(lines.map(l=>({d:l.d||'',loc:hjStmtCell(l.loc),work:hjStmtCell(l.work),amt:Math.round(num(l.amt))})));
-  const tot=st.lines.reduce((a,l)=>a+Math.round(num(l.amt)),0);
+  const tot=st.lines.reduce((a,l)=>a+hjStmtLineAmt(l),0);   // v628 미포함 줄은 0
   st.total=vat==='separate'?tot+Math.round(tot*0.1):tot;
   if(vat==='included'&&lines.length){
     const sub=Math.round(q.items.reduce((a,it)=>a+num(it.qty)*num(it.price),0));
@@ -42070,35 +42080,169 @@ function hjStmtAppend(q,lines){
 function hjStmtLineKey(l){return [l&&l.d||'',hjStmtKey(l&&l.loc),hjStmtKey(l&&l.work)].join('|');}
 function hjStmtClassify(lines){
   const exist=[],byId=new Map();
-  (state.quotes||[]).forEach(q=>{if(q&&q.stmt)(q.stmt.lines||[]).forEach((l,li)=>{const e={q,li,l,id:hjStmtLineId(l),k:hjStmtLineKey(l),used:false};exist.push(e);if(!byId.has(e.id))byId.set(e.id,[]);byId.get(e.id).push(e);});});
+  // v628 고친 줄(d0·amt0)은 파일 원래 값과 지금 값 둘 다로 알아본다 — 날짜를 고친 줄이 같은 파일을 다시 넣을 때 새 줄로 두 번 더해지지 않게(미포함 줄도 이미 든 줄)
+  (state.quotes||[]).forEach(q=>{if(q&&q.stmt)(q.stmt.lines||[]).forEach((l,li)=>{if(!l)return;const o=hjStmtLineOrig(l),ids=[...new Set([hjStmtLineId(o),hjStmtLineId(l)])],e={q,li,l,id:ids[0],k:hjStmtLineKey(o),ks:[...new Set([hjStmtLineKey(o),hjStmtLineKey(l)])],used:false};exist.push(e);ids.forEach(id=>{if(!byId.has(id))byId.set(id,[]);byId.get(id).push(e);});});});
   const dup=new Set(),left=[];
   (lines||[]).forEach(l=>{const e=(byId.get(hjStmtLineId(l))||[]).find(x=>!x.used);if(e){e.used=true;dup.add(l);}else left.push(l);});
   const byK=new Map();left.forEach(l=>{const k=hjStmtLineKey(l);if(!byK.has(k))byK.set(k,[]);byK.get(k).push(l);});
   const rev=new Map();
-  byK.forEach((ls,k)=>{const cs=exist.filter(x=>!x.used&&x.k===k);if(cs.length)ls.forEach(l=>rev.set(l,{cands:cs,sure:ls.length===1&&cs.length===1}));});
+  byK.forEach((ls,k)=>{const cs=exist.filter(x=>!x.used&&x.ks.includes(k));if(cs.length)ls.forEach(l=>rev.set(l,{cands:cs,sure:ls.length===1&&cs.length===1}));});
   return {exist,dup,rev};
 }
 // 손으로 고친 견적이면 그 까닭('' = 바꿔도 됨) — 품목이 내역서 줄과 1:1(이름·수량 1)이고 품목 합이 내역서 합계의 공급가와 맞을 때만(hjStmtAppend 와 같은 기준: 차이 ≤ 바꿀 줄 수 + 1)
-function hjStmtQuoteEdited(q,n){
+function hjStmtQuoteEdited(q,n,loose){   // v628 loose = 품목 이름은 보지 않음(✏ 줄 고치기는 이름을 바꾸지 않는다 — 수량·단가만)
   const st=q&&q.stmt,items=(q&&q.items)||[],ls=(st&&st.lines)||[];
   if(!st||!ls.length||items.length!==ls.length)return '품목 수가 내역서 줄과 달라요';
   if(!q.vatIncluded)return '부가세 설정이 바뀌었어요';
-  for(let i=0;i<ls.length;i++){if(num(items[i].qty)!==1||String(items[i].name||'')!==(hjStmtCell(ls[i].work)||hjStmtCell(ls[i].loc)||'작업'))return '품목 이름·수량이 내역서 줄과 달라요';}
+  for(let i=0;i<ls.length;i++){if(num(items[i].qty)!==1||!loose&&String(items[i].name||'')!==(hjStmtCell(ls[i].work)||hjStmtCell(ls[i].loc)||'작업'))return '품목 이름·수량이 내역서 줄과 달라요';}
   // 합은 그대로 두고 품목 사이 금액만 옮긴 견적도 손으로 고친 것 — 품목마다 그 줄 금액에서 나온 단가(부가세 포함이면 ÷1.1)와 1원 보정 몫(줄 수 × 2 + 2원) 넘게 다르면
   const tol=2*ls.length+2;
-  for(let i=0;i<ls.length;i++){const a=Math.round(num(ls[i].amt)),base=st.vat==='separate'?a:Math.round(a/1.1);if(Math.abs(num(items[i].price)-base)>tol)return '품목 금액을 손으로 고쳤어요';}
-  const tot=ls.reduce((a,l)=>a+Math.round(num(l.amt)),0),sub=Math.round(items.reduce((a,it)=>a+num(it.qty)*num(it.price),0));
+  for(let i=0;i<ls.length;i++){const a=hjStmtLineAmt(ls[i]),base=st.vat==='separate'?a:Math.round(a/1.1);if(Math.abs(num(items[i].price)-base)>tol)return '품목 금액을 손으로 고쳤어요';}   // v628 미포함 줄 = 0원
+  const tot=ls.reduce((a,l)=>a+hjStmtLineAmt(l),0),sub=Math.round(items.reduce((a,it)=>a+num(it.qty)*num(it.price),0));
   const w=quoteSupplyForTotal(tot),want=st.vat==='separate'?tot:(w!=null?w:Math.round(tot/1.1));
   return Math.abs(want-sub)>(n||1)+1?'품목 금액을 손으로 고쳤어요':'';
 }
 // stmt.lines 금액대로 품목 단가·stmt.total 을 다시(hjStmtPrices 규칙 — 부가세 포함이면 합계가 내역서 합계와 1원까지 같다)
 function hjStmtReprice(q){
   const st=q.stmt,vat=st.vat==='separate'?'separate':'included';
-  const amts=(st.lines||[]).map(l=>Math.round(num(l.amt))),prices=hjStmtPrices(amts,vat);
+  const amts=(st.lines||[]).map(l=>hjStmtLineAmt(l)),prices=hjStmtPrices(amts,vat);   // v628 미포함 줄 = 0원
   q.items.forEach((it,i)=>{it.price=prices[i];});
   const tot=amts.reduce((a,b)=>a+b,0);
   st.total=vat==='separate'?tot+Math.round(tot*0.1):tot;
   st.updatedAt=new Date().toISOString();
+}
+/* ═══════════ v628 📑 내역서 줄 고치기(날짜·금액·미포함) · 내역서 월 = 작업한 날 ═══════════
+   대표 요청(11/27) "현장웹에 내역서가 월 분류가 잘못되었어 내역서에 미 포함 이나 금액 수정 기능 추가해줘".
+   · 줄 칸(q.stmt.lines[i] — 새 최상위 저장 키 없음): skip(true = 내역서에서 뺌 — 합계·매출·받을 돈에서 빠짐, 줄은 지우지 않음) ·
+     d0·amt0(처음 고칠 때 파일에서 읽은 값을 한 번만 남김 — 파일 값으로 되돌리면 지운다) · edAt(고친 날).
+   · 금액은 hjStmtLineAmt(미포함 = 0)로만 센다 — 단가 다시(hjStmtReprice)·덧붙이기·손으로 고친 견적 판정·내역서 보기 줄 합계가 같은 셈.
+   · 같은 줄 알아보기(hjStmtClassify — 같은 파일을 다시 넣을 때)는 파일 원래 값과 지금 값 둘 다로.
+   · 고치기(hjStmtLineEditPlan → hjStmtLineEditSave): 📄 내역서 보기 줄의 [✏] — 쓰기 전에 모두 본다(오래된 창·견적 작성 화면에 열림·손으로 고친 견적·
+     날짜 꼴·미래 날짜·금액 꼴) → 🛡 안전판('작업내역서 줄 고치기 전') → 그 견적의 줄·품목 단가·stmt.total·가상 견적 파일 → 견적 비고에 한 줄.
+     이 내역서로 이미 받은 돈이 새 합계보다 많아져도 막지 않고 알린다(v589 '돈은 메모용' — 입금 기록은 그대로, 장부·보기에 '받은 돈이 n원 많아요').
+   · 작성일보다 늦은 작업 날짜는 ⚠(hjStmtLineOdd) — 고치기 창은 한두 달 앞 같은 날 무렵에 그 현장 사진이 있으면 그 날을 권한다(hjStmtLineDaySuggest). */
+function hjStmtLineAmt(l){return !l||l.skip?0:Math.round(num(l.amt));}
+function hjStmtLineOrig(l){l=l||{};return {d:l.d0!=null?String(l.d0):String(l.d||''),loc:l.loc,work:l.work,amt:l.amt0!=null?l.amt0:l.amt};}
+function hjStmtLineOdd(l,date){const d=String(l&&l.d||''),sd=String(date||'');return /^\d{4}-\d{2}-\d{2}$/.test(d)&&/^\d{4}-\d{2}-\d{2}$/.test(sd)&&d>sd;}
+function hjStmtLineDay(l,date){const d=String(l&&l.d||'');return /^\d{4}-\d{2}-\d{2}$/.test(d)&&!hjStmtLineOdd(l,date)?d:String(date||'');}
+// 내역서 견적 한 건 → 작업한 달 조각 [{ym,amount,lines:[{l,i}]}] — 조각 합 = total(기본 quoteCalc 합계, 1원까지). 줄 금액 비율로 나누고 나머지는 큰 달부터.
+// 줄이 없거나 금액이 모두 0 이면 작성 월 한 조각. 줄을 모두 뺀(미포함) 0원 견적은 조각 없음.
+function hjStmtQuoteMonths(q,total){
+  const s=(q&&q.stmt)||{},date=String(s.date||(q&&q.date)||''),fall=ymOf(date)||'',ls=Array.isArray(s.lines)?s.lines:[];
+  total=Math.round(num(total!=null?total:quoteCalc(q).total));
+  const by=new Map();let live=0;
+  ls.forEach((l,i)=>{if(!l||l.skip)return;live++;const ym=ymOf(hjStmtLineDay(l,date))||fall;if(!by.has(ym))by.set(ym,{ym,w:0,lines:[]});const m=by.get(ym);m.w+=hjStmtLineAmt(l);m.lines.push({l,i});});
+  if(ls.some(Boolean)&&!live&&!total)return [];
+  const ms=[...by.values()].filter(m=>m.w>0),W=ms.reduce((a,m)=>a+m.w,0);
+  if(!(W>0))return [{ym:fall,amount:total,lines:[...by.values()].reduce((a,m)=>a.concat(m.lines),[])}];
+  ms.forEach(m=>{m.amount=Math.floor(total*m.w/W);});
+  let rest=total-ms.reduce((a,m)=>a+m.amount,0);
+  ms.slice().sort((a,b)=>b.w-a.w||a.ym.localeCompare(b.ym)).forEach(m=>{if(rest>0){m.amount++;rest--;}});
+  return ms.sort((a,b)=>a.ym.localeCompare(b.ym)).map(m=>({ym:m.ym,amount:m.amount,lines:m.lines}));
+}
+function hjStmtShiftMonthDay(d,k){const m=String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return '';const t=new Date(+m[1],+m[2]-1+k,1),last=new Date(t.getFullYear(),t.getMonth()+1,0).getDate();if(+m[3]>last)return '';return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+m[3];}
+// 작성일보다 늦은 날짜 줄에 권할 날 — 한 달·두 달 앞 같은 날(작성일까지) 무렵(앞뒤 하루, v568 셈)에 그 현장 사진이 있는 첫 날. 없으면 null(짐작하지 않는다)
+function hjStmtLineDaySuggest(q,l){
+  const s=(q&&q.stmt)||{},date=String(s.date||(q&&q.date)||'');
+  if(!hjStmtLineOdd(l,date)||!q.project)return null;
+  let idx=null;try{idx=hjStmtPhotoIndex(q.project);}catch(e){return null;}
+  for(let k=1;k<=2;k++){const c=hjStmtShiftMonthDay(String(l.d),-k);if(!c||c>date)continue;const n=hjStmtPhotoCount(idx,q.project,[c]);if(n>0)return {d:c,photos:n};}
+  return null;
+}
+function hjStmtQuoteById(qid){return (state.quotes||[]).find(x=>x&&x.stmt&&String(x.id)===String(qid))||null;}
+// 줄 고치기 미리 셈(쓰지 않음) — o={d,amt,skip}. 막히면 {why}. 반환 {q,li,c(고친 사본),before,after,src,srcBefore,srcAfter,paidSrc,over,changes}
+function hjStmtLineEditPlan(qid,li,o){
+  if(typeof __tabStale!=='undefined'&&__tabStale)return {why:'오래된 창이에요 — 새로고침한 뒤 다시 눌러 주세요'};
+  const q=hjStmtQuoteById(qid),i=Number(li),ls=q&&Array.isArray(q.stmt.lines)?q.stmt.lines:null,l=ls&&Number.isInteger(i)&&i>=0?ls[i]:null;
+  if(!l)return {why:'내역서 줄을 찾지 못했어요 — 창을 닫고 다시 열어 주세요'};
+  if(state.editingQuote&&String(state.editingQuote.id)===String(q.id))return {why:'견적 작성 화면에 이 견적이 열려 있어요 — 닫고 다시 해 주세요'};
+  const ed=hjStmtQuoteEdited(q,1,true);if(ed)return {why:'손으로 고친 견적이라 여기서는 바꾸지 않아요('+ed+') — ✍ 견적 작성에서 고쳐 주세요'};
+  const today=localDate(),d=String(o&&o.d!=null?o.d:(l.d||'')).trim(),skip=!!(o&&o.skip),was={d:String(l.d||''),amt:Math.round(num(l.amt)),skip:!!l.skip};
+  if(d&&!/^\d{4}-\d{2}-\d{2}$/.test(d))return {why:'작업 날짜를 확인하세요'};
+  if(d>today&&d!==was.d)return {why:'작업 날짜가 미래예요 — 실제로 일한 날로 넣어 주세요'};   // 파일에 미래로 잘못 적힌 날짜는 그대로 두고 빼기·금액은 된다
+  const raw=o&&o.amt!=null?o.amt:l.amt;
+  if(String(raw==null?'':raw).trim()==='')return {why:'금액을 넣으세요(0원도 됩니다)'};
+  if(typeof raw!=='number'&&/[^\d,\s원\-−–—－]/.test(String(raw)))return {why:'금액은 숫자로만 넣어 주세요(예: 120,000)'};   // '120만'·'1.5' 를 120·15 로 읽지 않게
+  const neg=hjIsNegativeAmount(raw),amt=typeof raw==='number'?Math.round(raw):(neg?-1:1)*won2num(raw);
+  if(neg&&amt!==was.amt)return {why:'마이너스 금액은 넣을 수 없어요 — 할인 줄은 금액을 그대로 두고 날짜·빼기만 고칠 수 있어요'};   // 내역서의 할인 줄(-50,000)은 그대로 둔 채 고칠 수 있다
+  if(!Number.isSafeInteger(amt)||amt>9999999999||(amt<0&&amt!==was.amt))return {why:'금액을 확인하세요'};
+  const orig=hjStmtLineOrig(l),o0=Math.round(num(orig.amt));
+  if(d===was.d&&amt===was.amt&&skip===was.skip)return {why:'바뀐 것이 없어요'};
+  const c=JSON.parse(JSON.stringify(q)),cl=c.stmt.lines[i];
+  cl.d=d;if(d===orig.d)delete cl.d0;else cl.d0=orig.d;
+  cl.amt=amt;if(amt===o0)delete cl.amt0;else cl.amt0=o0;
+  if(skip)cl.skip=true;else delete cl.skip;
+  if(cl.d0!=null||cl.amt0!=null||cl.skip)cl.edAt=today;else delete cl.edAt;
+  const it=c.items[i];if(it)it.spec=((hjStmtMd(d)?hjStmtMd(d)+' ':'')+(hjStmtCell(cl.loc)!==hjStmtCell(cl.work)?hjStmtCell(cl.loc):'')).trim();
+  hjStmtReprice(c);
+  const src=hjStmtSrcOf(q),before=quoteCalc(q).total,after=quoteCalc(c).total,counted=!q.exSum&&!!q.project;
+  let srcBefore=0,paidSrc=0;
+  (state.quotes||[]).forEach(x=>{if(x&&x.stmt&&!x.exSum&&x.project&&hjStmtSrcOf(x)===src)srcBefore+=quoteCalc(x).total;});
+  (state.payLog||[]).forEach(x=>{if(x&&x.stmt===src)paidSrc+=Math.round(num(x.amt));});
+  const srcAfter=srcBefore+(counted?after-before:0),changes=[];
+  if(d!==was.d)changes.push('날짜 '+(hjStmtMd(was.d)||'없음')+'→'+(hjStmtMd(d)||'없음'));
+  if(amt!==was.amt)changes.push('금액 '+hjNum(was.amt)+'→'+hjNum(amt)+'원');
+  if(skip!==was.skip)changes.push(skip?'내역서에서 뺌(미포함)':'내역서에 다시 넣음');
+  return {q,li:i,c,before,after,src,srcBefore,srcAfter,paidSrc,over:Math.max(0,paidSrc-srcAfter),changes};
+}
+// 안전판은 10분에 한 번 — ⚠ 줄 여럿을 잇달아 고칠 때 안전판 12칸이 '줄 고치기 전'으로 차서 '복구 직전'·'사진 삭제 전' 같은 앞선 안전판이 밀려나지 않게
+//   (10분 안에 고친 것은 첫 안전판이 그 전 상태를 지킨다)
+let __hjStmtEditSnapAt=0;
+async function hjStmtLineEditSave(qid,li,o){
+  const P=hjStmtLineEditPlan(qid,li,o);if(P.why)throw new Error(P.why);
+  if(Date.now()-__hjStmtEditSnapAt>600000){
+    let snapped=false;try{snapped=await hjSnapshot('작업내역서 줄 고치기 전',true,true);}catch(e){snapped=false;}
+    if(snapped!==true)throw new Error('🛡 안전판을 만들지 못해 아무것도 바꾸지 않았어요 — 저장 공간을 확인한 뒤 다시 해 주세요');
+    __hjStmtEditSnapAt=Date.now();
+  }
+  const R=hjStmtLineEditPlan(qid,li,o);if(R.why)throw new Error(R.why);   // 안전판을 찍는 사이에 바뀌었으면 다시 본다
+  const q=R.q;q.stmt=R.c.stmt;q.items=R.c.items;
+  q.memo=[String(q.memo||'')].concat('[내역서 줄 고침] '+localDate()+' · '+(hjStmtCell(q.stmt.lines[R.li].work)||'작업')+' · '+R.changes.join(' · ')).filter(Boolean).join('\n');
+  syncQuoteToProject(q);
+  try{__hjUnbilledMemo=null;}catch(e){}
+  markDirty();
+  return R;
+}
+// ✏ 내역서 줄 고치기 창 — back(선택): ‹ 뒤로·저장 뒤 = 📄 내역서 보기
+function hjStmtLineEditView(qid,li,back){
+  const q=hjStmtQuoteById(qid),i=Number(li),l=q&&Array.isArray(q.stmt.lines)&&Number.isInteger(i)&&i>=0?q.stmt.lines[i]:null;
+  if(!l){toast('내역서 줄을 찾지 못했어요');return;}
+  const s=q.stmt,orig=hjStmtLineOrig(l),today=localDate(),date=String(s.date||q.date||''),sug=hjStmtLineDaySuggest(q,l);
+  const edited=l.d0!=null||l.amt0!=null||!!l.skip,loc=hjStmtCell(l.loc),work=hjStmtCell(l.work)||'작업';
+  const body='<div data-sle="'+escapeAttr(String(q.id)+':'+i)+'" style="font-size:13px;line-height:1.6">'+
+    '<div style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px;overflow-wrap:anywhere"><b>'+escapeHtml(q.project||'현장 미지정')+'</b> · '+escapeHtml(loc&&loc!==work?loc+' · '+work:work)+
+      '<div style="font-size:11.5px;color:var(--muted)">'+escapeHtml((s.to?s.to+' · ':'')+(s.doc||'작업내역서')+' · 작성일 '+(date||'모름'))+'</div>'+
+      (edited?'<div data-sle-orig style="font-size:11.5px;color:var(--muted)">파일 원래 값: '+escapeHtml(hjStmtMd(orig.d)||'날짜 없음')+' · '+won(Math.round(num(orig.amt)))+'</div>':'')+'</div>'+
+    (hjStmtLineOdd(l,date)?'<div data-sle-odd style="color:var(--hj-warn-fg,#b45309);font-size:12.5px;margin:0 0 6px">⚠ 작업 날짜('+escapeHtml(hjStmtMd(l.d))+')가 내역서 작성일('+escapeHtml(hjStmtMd(date))+')보다 늦어요 — 실제로 일한 날로 고쳐 주세요. 고치기 전까지는 작성 월로 셉니다.</div>':'')+
+    (sug?'<button type="button" class="mini-btn" data-sle-sugg="'+escapeAttr(sug.d)+'" style="min-height:44px;margin:0 0 8px;max-width:100%;text-align:left">📷 '+escapeHtml(hjStmtMd(sug.d))+' 무렵 이 현장 사진 '+sug.photos+'장 — '+escapeHtml(hjStmtMd(sug.d))+'로 넣기</button>':'')+
+    '<label for="sleDate" style="display:block;font-size:11.5px;color:var(--muted)">작업 날짜 — 월별 매출은 이 날짜로 나눠요</label>'+
+    '<input id="sleDate" type="date" value="'+escapeAttr(String(l.d||''))+'" max="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 8px;font-size:16px;min-height:44px">'+
+    '<label for="sleAmt" style="display:block;font-size:11.5px;color:var(--muted)">금액(원) — '+(s.vat==='separate'?'공급가 · 합계에는 부가세 10%가 더해져요':'부가세 포함 · 내역서에 적은 금액 그대로')+'</label>'+
+    '<input id="sleAmt" type="text" inputmode="numeric" value="'+Math.round(num(l.amt))+'" style="width:100%;padding:12px;font-size:16px;font-weight:800;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 8px">'+
+    '<label style="display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px;cursor:pointer"><input id="sleSkip" type="checkbox"'+(l.skip?' checked':'')+' style="width:22px;height:22px;flex:none"> <span>이 줄을 내역서에서 빼기(미포함) — 합계·매출·받을 돈에서 빠지고 줄은 남아요</span></label>'+
+    '<div id="slePlan" style="margin-top:8px;border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px;font-size:12px"></div></div>';
+  const root=()=>$('#modalRoot');
+  const read=()=>{const r=root();return {d:(r.querySelector('#sleDate')||{}).value||'',amt:(r.querySelector('#sleAmt')||{}).value||'',skip:!!(r.querySelector('#sleSkip')||{}).checked};};
+  let busy=false;
+  const draw=()=>{const box=root().querySelector('#slePlan');if(!box)return;const P=hjStmtLineEditPlan(q.id,i,read());
+    if(P.why){box.innerHTML='<div data-sle-why style="color:var(--muted)">'+escapeHtml(P.why)+'</div>';return;}
+    box.innerHTML='<div data-sle-sum>'+escapeHtml(q.project||'현장')+' '+won(P.before)+' → <b>'+won(P.after)+'</b> · 이 내역서 합계 '+won(P.srcBefore)+' → <b>'+won(P.srcAfter)+'</b></div>'+
+      '<div style="color:var(--muted)">'+escapeHtml(P.changes.join(' · '))+'</div>'+
+      (P.over?'<div data-sle-over style="color:var(--hj-warn-fg,#b45309)">이 내역서로 이미 받은 돈('+won(P.paidSrc)+')이 새 합계보다 '+won(P.over)+' 많아져요 — 저장은 되고 입금 기록은 그대로예요(장부에 \'받은 돈이 많아요\')</div>':'');};
+  const btns=[];
+  if(back)btns.push({label:'‹ 뒤로',cls:'ghost',fn:back});
+  else btns.push({label:'취소',cls:'ghost',fn:closeModal});
+  if(edited)btns.push({label:'↩ 파일 값으로',cls:'ghost',fn:()=>{const r=root();r.querySelector('#sleDate').value=orig.d;r.querySelector('#sleAmt').value=String(Math.round(num(orig.amt)));r.querySelector('#sleSkip').checked=false;draw();}});
+  btns.push({label:'저장',cls:'clay',fn:async()=>{if(busy)return;busy=true;let R;
+    try{R=await hjStmtLineEditSave(q.id,i,read());}catch(e){busy=false;toast((e&&e.message)||'고치지 못했어요');draw();return;}
+    render();toast('✏ '+(q.project?q.project+' ':'')+'내역서 줄 — '+R.changes.join(' · ')+(R.over?' · 받은 돈이 '+won(R.over)+' 많아요':''));
+    if(!root().querySelector('[data-sle]'))return;   // 저장하는 사이에 창을 닫았거나 다른 창을 열었으면 그 창은 건드리지 않는다
+    if(typeof back==='function')back();else closeModal();}});
+  openModal('✏ 내역서 줄 고치기',body,btns);
+  const r=root();
+  ['#sleDate','#sleAmt','#sleSkip'].forEach(k=>{const el=r.querySelector(k);if(el){el.addEventListener('input',draw);el.addEventListener('change',draw);}});
+  const sb=r.querySelector('[data-sle-sugg]');if(sb)sb.onclick=()=>{r.querySelector('#sleDate').value=sb.dataset.sleSugg;draw();};
+  draw();
 }
 // 확인 창의 고른 현장 이름('__new__:이름' 이면 그 이름) — hjStmtApply 묶음과 같은 셈
 function hjStmtChoiceName(c){c=String(c||'');return c.indexOf('__new__:')===0?hjStmtCell(c.slice(8)).slice(0,60):c;}
@@ -42113,6 +42257,7 @@ function hjStmtRevBlock(e,l,src,ctx){
   const rf=Array.isArray(q.stmt&&q.stmt.revFiles)?q.stmt.revFiles.map(f=>hjStmtCell(f)):[],sc=hjStmtCell(src),org=hjStmtSrcOf(q),last=rf.length?rf[rf.length-1]:org;
   if((rf.includes(sc)||org===sc)&&sc!==last)return '이 견적은 그 뒤 ‘'+last+'’ 로 금액을 바꿨어요 — 이미 넣었던 옛 파일이라 골라 주세요';
   if(q.exSum)return '집계 제외한 견적이라 골라 주세요';
+  if(e.l&&e.l.skip)return '내역서에서 뺀(미포함) 줄이에요 — 바꾸면 다시 넣어요, 골라 주세요';   // v628
   const p=q.project||'',pj=(state.projects||[]).find(x=>x&&x.name===p);
   if(!pj)return '지운 현장의 견적이라 골라 주세요';
   if(pj.archived)return '보관한 현장의 견적이라 골라 주세요';
@@ -42162,7 +42307,7 @@ function hjStmtRevisePlan(lines){
     if(why)throw new Error((q.project||'')+' 견적은 '+why+' — 손으로 고친 견적은 금액을 바꾸지 않아요. 그 줄은 [따로 더하기]나 [넣지 않기]로 고르세요');
     if(state.editingQuote&&state.editingQuote.id===q.id)throw new Error('견적 작성 화면에 '+(q.project||'')+' 견적이 열려 있어요 — 닫고 다시 해 주세요');
     const c=JSON.parse(JSON.stringify(q));
-    rs.forEach(r=>{c.stmt.lines[r.e.li].amt=r.to;});
+    rs.forEach(r=>{const cl=c.stmt.lines[r.e.li];cl.amt=r.to;delete cl.amt0;delete cl.skip;});   // v628 수정본 금액으로 바꾸면 다시 넣는다(미포함 해제)
     hjStmtReprice(c);
     qs.push({q,c,rs,before:quoteCalc(q).total,after:quoteCalc(c).total});
   });
@@ -42225,7 +42370,7 @@ function hjStmtApply(plan,opts){
   if(rp.reps.length&&!(opts&&opts.snapped))throw new Error('금액을 바꾸려면 안전판을 먼저 만들어야 해요 — 확인 창의 [반영] 단추로 해 주세요');
   const today=localDate();
   rp.qs.forEach(x=>{
-    x.rs.forEach(r=>{x.q.stmt.lines[r.e.li].amt=r.to;});
+    x.rs.forEach(r=>{const xl=x.q.stmt.lines[r.e.li];xl.amt=r.to;delete xl.amt0;delete xl.skip;});   // v628 수정본 파일이 정본(미포함이었으면 다시 넣음)
     hjStmtReprice(x.q);
     // 옛 작성 월의 매출(내역서)이 소급해 바뀌므로 언제·무엇을·어느 파일로 바꿨는지 견적 비고에 남긴다(기존 칸) ·
     // 그 파일은 반영한 것으로 본다 — stmt.revFiles(이 견적의 금액을 바꾼 수정본, 마지막이 가장 최근 · 20개까지). hjStmtFiles 가 '아직 안 넣음'에서 뺀다(새 견적이 안 생겨도).
@@ -42372,7 +42517,7 @@ function hjStmtReview(r){
         const v=cls.rev.get(l);
         if(v){rev++;const d=revDec(l,v,ctxOf.get(l));
           if(d==='add'){fresh++;amt+=l.amt;}
-          else if(d.indexOf('r:')===0){repN++;const e=v.cands.find(x=>revKey(x)===d);if(e){repD+=Math.round(num(l.amt))-Math.round(num(e.l.amt));const ym=ymOf(e.q.date||e.q.stmt.date||'');if(ym)months.add(ym);}}
+          else if(d.indexOf('r:')===0){repN++;const e=v.cands.find(x=>revKey(x)===d);if(e){repD+=Math.round(num(l.amt))-hjStmtLineAmt(e.l);const ym=ymOf(e.q.date||e.q.stmt.date||'');if(ym)months.add(ym);}}
           else if(!d)pendN++;
           return;}
         fresh++;amt+=l.amt;});
@@ -42398,7 +42543,7 @@ function hjStmtReview(r){
         const why=!x.v.sure?'같은 줄이 여럿이라 골라야 해요':hjStmtRevBlock(x.v.cands[0],x.l,r.file,x.ctx);
         const opts=(d?'':'<option value="">— 골라 주세요</option>')+x.v.cands.map(e=>{const ed=hjStmtQuoteEdited(e.q,1),f=hjStmtSrcOf(e.q),p=e.q.project||'',pj=(state.projects||[]).find(y=>y&&y.name===p),eto=hjStmtCell(e.q.stmt&&e.q.stmt.to);
           // 기본값이 아닌 까닭을 후보마다 짧게(그래도 고를 수는 있다 — 손으로 고친 견적만 못 고른다)
-          const tags=[e.q.exSum?'집계 제외':'',!pj?'지운 현장':pj.archived?'보관 현장':'',x.ctx&&x.ctx.project!==p?'고른 현장과 다름':'',f!==src&&eto&&x.ctx&&x.ctx.to&&eto!==x.ctx.to?'다른 거래처 ‘'+eto+'’':''].filter(Boolean);
+          const tags=[e.l&&e.l.skip?'미포함 줄 — 바꾸면 다시 넣음':'',e.q.exSum?'집계 제외':'',!pj?'지운 현장':pj.archived?'보관 현장':'',x.ctx&&x.ctx.project!==p?'고른 현장과 다름':'',f!==src&&eto&&x.ctx&&x.ctx.to&&eto!==x.ctx.to?'다른 거래처 ‘'+eto+'’':''].filter(Boolean);
           return `<option value="${escapeAttr(revKey(e))}"${ed?' disabled':''}>새 금액으로 바꾸기 — 옛 ${escapeHtml(hjNum(e.l.amt))}원 · ${escapeHtml(p)}${f!==src?' · ‘'+escapeHtml(f)+'’':''}${tags.length?' · ⚠ '+escapeHtml(tags.join(' · ')):''}${ed?' (손으로 고친 견적 — 못 바꿈)':''}</option>`;}).join('')
           +'<option value="add">따로 더하기 — 옛 줄은 그대로 두고 한 줄 더</option><option value="skip">넣지 않기</option>';
         return `<div data-stmt-revrow="${x.i}" style="border-top:1px solid var(--line-soft);padding:6px 0">
@@ -42442,12 +42587,13 @@ function hjStmtLedger(){
   (state.quotes||[]).forEach(q=>{
     if(!q||!q.stmt||q.exSum||!q.project)return;
     const src=hjStmtSrcOf(q);if(!src)return;
-    if(!by.has(src))by.set(src,{src,doc:q.stmt.doc||'작업내역서',to:q.stmt.to||'',date:q.stmt.date||q.date||'',file:q.stmt.file||src,quotes:[],total:0,paid:0});
+    if(!by.has(src))by.set(src,{src,doc:q.stmt.doc||'작업내역서',to:q.stmt.to||'',date:q.stmt.date||q.date||'',file:q.stmt.file||src,quotes:[],total:0,paid:0,odd:0,skipN:0});
     const s=by.get(src);s.quotes.push(q);s.total+=quoteCalc(q).total;
+    (Array.isArray(q.stmt.lines)?q.stmt.lines:[]).forEach(l=>{if(!l)return;if(l.skip)s.skipN++;else if(hjStmtLineOdd(l,q.stmt.date||q.date))s.odd++;});   // v628
     if(!s.to&&q.stmt.to)s.to=q.stmt.to;
   });
   (state.payLog||[]).forEach(x=>{if(x&&x.stmt&&by.has(x.stmt))by.get(x.stmt).paid+=Math.round(num(x.amt));});
-  return [...by.values()].map(s=>Object.assign(s,{left:Math.max(0,s.total-s.paid)})).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(a.src).localeCompare(String(b.src)));
+  return [...by.values()].map(s=>Object.assign(s,{left:Math.max(0,s.total-s.paid),over:Math.max(0,s.paid-s.total)})).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(a.src).localeCompare(String(b.src)));
 }
 // 받은 금액을 그 내역서 현장들에 남은 돈 비율로 — [{project,total,left,amt}] (합 = amt). 남은 돈보다 많거나 0 이하면 null
 function hjStmtPayPlan(s,amt){
@@ -42636,7 +42782,7 @@ function hjStmtLedgerHTML(){
   const rows=led.map(s=>{const nm=nmOf(s)+(nmN[nmOf(s)]>1?' '+s.src:'');return `<div data-stmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-top:1px solid var(--line-soft)">
       <div style="flex:1 1 220px;min-width:0"><b style="font-size:13px;overflow-wrap:anywhere">${escapeHtml((s.to?s.to+' · ':'')+s.doc+' '+hjStmtMd(s.date))}</b> <span style="font-size:11.5px;color:var(--muted)">현장 ${s.quotes.length}곳</span><br>
         <span style="font-size:12px">합계 ${won(s.total)} · 받음 <b style="color:var(--ok)">${won(s.paid)}</b> · ${s.left?'남음 <b>'+won(s.left)+'</b>'+hjStmtAgeChip(s,today):'<b style="color:var(--ok)">✓ 다 받음</b>'}</span><br>
-        <span style="font-size:11px;color:var(--muted);word-break:break-all">${escapeHtml(s.src)}</span></div>
+        <span style="font-size:11px;color:var(--muted);word-break:break-all">${escapeHtml(s.src)}</span>${s.odd?` <span data-stmt-odd="${s.odd}" style="font-size:11.5px;color:var(--hj-warn-fg,#b45309);font-weight:700">⚠ 날짜 확인 ${s.odd}줄</span>`:''}${s.skipN?` <span data-stmt-skipn="${s.skipN}" style="font-size:11.5px;color:var(--muted)">· 미포함 ${s.skipN}줄</span>`:''}${s.over?` <span data-stmt-over="${s.over}" style="font-size:11.5px;color:var(--hj-warn-fg,#b45309)">· 받은 돈이 ${won(s.over)} 많아요</span>`:''}</div>
       <button class="mini-btn" data-stmtdetail="${escapeAttr(s.src)}" aria-label="${escapeAttr(nm+' 보기')}" style="min-height:44px" title="이 내역서 한 장 — 현장별 줄·받은 돈·남은 돈·입금 이력">📄 보기</button>
       ${s.left?`<button class="mini-btn" data-stmtpay="${escapeAttr(s.src)}" aria-label="${escapeAttr(nm+' 입금')}" style="min-height:44px" title="협력사가 이 내역서 금액을 입금했으면 — 현장마다 나눠 입금 기록">💰 입금</button>`:''}
       ${(()=>{const n=hjStmtProofTargets(s.src).length;return n?`<button class="mini-btn" data-stmtproof="${escapeAttr(s.src)}" aria-label="${escapeAttr(nm+' 증빙 '+n+'건 아직')}" style="min-height:44px" title="이 내역서 입금 기록(현장마다 나눠 적힌 것)에 세금계산서 등 증빙을 한 번에 기록">🧾 증빙 ${n}건 아직</button>`:'';})()}
@@ -42711,11 +42857,12 @@ function hjStmtDetailData(src){
   const idx=hjStmtPhotoIndex(),sites=new Map(),names=new Set((state.projects||[]).filter(p=>p&&p.name).map(p=>p.name));
   const site=name=>{if(!sites.has(name))sites.set(name,{project:name,none:!name,quotes:0,total:0,paid:0,left:0,sep:false,lines:[],photos:0,open:names.has(name),lineTotal:0,linesOff:false});return sites.get(name);};
   s.quotes.forEach(q=>{const g=site(q.project),t=quoteCalc(q).total;g.quotes++;g.total+=t;if(q.stmt.vat==='separate')g.sep=true;
-    const ls=(Array.isArray(q.stmt.lines)?q.stmt.lines:[]).filter(Boolean);
-    // 줄로 셈한 합계(부가세 별도 내역서면 줄 = 공급가 → +10%) — 반영 때 견적 합계와 같다. 줄이 없는 견적은 견적 합계 그대로.
-    const A=ls.reduce((a,l)=>a+Math.round(num(l.amt)),0),exp=ls.length?(q.stmt.vat==='separate'?A+Math.round(A*0.1):A):t;
+    const ls=(Array.isArray(q.stmt.lines)?q.stmt.lines:[]).map((l,i)=>[l,i]).filter(x=>x[0]),sd=q.stmt.date||q.date||'';
+    // 줄로 셈한 합계(부가세 별도 내역서면 줄 = 공급가 → +10%) — 반영 때 견적 합계와 같다. 줄이 없는 견적은 견적 합계 그대로. v628 미포함 줄은 0원.
+    const A=ls.reduce((a,x)=>a+hjStmtLineAmt(x[0]),0),exp=ls.length?(q.stmt.vat==='separate'?A+Math.round(A*0.1):A):t;
     g.lineTotal+=exp;if(Math.abs(exp-t)>1)g.linesOff=true;
-    (ls.length?ls:[{d:q.stmt.date||q.date||'',loc:'',work:q.title||'작업내역서',amt:t}]).forEach(l=>g.lines.push({d:String(l.d||q.stmt.date||''),loc:hjStmtCell(l.loc),work:hjStmtCell(l.work)||'작업',amt:Math.round(num(l.amt))}));});
+    (ls.length?ls:[[{d:sd,loc:'',work:q.title||'작업내역서',amt:t},-1]]).forEach(([l,i])=>g.lines.push({d:String(l.d||q.stmt.date||''),loc:hjStmtCell(l.loc),work:hjStmtCell(l.work)||'작업',amt:Math.round(num(l.amt)),
+      skip:!!l.skip,d0:l.d0!=null?String(l.d0):null,amt0:l.amt0!=null?Math.round(num(l.amt0)):null,odd:!l.skip&&hjStmtLineOdd(l,sd),qid:i>=0?q.id:null,li:i}));});   // v628 ✏ 고치기에 쓰는 자리
   const paidBy={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt===src){const k=x.project||'';paidBy[k]=(paidBy[k]||0)+Math.round(num(x.amt));}});
   Object.keys(paidBy).forEach(name=>{site(name).paid=paidBy[name];});
   const list=[...sites.values()].map(g=>{g.left=Math.max(0,g.total-g.paid);g.lines=g.lines.map((l,i)=>[l,i]).sort((a,b)=>String(a[0].d).localeCompare(String(b[0].d))||a[1]-b[1]).map(x=>x[0]);
@@ -42738,9 +42885,15 @@ function hjStmtDetailView(src,back){
   if(!D){toast('반영한 내역서를 찾지 못했습니다');return;}
   const today=localDate(),me=()=>hjStmtDetailView(src,back),SHOW=40,W=(v,c)=>'<b style="white-space:nowrap'+(c?';color:'+c:'')+'">'+won(v)+'</b>';   // 금액이 숫자 중간에서 줄바꿈되지 않게
   const head='<div data-sd-head style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px;line-height:1.7;overflow-wrap:anywhere"><b style="overflow-wrap:anywhere">'+escapeHtml((D.to?D.to+' · ':'')+D.doc)+'</b> · 작성일 '+escapeHtml(D.date||'모름')+(D.left?hjStmtAgeChip({date:D.date},today):'')+
-    '<div data-sd-sum>합계 '+W(D.total)+' · 받음 '+W(D.paid,'var(--ok)')+' · '+(D.left?'남음 '+W(D.left):'<b style="color:var(--ok)">✓ 다 받음</b>')+'</div>'+
+    '<div data-sd-sum>합계 '+W(D.total)+' · 받음 '+W(D.paid,'var(--ok)')+' · '+(D.left?'남음 '+W(D.left):'<b style="color:var(--ok)">✓ 다 받음</b>')+(D.paid>D.total?'<div data-sd-over style="font-size:12px;color:var(--hj-warn-fg,#b45309)">받은 돈이 합계보다 '+won(D.paid-D.total)+' 많아요 — 줄을 빼거나 금액을 낮췄다면 입금 기록을 확인하세요</div>':'')+'</div>'+
     '<div style="font-size:11.5px;color:var(--muted);word-break:break-all">원본 파일: '+escapeHtml(D.file)+'</div></div>';
-  const line=l=>'<div data-sd-line style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:4px 0;border-top:1px dashed var(--line-soft)"><span style="min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.loc&&l.loc!==l.work?l.loc+' · '+l.work:l.work)+'</span><b style="white-space:nowrap">'+won(l.amt)+'</b></div>';
+  // v628 줄마다 [✏](작업 날짜·금액·미포함) — 줄 글자(data-sd-line)는 예전 그대로이고 고친 줄·미포함·⚠ 날짜만 표시가 붙는다
+  const line=l=>{
+    const tag=(l.skip?' <span data-sd-badge="skip" style="color:var(--hj-warn-fg,#b45309);font-weight:700">미포함</span>':'')+
+      (l.odd?' <span data-sd-badge="odd" style="color:var(--hj-warn-fg,#b45309);font-weight:700">⚠ 작성일보다 늦은 날짜</span>':'')+
+      (l.d0!=null||l.amt0!=null?' <span data-sd-badge="edited" style="color:var(--muted)">✏ 고침('+escapeHtml([l.d0!=null?'원래 '+(hjStmtMd(l.d0)||'날짜 없음'):'',l.amt0!=null?'원래 '+won(l.amt0):''].filter(Boolean).join(' · '))+')</span>':'');
+    return '<div data-sd-lrow style="display:flex;align-items:center;gap:6px;border-top:1px dashed var(--line-soft)"><div data-sd-line'+(l.skip?' data-sd-skip':'')+' style="flex:1 1 auto;min-width:0;display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:4px 0'+(l.skip?';opacity:.7':'')+'"><span style="min-width:0;overflow-wrap:anywhere"><span style="color:var(--muted)">'+escapeHtml(hjStmtMd(l.d)||'날짜 없음')+'</span> '+escapeHtml(l.loc&&l.loc!==l.work?l.loc+' · '+l.work:l.work)+tag+'</span><b style="white-space:nowrap'+(l.skip?';text-decoration:line-through':'')+'">'+won(l.amt)+'</b></div>'+
+      (l.qid!=null?'<button type="button" class="mini-btn" data-sdedit="'+escapeAttr(String(l.qid))+'" data-sdedit-li="'+l.li+'" aria-label="'+escapeAttr(((hjStmtMd(l.d)||'날짜 없음')+' '+l.work+' 줄 고치기').trim())+'" title="작업 날짜·금액 고치기 · 내역서에서 빼기(미포함)" style="min-height:44px;min-width:44px;flex:none">✏</button>':'')+'</div>';};
   const name=g=>g.none?'<b>현장 미지정</b>':g.open?'<button type="button" class="mini-btn" data-open="'+escapeAttr(g.project)+'" style="min-height:44px;max-width:100%;overflow-wrap:anywhere;text-align:left" title="이 현장 화면 열기">'+escapeHtml(g.project)+'</button>':'<b style="overflow-wrap:anywhere">'+escapeHtml(g.project)+'</b> <span style="font-size:11.5px;color:var(--muted)">현장 목록에 없음</span>';
   const sites=D.sites.map(g=>'<div data-sd-site="'+escapeAttr(g.project)+'" style="border:1px solid var(--line-soft);border-radius:11px;padding:6px 10px;margin:0 0 8px">'+
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px">'+name(g)+(g.quotes?' '+hjStmtPhotoBadge(g.photos):'')+'</div>'+
@@ -42755,7 +42908,7 @@ function hjStmtDetailView(src,back){
       '<div style="color:var(--muted);overflow-wrap:anywhere">'+where(p)+(p.payer?' · 입금자 '+escapeHtml(p.payer):'')+(p.method?' · '+escapeHtml(p.method):'')+' · 🧾 '+escapeHtml(proofTxt(p))+(p.others?' · 통장 한 줄로 내역서 '+(p.others+1)+'장을 함께 받은 입금':'')+'</div></div>').join('')
     :'<div data-sd-nopay style="font-size:12.5px;color:var(--muted);padding:4px 0">아직 받은 돈이 없어요</div>';
   const body='<div data-stmt-detail="'+escapeAttr(src)+'" style="font-size:13px;line-height:1.6">'+head+
-    '<div style="font-size:12px;font-weight:800;margin:4px 0 6px">🏗 현장별 '+D.sites.length+'곳</div>'+sites+
+    '<div style="font-size:12px;font-weight:800;margin:4px 0 6px">🏗 현장별 '+D.sites.length+'곳 <span data-sd-edithint style="font-weight:400;color:var(--muted)">· 줄 끝 ✏ 로 날짜·금액 고치기·빼기(미포함)</span></div>'+sites+
     '<div style="font-size:12px;font-weight:800;margin:12px 0 2px">💰 입금 이력 '+D.pays.length+'번</div>'+pays+'</div>';
   const btns=[{label:back?'← 뒤로':'닫기',cls:'ghost',fn:back||closeModal}];
   if(D.left)btns.push({label:'📋 미수 안내 글',cls:'ghost',fn:()=>hjStmtDunView(D.dunTo,me)});
@@ -42763,6 +42916,7 @@ function hjStmtDetailView(src,back){
   if(D.left)btns.push({label:'💰 입금',cls:'clay',fn:()=>hjStmtPayView(src,me)});
   openModal('📄 '+((D.to?D.to+' ':'')+D.doc+' '+hjStmtMd(D.date)).trim(),body,btns,true);
   document.querySelectorAll('#modalRoot [data-open]').forEach(b=>{b.onclick=()=>{const n=b.dataset.open;closeModal();state.activeProject=n;state.tab='project';__projView=null;render();};});
+  document.querySelectorAll('#modalRoot [data-sdedit]').forEach(b=>{b.onclick=()=>hjStmtLineEditView(b.dataset.sdedit,+b.dataset.sdeditLi,me);});   // v628
 }
 /* v537 🏢 내역서 동·호수 → 세대 등록(확인 뒤) — 10/31 대표 "최고의 개발자로 개발 진행".
    v331 규칙: 아파트 이름은 현장, 동·호수는 그 현장의 세대(aptUnits). v526 내역서 반영은 위치('○○아파트 101동 1001호 …')에서 동·호수를 떼어

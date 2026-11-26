@@ -19,7 +19,7 @@ const APP = process.env.HJ_TEST_APP || 'http://127.0.0.1:8299/index.html', ORIGI
 const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const FILTER = 'if(!((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key)))return;';
+const FILTER = 'if(!(r&&((r.file&&r.file._stmt)||(r.quote&&r.quote.stmt&&r.quote.stmt.key))))return;';   // v628 브리핑 💰 도 내역서 탭 한 벌(hjStmtEntries)의 거르기 줄
 let html = process.env.HJ_V564_BASELINE ? execFileSync('git', ['show', process.env.HJ_V564_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 if (process.env.HJ_V564_MUTATION) {
   assert.equal(process.env.HJ_V564_MUTATION, 'no-stmt-filter', 'unknown mutation ' + process.env.HJ_V564_MUTATION);
