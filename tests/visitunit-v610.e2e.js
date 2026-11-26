@@ -1,15 +1,16 @@
 /* v610 사진 탭 '현장 방문' 묶음 머리에 🏢 동·호수 — 대표 11/17 "현장 방문에 동호수도 보이게 코드 수정해줘". 합성 자료만, 외부 쓰기 0.
    ① PC 1280 (CHIP) — 사진에 연결해 둔 세대(_aptUnit)만 읽는다:
       · 세대 하나·모두 연결 = '🏢 101동 501호'(현장 방문 묶음, 장수 없음)
-      · 여럿 + 세대 연결 안 한 사진 = '101동 501호 2장 · 102동 1203호 1장 · 미지정 1장' — 장수 많은 순, 현장 없는 사진은 미지정에 안 셈('현장 미지정 1장' 배지가 센다)
-      · 셋이면 '… 외 1곳'(같은 장수면 먼저 찍은 순) · title 에 전부 · 공용부는 그 이름('🏢 지하주차장')
+      · v627 한 방문에 세대가 여럿이면 세대마다 묶음을 나눈다(대표 11/26 "동호수가 다르면 사진 분류해줘"): B → '🏢 102동 1203호' · '🏢 101동 501호' ·
+        연결 안 한 사진 묶음 '🏢 동·호수 미지정 1장'(현장 없는 사진은 안 셈 — '현장 미지정 1장' 배지가 센다) · C 세 세대 → 세 묶음 · 공용부는 그 이름('🏢 지하주차장')
       · 끊긴 연결(지운 세대)·연결 없는 묶음·동·호수를 안 쓰는 현장(다른 현장을 가리키는 연결)엔 칩 없음
       · 자리 — '현장 미지정' 배지·재방문 뒤, 위치 앞 · 그리기만으로 자료 불변
    ② 폰 390 모바일 모드 (PHONE) — 밝은 화면 · 어두운 화면 + 큰 글씨 2단계: 칩이 머리 안 · 가로 넘침 0 · 글자 대비 4.5↑ · 칩 없는 묶음 머리엔 칩 없음
    ③ 바뀌면 따라감 (LIVE) — [동·호수 관리]와 같은 길(aptUnitAssign·aptUnitSave, 안전판·원자 저장)로: 연결하면 칩이 생김(사진 묶음 캐시가 연결을 본다) ·
       세대 동·호를 고치면 새 이름 · 꺾쇠·따옴표·& 든 공용부 이름은 글자로(칩 안에 요소가 안 생김) · 연결을 풀면 칩이 사라짐
    ④ 도움말 한 줄 · 핀 3곳(v610 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0
-   HJ_V610_BASELINE=<commit> 은 ① 에서 실패해야 한다. HJ_V610_MUTATION: no-chip(칩 빼기)·count-all(현장 없는 사진도 미지정으로 셈)·order-first(장수 대신 먼저 나온 순)는 ①,
+   HJ_V610_BASELINE=<commit> 은 ① 에서 실패해야 한다. HJ_V610_MUTATION: no-chip(칩 빼기)·count-all(현장 없는 사진도 미지정으로 셈)은 ①
+   (v627 부터 한 묶음에 세대가 둘 이상 남지 않아 order-first 는 뺐다 — 나누기는 tests/unitsplit-v627.unit.js),
    stale-cache(사진 묶음 캐시 열쇠에서 세대 연결 뺌)·no-escape(세대 이름을 그대로 HTML 로)는 ③ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -25,7 +26,6 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MUT = {
   'no-chip': ['      ${revisit}\n      ${unitChip}\n', '      ${revisit}\n'],
   'count-all': ['rest:managed-linked,total:items.length}', 'rest:items.length-linked,total:items.length}'],
-  'order-first': ['.sort((a,b)=>b.n-a.n||a.at-b.at)', '.sort((a,b)=>a.at-b.at)'],
   'stale-cache': ["+':'+hjPhotoLeakTag(p)+':'+(p._aptUnit?(p._aptUnit.project||'')+'/'+(p._aptUnit.unitId||''):'')).join('|')", "+':'+hjPhotoLeakTag(p)).join('|')"],
   'no-escape': ['<span aria-hidden="true">🏢 </span>${escapeHtml(text)}</span>`', '<span aria-hidden="true">🏢 </span>${text}</span>`']
 };
@@ -120,23 +120,24 @@ const phoneLook = page => page.evaluate(() => {
       await seedView(page);
       const d0 = await data(page);
       const H = await heads(page);
-      assert.deepEqual(Object.keys(H).sort(), ['a1', 'b1', 'c1p', 'd1', 'e1', 'f1', 'g1'], '묶음 일곱 ' + Object.keys(H));
+      assert.deepEqual(Object.keys(H).sort(), ['a1', 'b1', 'b2', 'b4', 'c1p', 'c2p', 'c3p', 'd1', 'e1', 'f1', 'g1'], '묶음 열하나(v627 B·C 는 세대별로 나뉨) ' + Object.keys(H));
       // A — 위치 있는 묶음 = '현장 방문', 세대 하나·모두 연결 = 장수 없이
       assert.ok(/^현장 방문 \d+ · /.test(H.a1.when), 'A 는 현장 방문 묶음 ' + H.a1.when);
       assert.deepEqual([H.a1.chip, H.a1.n, H.a1.title], ['🏢 101동 501호', '1', '동·호수 — 101동 501호 3장'], 'A 세대 하나 ' + JSON.stringify(H.a1));
-      // B — 장수 많은 순(먼저 찍은 102동 이 뒤로) · 세대 연결 안 한 사진 1장 = 미지정 1장 · 현장 없는 사진은 '현장 미지정' 배지가 셈
-      assert.equal(H.b1.chip, '🏢 101동 501호 2장 · 102동 1203호 1장 · 미지정 1장', 'B 여럿·미지정 ' + JSON.stringify(H.b1));
-      assert.deepEqual([H.b1.n, H.b1.un], ['2', '현장 미지정 1장'], 'B 칩 수·현장 미지정 배지 ' + JSON.stringify(H.b1));
-      assert.ok(before(H.b1.kids, 'when', 'unassigned-badge') && before(H.b1.kids, 'unassigned-badge', 'cluster-unit') && before(H.b1.kids, 'cluster-unit', 'where'), 'B 자리 — 현장 미지정 배지 뒤, 위치 앞 ' + H.b1.kids);
-      // C — 세 세대 같은 장수 = 먼저 찍은 순 두 곳 + 외 1곳, title 에 전부
-      assert.equal(H.c1p.chip, '🏢 101동 501호 1장 · 102동 1203호 1장 외 1곳', 'C 외 1곳 ' + JSON.stringify(H.c1p));
-      assert.deepEqual([H.c1p.n, H.c1p.title], ['3', '동·호수 — 101동 501호 1장, 102동 1203호 1장, 지하주차장 1장'], 'C title ' + JSON.stringify(H.c1p));
+      // B — v627 세대마다 묶음(그 세대 첫 사진 순: 102동 → 101동) · 세대 연결 안 한 사진은 따로 '동·호수 미지정 1장' · 현장 없는 사진은 '현장 미지정' 배지가 셈
+      assert.deepEqual([H.b1.chip, H.b1.n, H.b1.un], ['🏢 102동 1203호', '1', ''], 'B 102동 묶음 ' + JSON.stringify(H.b1));
+      assert.deepEqual([H.b2.chip, H.b2.n, H.b2.title], ['🏢 101동 501호', '1', '동·호수 — 101동 501호 2장'], 'B 101동 묶음 ' + JSON.stringify(H.b2));
+      assert.deepEqual([H.b4.chip, H.b4.n, H.b4.un], ['🏢 동·호수 미지정 1장', '0', '현장 미지정 1장'], 'B 나머지 묶음 · 현장 미지정 배지 ' + JSON.stringify(H.b4));
+      assert.ok(before(H.b4.kids, 'when', 'unassigned-badge') && before(H.b4.kids, 'unassigned-badge', 'cluster-unit') && before(H.b4.kids, 'cluster-unit', 'where'), 'B 자리 — 현장 미지정 배지 뒤, 위치 앞 ' + H.b4.kids);
+      // C — 세 세대 → 세 묶음(찍은 순)
+      assert.deepEqual([H.c1p.chip, H.c2p.chip, H.c3p.chip], ['🏢 101동 501호', '🏢 102동 1203호', '🏢 지하주차장'], 'C 세 묶음 ' + JSON.stringify([H.c1p, H.c2p, H.c3p]));
+      assert.deepEqual([H.c1p.n, H.c1p.title], ['1', '동·호수 — 101동 501호 1장'], 'C title ' + JSON.stringify(H.c1p));
       // D — 공용부 이름 · A 와 같은 자리라 재방문 2/2차 · 칩은 재방문 뒤
       assert.ok(/^현장 방문 \d+ · /.test(H.d1.when) && H.d1.chip === '🏢 지하주차장', 'D 공용부 ' + JSON.stringify(H.d1));
       assert.ok(/재방문 2\/2차/.test(H.d1.rv) && before(H.d1.kids, 'revisit', 'cluster-unit') && before(H.d1.kids, 'cluster-unit', 'where'), 'D 재방문 뒤 ' + JSON.stringify(H.d1));
       // E·F·G — 끊긴 연결 · 연결 없음 · 동·호수 안 쓰는 현장(다른 현장을 가리키는 연결) = 칩 없음
       assert.deepEqual([H.e1.chip, H.f1.chip, H.g1.chip], [null, null, null], '칩 없는 묶음 ' + JSON.stringify([H.e1, H.f1, H.g1]));
-      assert.ok([H.a1, H.b1, H.c1p, H.d1].every(x => x.inner === 1 && x.img === 0), '칩 안에는 숨긴 아이콘 칸 하나뿐');
+      assert.ok([H.a1, H.b1, H.b2, H.b4, H.c1p, H.c2p, H.c3p, H.d1].every(x => x.inner === 1 && x.img === 0), '칩 안에는 숨긴 아이콘 칸 하나뿐');
       await page.evaluate(() => { __photoCache.key = null; render(); render(); });
       assert.equal(await data(page), d0, '그리기만으로 자료 불변');
       await shot(page, 'v610-pc');
@@ -147,7 +148,7 @@ const phoneLook = page => page.evaluate(() => {
     await test('② 폰 390 — 밝은·어두운+큰 글씨 2단계: 칩이 머리 안 · 넘침 0 · 대비 4.5↑ (PHONE)', async () => {
       await seedView(page);
       const light = await phoneLook(page);
-      assert.equal(light.chips, 4, '폰 칩 넷 ' + JSON.stringify(light));
+      assert.equal(light.chips, 8, '폰 칩 여덟(v627 B·C 나뉨) ' + JSON.stringify(light));
       assert.ok(light.over <= 0, '가로 넘침 0 ' + light.over);
       for (const r of light.rows) {
         assert.ok(r.inside, '칩이 머리 안 ' + JSON.stringify(r));
@@ -160,7 +161,7 @@ const phoneLook = page => page.evaluate(() => {
       await page.evaluate(() => { document.body.classList.add('dark'); document.body.classList.add('a11y-big2'); __photoCache.key = null; render(); });
       await page.waitForTimeout(400);   // 색 전환(transition) 끝난 뒤 잰다
       const dark = await phoneLook(page);
-      assert.equal(dark.chips, 4, '어두운 화면 칩 넷');
+      assert.equal(dark.chips, 8, '어두운 화면 칩 여덟');
       assert.ok(dark.over <= 0, '어두운+큰 글씨 가로 넘침 0 ' + dark.over);
       for (const r of dark.rows) {
         assert.ok(r.inside, '어두운 화면 칩이 머리 안 ' + JSON.stringify(r));

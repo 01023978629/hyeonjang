@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-26 v627 🏢 현장 방문 묶음을 동·호수별로
+
+대표 요청(11/26) "동호수가 다르면 사진 분류해줘"(월평타운 11/26 방문 한 묶음에 106동 806호 19장 · 105동 905호 18장). 핀 `hyeonjang-v627-unitsplit`.
+- `clusterPhotos` 끝에 `hjClusterSplitUnits` — 한 묶음에 연결된 동·호수(aptUnitForPhoto)가 둘 이상이면 동·호수마다 묶음(그 동·호수 첫 사진 순), 연결 없는 사진은 맨 뒤 한 묶음
+  (짐작해 붙이지 않음 — hjClusterUnits 원칙). 하나뿐이면 그대로. 새 묶음 칸은 clusterPhotos 와 같음(first·last·앵커 = 첫 GPS·표시 좌표 = 마지막 GPS).
+- `groupRevisits`: 같은 `_partKey`(나눈 묶음)는 재방문 한 번. `hjClusterUnitHTML`: 나누고 남은 묶음은 '🏢 동·호수 미지정 n장'.
+- 캐시 열쇠 photoFingerprint 는 v610 부터 _aptUnit 을 담아 연결이 바뀌면 다시 나눈다. 사진 기록은 바꾸지 않는다(읽기만).
+- 검사 `tests/unitsplit-v627.unit.js`(변이 `HJ_V627_MUTATION`).
+
 ## 2026-11-26 v626 🗂 한 달 지난 사진 ZIP 안을 동·호수 폴더로
 
 대표 요청(11/26) "한달 지난 사진 동호수 분류가 안되어 있어 동호수를 파일로 분류해서 넣어서" · 결정 '둘 다 해줘'(ZIP 정리 + 앞으로 보관도). 핀 `hyeonjang-v626-pzunit`.

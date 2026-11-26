@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(process.env.HJ_PHOTO_SOURCE || path.join(__dirname, '..', 'index.html'), 'utf8');
-const names = ['hjPhotoHasGps','hjPhotoGpsNear','clusterPhotos','photoSuggestFor','hjClusterLocationLabel','hjPhotoLocationLabel','hjHasBuildingName','hjClusterAddressPlan','hjApplyClusterAddress','geocodeCluster','geocodeAllClusters','geocodeUpgradeClusters','setClusterBuilding'];
+const names = ['hjPhotoHasGps','hjPhotoGpsNear','clusterPhotos','hjClusterSplitUnits','hjClusterFromItems','photoSuggestFor','hjClusterLocationLabel','hjPhotoLocationLabel','hjHasBuildingName','hjClusterAddressPlan','hjApplyClusterAddress','geocodeCluster','geocodeAllClusters','geocodeUpgradeClusters','setClusterBuilding'];
 function extract(name) {
   const start = source.search(new RegExp('(?:async )?function '+name+'\\('));
   assert(start >= 0, 'function exists: '+name);
