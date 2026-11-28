@@ -3,6 +3,18 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-28 v631 🤖 요청함 '내역서 반영'(stmt_apply)
+
+대표 결정(11/28 "반영 도구 만들어") — 📑 작업내역서 장부의 '아직 안 넣음' 작업·공사내역서 엑셀을 대표가 손으로 [📑 반영] 하던 것을 카톡봇·Claude 가 요청(결재)으로 올리면 현장웹이 넣는다. 핀 `hyeonjang-v631-stmtapply`.
+- 도구 `stmt_apply`(AI_TOOLS 174종·AI_WRITE·AI_ALWAYS_CONFIRM·HJ_KAKAO_AUTO_TOOLS): args `{file: "<'아직 안 넣음'에 보이는 파일 이름 그대로>.xlsx"}`. 파일 id 는 쓰지 않는다(`state.files` id 는 불러올 때마다 `uid()` — 기기마다 다름).
+- 원본이 있어야 한다: `hjStmtApplyRead` = [📑 반영](`hjStmtImportFromFile`)과 같은 `getFileOf` → `hjStmtReadFile`(같은 읽기). 이 기기에서 못 열면(폰) `wait` — 카톡 승인 반영은 `hjKakaoUnitReady` 가 고르지 않아 요청함에 남고 PC 가 넣는다(사진 도구의 이틀 기다림 없음 — 원본 없이는 절대 안 넣음).
+- 계획 `hjStmtApplyPlan` = 📑 확인 창 기본값 그대로(`hjStmtGroups` 기본 현장 · 받는 분·작성일·부가세는 파일에서 · `exclude []`). 저절로(카톡·AI 비서) 넣는 것은 `why` 가 빌 때만: 내역서 경고(`r.warn`) 없음 · 합계 줄 있음 · 작성일이 미래 아님 · 작성일보다 늦은 작업 날짜 없음 · 위치 묶음마다 점수 `HJ_STMT_APPLY_MIN`(0.5) 이상 후보가 딱 하나이고 그게 기본 선택(이미 있는 현장 — `__new__` 새 현장은 안 함) · 금액만 바뀐 줄(`hjStmtClassify().rev` — `hjStmtRevisePlan` reps 의 출처) 없음 · 같은 이름 파일 하나뿐.
+- `hjStmtApplyPrep` 상태: `same`(이미 넣음 `hjStmtUsedSet` — 원본 없이도 · 줄이 모두 이미 듦) · `wait`(원본 못 엶·오래된 창) · `hold`(애매함 — why) · `auto`. 카톡 반영은 `hjStmtApplyPrepAll` 로 미리 셈(WeakMap `__hjStmtPrepOf`) → `hjKakaoUnitReady`(wait 거름)·`hjKakaoAutoCanWrite`(hold 거름) → 안전판 → `aiToolRun` → `hjStmtApplyRun`(다시 셈, auto 아니면 throw, `이미` 면 건너뜀으로 셈).
+- 요청함 ✓ 는 저절로 넣지 않고 `hjStmtApplyReview` → 📑 확인 창(`hjStmtReview(r,{snapLabel,onApplied})`)을 연다 — 대표가 [반영]해야 처리로. 원본이 없으면 토스트·요청이 남음. 이미 넣은 내역서는 처리로만.
+- 미리보기 `hjStmtApplyPreview`(요청함 화면·AI 비서 확인 카드가 먼저 원본을 읽어 10분 메모): 파일·받는 분·작성일·합계·줄·현장·견적이 따로 있는 현장·저절로 넣는지(아니면 까닭). 전화번호는 `hjStmtApplyMask` 로 모두 뒷 4자리.
+- 카톡 반영의 미리 셈은 한 번에 `HJ_STMT_APPLY_PREP_MAX`(50)건 — 10이면 애매한 요청 10건 뒤의 좋은 요청이 밀렸다(검사 ③). 줄을 하나도 못 읽은 파일은 `same` 이 아니라 `hold`.
+- 검사 `tests/stmtapply-v631.unit.js` 8/8(변이 `HJ_V631_MUTATION` 24개 모두 실패 · v630 기준 글은 ①에서 실패).
+
 ## 2026-11-28 v630 📝 카톡 승인 메모(add_note) 저절로 반영
 
 대표 승인(11/28 "위 내용 진행") — 카톡봇 결재로 승인한 메모 요청(의뢰 내용·시공 내용 메모)이 `add_note` 가 `HJ_KAKAO_AUTO_TOOLS` 에 없어 🤖 클로드 요청함에서 ✓ 를 기다렸다. 핀 `hyeonjang-v630-noteauto`.
