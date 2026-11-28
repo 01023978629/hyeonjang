@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-28 v630 📝 카톡 승인 메모(add_note) 저절로 반영
+
+대표 승인(11/28 "위 내용 진행") — 카톡봇 결재로 승인한 메모 요청(의뢰 내용·시공 내용 메모)이 `add_note` 가 `HJ_KAKAO_AUTO_TOOLS` 에 없어 🤖 클로드 요청함에서 ✓ 를 기다렸다. 핀 `hyeonjang-v630-noteauto`.
+- `HJ_KAKAO_AUTO_TOOLS.add('add_note')` — 메모 더하기만(지우거나 고치지 않음). `add_note` 는 원래 `SAFE_AUTO`·`AI_WRITE`, `AI_ALWAYS_CONFIRM` 에는 넣지 않음. 다른 문(카톡·관리 프로그램 승인만 · 7일 · 링크·붙여넣기 절대 아님 · 직원·체험·오프라인 안 함 · 넣기 전 안전판)은 그대로.
+- `hjKakaoAutoCanWrite`: 글(text)이 글자이고 앞뒤 빈칸을 빼도 남으며 `HJ_KAKAO_NOTE_MAX`(4000)자 이하 · 현장(project)은 없거나 글자일 때만 고름(`aiAddNote` 는 빈 글에 throw 없이 {오류} 를 돌려줘 처리로 표시될 뻔). 못 고른 요청은 요청함에 남음.
+- `hjKakaoAutoApply`: 같은 현장(앞뒤 빈칸 무시 · 현장 없음끼리도)에 같은 글(앞뒤 빈칸 뺀 것) 메모가 이미 있으면(`hjKakaoNoteHas` — 대표가 손으로 먼저 적었거나 같은 묶음에 두 번) 넣지 않고 처리로만('이미 있던 n건은 건너뜀').
+- 요청함 이름표 '메모 기록'·미리보기는 그대로. 검사 `tests/noteauto-v630.unit.js`(변이 `HJ_V630_MUTATION`).
+
 ## 2026-11-27 v629 🤖 요청함 '내역서 줄 고치기'(stmt_line_edit)
 
 대표 요청(11/27) "고쳐줘" — v628 공개 뒤 9/17 누수나라 내역서 ⚠ 4줄('10/15' → 실제 9/15)을 Claude 가 대신 고치게. Claude 는 현장웹 자료를 요청함(결재)으로만 바꾼다. 핀 `hyeonjang-v629-stmtfix`.
