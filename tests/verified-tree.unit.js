@@ -5,7 +5,7 @@
       병합된 바로 그 PR 머리(HEAD^2)의 실행 · 검사 장치(.github/·run-all.js·package*.json·이 스크립트·따옴표 이름)가 바뀐 배포는 묻지도 않고 전체 · API 오류는 전체 (DECIDE)
    ② 실제 명령 — 임시 git 저장소(PR 병합 커밋) + 127.0.0.1 가짜 API: 마지막 성공 배포(조상)와 비교 · 밀려 취소된 배포 사이의 검사 장치 변경도 잡음 ·
       조상이 아닌 배포·병합 아닌 커밋·한글 이름 워크플로·서버 꺼짐은 전체 · 늘 0 으로 끝남 (CLI)
-   ③ 워크플로 — 배포: actions:read · 판단 단계가 브라우저 설치·전체 검사 앞 · 둘 다 run 이 비었을 때만 · 빠른 검사는 run 이 있을 때만 · 공개 단계는 조건 없음 ·
+   ③ 워크플로 — 배포: actions:read · 판단 단계가 브라우저 설치·전체 검사 앞 · 둘 다 run 이 비었을 때만 · 빠른 검사는 run 이 있을 때만 · 공개 단계는 조건 없음(11/28 부터 올리기·공개는 머리 확인 조건 하나만) ·
       전체 검사는 그대로 'node tests/run-all.js'(인자 없이) / PR 검사(이제 진짜 관문): 전체 검사가 인자·조건·continue-on-error·|| 없이 · 맨 끝에만 트리 기록 (WORKFLOW)
    ④ PC 빠른 검사 — mutation-anchors 는 playwright 가 없어도 표를 읽는다(이름일 때만 대역) · 고정 파일은 줄끝을 바꾸지 않는다(.gitattributes) (PC)
    변이(VT_MUTATION): no-fork-check·any-conclusion·any-workflow·any-event·no-guard·no-expiry·throw-through·no-head-check·quoted-name 은 ①,
@@ -198,8 +198,12 @@ async function test(name, fn) { await fn(); passed++; console.log('PASS verified
     assert.match(d[iFull].text, /\n {10}node tests\/run-all\.js\s*\n/, '전체 검사는 그대로 인자 없이');
     assert.match(d[iQuick].text, /\n {8}if: steps\.verified\.outputs\.run != ''(?: +#[^\n]*)?\n/);
     assert.match(d[iQuick].text, /\n {10}node tests\/run-all\.js \.check\.js \.unit\.js\s*\n/, '빠른 검사는 정적·단위 전부');
-    for (const n of ['Checkout', 'Setup Node.js', 'Configure GitHub Pages', 'Stage public site allowlist', 'Upload site artifact', 'Deploy to GitHub Pages'])
-      assert.doesNotMatch(d[at(n)].text, /\n {8}if:/, n + ' 은 건너뛰지 않는다(조건 없음)');
+    // 11/28: 올리기·공개는 공개 직전 머리 확인 조건(main 이 넘어갔으면 건너뜀 — tests/pages-head-guard.unit.js) 하나만 가질 수 있다. 검사를 건너뛰는 조건은 여전히 없다.
+    const HEAD_IF = /\n {8}if: steps\.head\.outputs\.publish != 'false'(?: +#[^\n]*)?\n/;
+    for (const n of ['Checkout', 'Setup Node.js', 'Configure GitHub Pages', 'Stage public site allowlist', 'Upload site artifact', 'Deploy to GitHub Pages']) {
+      const text = /^(?:Upload site artifact|Deploy to GitHub Pages)$/.test(n) ? d[at(n)].text.replace(HEAD_IF, '\n') : d[at(n)].text;
+      assert.doesNotMatch(text, /\n {8}if:/, n + ' 은 건너뛰지 않는다(조건 없음 — 올리기·공개는 머리 확인 조건만)');
+    }
     const v = steps(SRC.verify);
     const last = v[v.length - 1], rec = v[v.length - 2];
     assert.equal(last.name, 'Upload the verified tree record', '기록 올리기는 맨 끝');

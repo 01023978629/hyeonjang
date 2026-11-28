@@ -8,6 +8,9 @@
      ③ 이 단계는 실패로 끝나지 않는다 — exit 1·set -e 로 끝나는 명령 없음, 못 보면 ::warning:: 만. 이름에 'Deploy to GitHub Pages' 가 없다
         (카톡봇이 그 이름의 단계만 실패했으면 GitHub 쪽 실패로 보고 다시 돌린다 — 기다리기 실패를 그렇게 보면 안 된다)
      ④ 권한 actions: read(묶음 목록 읽기)
+     ⑤ (11/28) 공개 직전 머리 확인(scripts/pages-head-guard.mjs — main 이 넘어갔으면 올리기·기다리기·공개를 건너뜀) 뒤로, 기다리기는 올리기와
+        같은 조건 하나(if: steps.head.outputs.publish != 'false')만 갖는다 — 올렸으면 늘 기다리고, 그 밖의 조건·continue-on-error 는 여전히 없다.
+        (③의 '조건 없이 늘 돈다'를 이렇게 좁혔다 — 머리 확인 자체는 tests/pages-head-guard.unit.js)
    변이(MUT)를 같은 함수로 돌려 전부 잡히는지 확인한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -22,7 +25,12 @@ const MUT = {
   'other-run': ['actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages', 'actions/artifacts?name=github-pages'],
   'forever': ['          for i in $(seq 1 24); do', '          while true; do'],
   'no-actions-read': ['  actions: read   #', '  actions: none   #'],
+  // 11/28 ⑤ — 기다리기 조건은 올리기와 같은 머리 확인 조건 하나만
+  'wait-always': ["        if: steps.head.outputs.publish != 'false'   # 올리기와 같은 조건 — 올렸으면 늘 기다린다(11/28)", '        if: always()'],
+  'wait-unguarded': ["        if: steps.head.outputs.publish != 'false'   # 올리기와 같은 조건 — 올렸으면 늘 기다린다(11/28)", '        # (조건 없음)'],
+  'wait-continue': ["        if: steps.head.outputs.publish != 'false'   # 올리기와 같은 조건 — 올렸으면 늘 기다린다(11/28)", "        if: steps.head.outputs.publish != 'false'\n        continue-on-error: true"],
 };
+const HEAD_IF = "if: steps.head.outputs.publish != 'false'";   // 11/28 공개 직전 머리 확인 조건(올리기·기다리기·공개 공통)
 
 function stepBlock(text, name) {
   const at = text.indexOf('      - name: ' + name + '\n');
@@ -44,7 +52,11 @@ function check(text) {
   if (/^\s*exit 0; for i/m.test(b) || /\bexit [1-9]/.test(b) || /set -e/.test(b) || /\|\| *exit/.test(b)) p.push('③ 기다리기 단계가 실패로 끝날 수 있다(또는 아무것도 안 한다)');
   if (!/::warning::/.test(b)) p.push('③ 못 보면 경고만 남겨야 한다');
   if (/Deploy to GitHub Pages/i.test(b.split('\n')[0])) p.push('③ 기다리기 단계 이름에 Deploy to GitHub Pages 가 있다');
-  if (/continue-on-error|if:/.test(b)) p.push('③ 조건·continue-on-error 없이 늘 돈다');
+  // 11/28 ⑤: 조건은 올리기와 같은 머리 확인 조건 하나만(줄 끝 주석은 뺀다) — 올렸으면 늘 기다린다
+  const ifs = s => (s.match(/^\s*if:.*$/gm) || []).map(l => l.trim().replace(/\s+#.*$/, ''));
+  const waitIfs = ifs(b), upIfs = ifs(stepBlock(text, 'Upload site artifact') || '');
+  if (/continue-on-error/.test(b) || waitIfs.some(l => l !== HEAD_IF) || waitIfs.join('|') !== upIfs.join('|'))
+    p.push('③⑤ 기다리기는 올리기와 같은 머리 확인 조건만 — 그 밖의 조건·continue-on-error 없이');
   if (!/^\s{2}actions: read\b/m.test(text)) p.push('④ 권한 actions: read');
   return p;
 }

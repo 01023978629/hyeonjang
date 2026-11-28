@@ -11,7 +11,8 @@ const vm = require('node:vm');
 const ROOT = path.resolve(__dirname, '..');
 const TARGETS = ['index.html', 'sw.js', 'apps-script/Watchdog.gs', 'bathroom.js', 'leak.js', 'team-ui.js', 'team-projects.js', 'team-packet.js',
   'media-safety.js', 'shared-todo-backup.js', 'operations-review.js',
-  'scripts/verified-tree.mjs', '.github/workflows/deploy-pages.yml', '.github/workflows/verify-release.yml', 'tests/mutation-anchors.check.js', '.gitattributes']   // 배포 검사 줄이기(verified-tree.unit.js 변이)
+  'scripts/verified-tree.mjs', '.github/workflows/deploy-pages.yml', '.github/workflows/verify-release.yml', 'tests/mutation-anchors.check.js', '.gitattributes',   // 배포 검사 줄이기(verified-tree.unit.js 변이)
+  'scripts/pages-head-guard.mjs']   // 11/28 공개 직전 머리 확인(pages-head-guard.unit.js 변이)
   .filter(f => fs.existsSync(path.join(ROOT, f))).map(f => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]);
 // '{' 에서 짝이 맞는 '}' 까지(문자열·주석·템플릿 안의 괄호는 건너뜀)
 function objectText(src, at) {

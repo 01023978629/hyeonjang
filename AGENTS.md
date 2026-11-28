@@ -3,6 +3,25 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-28 배포 — 공개 직전에 이 커밋이 아직 main 머리인지 본다(옛 커밋이 새 공개를 덮지 않게)
+
+11/28 만물웹(manmool)에서 PR 두 개가 6초 사이에 병합됐는데, GitHub 이 두 push 의 배포 실행을 10분쯤 늦게, 거꾸로(새 커밋 실행이 26초 먼저) 만들었다.
+`concurrency: pages` 는 실행을 **만들어진 순서대로** 하나씩 돌리므로 새 커밋이 먼저 공개되고, 기다리던 옛 커밋 실행이 그 뒤 검사를 마치고 옛 트리를 덮어 공개했다
+(새 PR 내용이 수동 실행 전까지 빠짐). 현장웹도 같은 `pages` 묶음·`cancel-in-progress: false` 라 같은 일이 날 수 있다. 앱(index.html) 변경 없음 — 판 번호 그대로.
+- `Stage public site allowlist` 뒤·`Upload site artifact` 바로 앞에 `Check this commit is still the head of main`(id `head` · `scripts/pages-head-guard.mjs`):
+  main 머리(API `commits/main` 세 번 → 안 되면 `git ls-remote`)가 이 실행의 커밋과 다르면 `publish=false` — 로그 `main moved on to <sha> — newer run will publish`.
+  그 커밋의 실행이 이 커밋까지 든 새 트리를 공개한다. 머리를 못 읽으면 `publish=true`(예전처럼 공개). 스크립트는 늘 0 — 건너뛴 실행은 'success', 공개 세 단계만 skipped.
+- 올리기·기다리기·공개 세 단계는 `if: steps.head.outputs.publish != 'false'` 하나만(출력이 없으면 공개 — `== 'true'` 로 쓰면 확인 못 할 때 공개가 빠진다).
+  검사 단계에는 조건을 더하지 않았다. 머리 확인 이름에 'Deploy to GitHub Pages' 를 넣지 마라(카톡봇 규칙 — 11/24 기다리기 단계와 같음).
+- `cancel-in-progress: true` 로는 못 막는다 — 나중에 만들어진 실행(이번엔 옛 커밋)이 먼저 것을 끊어 오히려 옛 커밋만 남고, 공개 중인 실행까지 끊긴다. false 그대로.
+- 수동 실행(workflow_dispatch, main)은 그때의 main 머리를 돌리므로 그대로 공개된다.
+- `scripts/verified-tree.mjs` 의 '마지막 성공 배포'에 공개를 건너뛴 실행도 들어간다 — 그 실행도 검사는 다 통과했으므로 ②(검사 장치가 바뀐 뒤 배포 쪽 전체 검사 한 번)의 뜻은 같다(주석만 더함).
+- 남은 틈(바꾸지 않음): 묶음의 대기 자리는 하나라, 기다리던 새 커밋 실행이 더 늦게 만들어진 옛 커밋 실행에 밀려 취소되면 새 커밋은 아무도 공개하지 않는다
+  (예전에도 같은 경우 옛 커밋이 공개됐다 — 사이트가 뒤로 가지는 않는다). 카톡봇이 취소된 배포를 알리면 main 수동 실행으로 푼다.
+- 검사: 새 `tests/pages-head-guard.unit.js` 5/5(판단 · 머리 읽기 · 127.0.0.1 가짜 API+임시 저장소로 실제 명령 · 워크플로 구조 · 변이 15종 파일 안에서 모두 잡음).
+  `tests/deploy-wait.check.js` ③⑤(기다리기 조건은 올리기와 같은 머리 확인 조건 하나만 · 변이 3종 더함) · `tests/verified-tree.unit.js` ③(올리기·공개는 머리 확인 조건만 허용) ·
+  `tests/mutation-anchors.check.js` 대상에 `scripts/pages-head-guard.mjs`.
+
 ## 2026-11-28 v631 🤖 요청함 '내역서 반영'(stmt_apply)
 
 대표 결정(11/28 "반영 도구 만들어") — 📑 작업내역서 장부의 '아직 안 넣음' 작업·공사내역서 엑셀을 대표가 손으로 [📑 반영] 하던 것을 카톡봇·Claude 가 요청(결재)으로 올리면 현장웹이 넣는다. 핀 `hyeonjang-v631-stmtapply`.
