@@ -62,7 +62,9 @@ function isAncestor(sha) {
   try { execFileSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'], { stdio: 'ignore' }); return true; } catch (_) { return false; }
 }
 
-/* 마지막으로 공개에 성공한 배포의 커밋 — HEAD 의 조상인 것 중 가장 최근. 못 찾으면 ''. */
+/* 마지막으로 공개에 성공한 배포의 커밋 — HEAD 의 조상인 것 중 가장 최근. 못 찾으면 ''.
+   11/28 부터 main 이 넘어가 공개를 건너뛴 실행(scripts/pages-head-guard.mjs)도 'success' 다 — 그 실행도 검사는 이 판단대로 다 통과했으므로
+   ②('검사 장치가 바뀐 뒤 배포 쪽 전체 검사를 한 번은 돈다')의 기준으로 써도 뜻이 같다. */
 export async function lastDeployedBase(repo, api, ancestor = isAncestor) {
   const res = await api(`repos/${repo}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/runs?branch=main&status=success&per_page=10`);
   for (const r of (res && Array.isArray(res.workflow_runs) ? res.workflow_runs : [])) {
